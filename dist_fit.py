@@ -53,6 +53,32 @@ def grad_sum_log_neg_binomial( ks, r, p ):
 # def log_gaussian( x, mu, sigma ):
 #     return -(x-mu)**2 / (2*sigma**2) - 0.5* log( 2*pi*sigma**2 )
 
+def sum_log_gaussian_int( ks, bounds, mu, sigma):
+    N = len( ks )
+    bounds = (low_bound,up_bound)
+    # norm_factor = -N*0.5*log( 2*pi*sigma**2 ) # only holds in continuous case
+    c = 1.0/(2.0*sigma**2)
+    norm_factor = log( sum(
+        ( exp(-c*(k-mu)**2) for k in range(*bounds) )
+    ) )
+    print norm_factor, ' -- ', N*0.5*log( 2*pi*sigma**2 ) # temporary just to see how different
+    sum_ll = - sum( ( c*(k-mu)**2 for k in ks ) )
+    return sum_ll - norm_factor
+
+def grad_sum_log_gaussian_int( ks, bounds, mu, sigma):
+    N = len( ks )
+    bounds = (low_bound,up_bound)
+    # norm_factor = -N*0.5*log( 2*pi*sigma**2 ) # only holds in continuous case
+    c = 1.0/(2.0*sigma**2)
+    norm_factor = log( sum(
+        ( exp(-c*(k-mu)**2) for k in range(*bounds) )
+    ) )
+    # sum_ll = - sum( ( c*(k-mu)**2 for k in ks ) )
+    sum_ll_dmu = sum( ( (k-mu)/sigma**2 for k in ks ) )
+    sum_ll_dsigma = # finish this and norm terms later
+    return (dll_dmu, dll_dsigma)
+
+
 def to_poisson( data=[] ):
     if not data:
         print 'error: empty data set'
