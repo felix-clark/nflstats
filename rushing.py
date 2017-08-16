@@ -40,8 +40,8 @@ pp_td = 6
 pp_twopm = 2
 
 
-for year in range(2009, 2017):
-# for year in range(2015, 2017):
+# for year in range(2009, 2017):
+for year in range(2016, 2017):
     # year = 2009 # options range from 2009 to present
     print 'processing {} season'.format( year )
     games = nflgame.games_gen( year )
@@ -80,24 +80,28 @@ for year in range(2009, 2017):
             all_tds.append( tds )
 
 
-print 'rushing attempts:'
-# negative binomial does quite well here for single year.
-# note p~0.5 ... more like 0.7 w/ all seasons
-# poisson is underdispersed.
-# neg bin doesn't do as well w/ all years
-dist_fit.plot_counts( rush_att, label='rushing attempts', fits=['neg_binomial'] )
+# print 'rushing attempts:'
+# # negative binomial does quite well here for single year.
+# # note p~0.5 ... more like 0.7 w/ all seasons
+# # poisson is underdispersed.
+# # neg bin doesn't do as well w/ all years, but still better than poisson
+# dist_fit.plot_counts( rush_att, label='rushing attempts', fits=['neg_binomial'] )
 
-print 'total TDs:'
-# negative binomial is redundant w/ poisson here. TDs are rare, and relatively independent.
-# geometric does OK, but is clearly inferior w/ high stats
-# poisson does quite well even when all years are combined : -logL/N ~ 1
-dist_fit.plot_counts( all_tds, label='touchdowns', fits=['poisson'] )
+# print 'total TDs:'
+# # negative binomial is redundant w/ poisson here. TDs are rare, and relatively independent.
+# # geometric does OK, but is clearly inferior w/ high stats
+# # poisson does quite well even when all years are combined : -logL/N ~ 1
+# dist_fit.plot_counts( all_tds, label='touchdowns', fits=['poisson'] )
 
-print 'receptions:'
-# poisson is too narrow, geometric has too heavy of tail
-# neg binomial is not perfect, -logL/N ~ 2. doesn't quite capture shape
-# get p~0.5... coincidence?
-dist_fit.plot_counts( rec_rec, label='receptions', fits=['neg_binomial'] )
+# print 'receptions:'
+# # poisson is too narrow, geometric has too heavy of tail
+# # neg binomial is not perfect, -logL/N ~ 2. doesn't quite capture shape
+# # get p~0.5... coincidence?
+# dist_fit.plot_counts( rec_rec, label='receptions', fits=['neg_binomial'] )
+
+print 'total yards:'
+# in a single game
+dist_fit.plot_counts_poly( all_yds, bounds=(-50,400), label='total yards' )
 
 # there are games with negative yards so counts are not appropriate
 # print 'rushing yards:'
