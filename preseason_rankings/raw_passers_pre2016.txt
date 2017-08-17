@@ -1,0 +1,364 @@
+<tbody>
+<tr class="last">
+<td>1. <a href="http://www.espn.com/nfl/player/_/id/13994/cam-newton">Cam Newton</a>
+</td>
+<td>CAR</td>
+<td>7</td>
+</tr>
+<tr class="last">
+<td>2. <a href="http://www.espn.com/nfl/player/_/id/8439/aaron-rodgers">Aaron Rodgers</a>
+</td>
+<td>GB</td>
+<td>4</td>
+</tr>
+<tr class="last">
+<td>3. <a href="http://www.espn.com/nfl/player/_/id/14881/russell-wilson">Russell Wilson</a>
+</td>
+<td>SEA</td>
+<td>5</td>
+</tr>
+<tr class="last">
+<td>4. <a href="http://www.espn.com/nfl/player/_/id/14874/andrew-luck">Andrew Luck</a>
+</td>
+<td>IND</td>
+<td>10</td>
+</tr>
+<tr class="last">
+<td>5. <a href="http://www.espn.com/nfl/player/_/id/2580/drew-brees">Drew Brees</a>
+</td>
+<td>NO</td>
+<td>5</td>
+</tr>
+<tr class="last">
+<td>6. <a href="http://www.espn.com/nfl/player/_/id/5536/ben-roethlisberger">Ben Roethlisberger</a>
+</td>
+<td>PIT</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>7. <a href="http://www.espn.com/nfl/player/_/id/4459/carson-palmer">Carson Palmer</a>
+</td>
+<td>ARI</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>8. <a href="http://www.espn.com/nfl/player/_/id/2330/tom-brady">Tom Brady</a>
+</td>
+<td>NE</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>9. <a href="http://www.espn.com/nfl/player/_/id/5526/eli-manning">Eli Manning</a>
+</td>
+<td>NYG</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>10. <a href="http://www.espn.com/nfl/player/_/id/16724/blake-bortles">Blake Bortles</a>
+</td>
+<td>JAC</td>
+<td>5</td>
+</tr>
+<tr class="last">
+<td>11. <a href="http://www.espn.com/nfl/player/_/id/5529/philip-rivers">Philip Rivers</a>
+</td>
+<td>SD</td>
+<td>11</td>
+</tr>
+<tr class="last">
+<td>12. <a href="http://www.espn.com/nfl/player/_/id/14163/tyrod-taylor">Tyrod Taylor</a>
+</td>
+<td>BUF</td>
+<td>10</td>
+</tr>
+<tr class="last">
+<td>13. <a href="http://www.espn.com/nfl/player/_/id/14880/kirk-cousins">Kirk Cousins</a>
+</td>
+<td>WAS</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>14. <a href="http://www.espn.com/nfl/player/_/id/16757/derek-carr">Derek Carr</a>
+</td>
+<td>OAK</td>
+<td>10</td>
+</tr>
+<tr class="last">
+<td>15. <a href="http://www.espn.com/nfl/player/_/id/2576980/marcus-mariota">Marcus Mariota</a>
+</td>
+<td>TEN</td>
+<td>13</td>
+</tr>
+<tr class="last">
+<td>16. <a href="http://www.espn.com/nfl/player/_/id/12483/matthew-stafford">Matthew Stafford</a>
+</td>
+<td>DET</td>
+<td>10</td>
+</tr>
+<tr class="last">
+<td>17. <a href="http://www.espn.com/nfl/player/_/id/14012/andy-dalton">Andy Dalton</a>
+</td>
+<td>CIN</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>18. <a href="http://www.espn.com/nfl/player/_/id/2969939/jameis-winston">Jameis Winston</a>
+</td>
+<td>TB</td>
+<td>6</td>
+</tr>
+<tr class="last">
+<td>19. <a href="http://www.espn.com/nfl/player/_/id/8664/ryan-fitzpatrick">Ryan Fitzpatrick</a>
+</td>
+<td>NYJ</td>
+<td>11</td>
+</tr>
+<tr class="last">
+<td>20. <a href="http://www.espn.com/nfl/player/_/id/14876/ryan-tannehill">Ryan Tannehill</a>
+</td>
+<td>MIA</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>21. <a href="http://www.espn.com/nfl/player/_/id/11237/matt-ryan">Matt Ryan</a>
+</td>
+<td>ATL</td>
+<td>11</td>
+</tr>
+<tr class="last">
+<td>22. <a href="http://www.espn.com/nfl/player/_/id/14879/brock-osweiler">Brock Osweiler</a>
+</td>
+<td>HOU</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>23. <a href="http://www.espn.com/nfl/player/_/id/11252/joe-flacco">Joe Flacco</a>
+</td>
+<td>BAL</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>24. <a href="http://www.espn.com/nfl/player/_/id/9597/jay-cutler">Jay Cutler</a>
+</td>
+<td>CHI</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>25. <a href="http://www.espn.com/nfl/player/_/id/14875/robert-griffin">Robert Griffin</a>
+</td>
+<td>CLE</td>
+<td>13</td>
+</tr>
+<tr class="last">
+<td>26. <a href="http://www.espn.com/nfl/player/_/id/8416/alex-smith">Alex Smith</a>
+</td>
+<td>KC</td>
+<td>5</td>
+</tr>
+<tr class="last">
+<td>27. <a href="http://www.espn.com/nfl/player/_/id/2573079/carson-wentz">Carson Wentz</a>
+</td>
+<td>PHI</td>
+<td>4</td>
+</tr>
+<tr class="last">
+<td>28. <a href="http://www.espn.com/nfl/player/_/id/2577417/dak-prescott">Dak Prescott</a>
+</td>
+<td>DAL</td>
+<td>7</td>
+</tr>
+<tr class="last">
+<td>29. <a href="http://www.espn.com/nfl/player/_/id/13197/sam-bradford">Sam Bradford</a>
+</td>
+<td>MIN</td>
+<td>6</td>
+</tr>
+<tr class="last">
+<td>30. <a href="http://www.espn.com/nfl/player/_/id/2511109/trevor-siemian">Trevor Siemian</a>
+</td>
+<td>DEN</td>
+<td>11</td>
+</tr>
+<tr class="last">
+<td>31. <a href="http://www.espn.com/nfl/player/_/id/13987/blaine-gabbert">Blaine Gabbert</a>
+</td>
+<td>SF</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>32. <a href="http://www.espn.com/nfl/player/_/id/5209/tony-romo">Tony Romo</a>
+</td>
+<td>DAL</td>
+<td>7</td>
+</tr>
+<tr class="last">
+<td>33. <a href="http://www.espn.com/nfl/player/_/id/15168/case-keenum">Case Keenum</a>
+</td>
+<td>LA</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>34. <a href="http://www.espn.com/nfl/player/_/id/16760/jimmy-garoppolo">Jimmy Garoppolo</a>
+</td>
+<td>NE</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>35. <a href="http://www.espn.com/nfl/player/_/id/12471/chase-daniel">Chase Daniel</a>
+</td>
+<td>PHI</td>
+<td>4</td>
+</tr>
+<tr class="last">
+<td>36. <a href="http://www.espn.com/nfl/player/_/id/3046779/jared-goff">Jared Goff</a>
+</td>
+<td>LA</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>37. <a href="http://www.espn.com/nfl/player/_/id/2977881/paxton-lynch">Paxton Lynch</a>
+</td>
+<td>DEN</td>
+<td>11</td>
+</tr>
+<tr class="last">
+<td>38. <a href="http://www.espn.com/nfl/player/_/id/4260/shaun-hill">Shaun Hill</a>
+</td>
+<td>MIN</td>
+<td>6</td>
+</tr>
+<tr class="last">
+<td>39. <a href="http://www.espn.com/nfl/player/_/id/2517017/sean-mannion">Sean Mannion</a>
+</td>
+<td>LA</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>40. <a href="http://www.espn.com/nfl/player/_/id/14001/colin-kaepernick">Colin Kaepernick</a>
+</td>
+<td>SF</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>41. <a href="http://www.espn.com/nfl/player/_/id/12482/mark-sanchez">Mark Sanchez</a>
+</td>
+<td>DAL</td>
+<td>7</td>
+</tr>
+<tr class="last">
+<td>42. <a href="http://www.espn.com/nfl/player/_/id/3609/josh-mccown">Josh McCown</a>
+</td>
+<td>CLE</td>
+<td>13</td>
+</tr>
+<tr class="last">
+<td>43. <a href="http://www.espn.com/nfl/player/_/id/15864/geno-smith">Geno Smith</a>
+</td>
+<td>NYJ</td>
+<td>11</td>
+</tr>
+<tr class="last">
+<td>44. <a href="http://www.espn.com/nfl/player/_/id/12477/brian-hoyer">Brian Hoyer</a>
+</td>
+<td>CHI</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>45. <a href="http://www.espn.com/nfl/player/_/id/16810/aj-mccarron">AJ McCarron</a>
+</td>
+<td>CIN</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>46. <a href="http://www.espn.com/nfl/player/_/id/15904/landry-jones">Landry Jones</a>
+</td>
+<td>PIT</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>47. <a href="http://www.espn.com/nfl/player/_/id/10487/drew-stanton">Drew Stanton</a>
+</td>
+<td>ARI</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>48. <a href="http://www.espn.com/nfl/player/_/id/15837/mike-glennon">Mike Glennon</a>
+</td>
+<td>TB</td>
+<td>6</td>
+</tr>
+<tr class="last">
+<td>49. <a href="http://www.espn.com/nfl/player/_/id/2575910/trevone-boykin">Trevone Boykin</a>
+</td>
+<td>SEA</td>
+<td>5</td>
+</tr>
+<tr class="last">
+<td>50. <a href="http://www.espn.com/nfl/player/_/id/8644/matt-cassel">Matt Cassel</a>
+</td>
+<td>TEN</td>
+<td>13</td>
+</tr>
+<tr class="last">
+<td>51. <a href="http://www.espn.com/nfl/player/_/id/15803/ej-manuel">EJ Manuel</a>
+</td>
+<td>BUF</td>
+<td>10</td>
+</tr>
+<tr class="last">
+<td>52. <a href="http://www.espn.com/nfl/player/_/id/14353/scott-tolzien">Scott Tolzien</a>
+</td>
+<td>IND</td>
+<td>10</td>
+</tr>
+<tr class="last">
+<td>53. <a href="http://www.espn.com/nfl/player/_/id/11291/chad-henne">Chad Henne</a>
+</td>
+<td>JAC</td>
+<td>5</td>
+</tr>
+<tr class="last">
+<td>54. <a href="http://www.espn.com/nfl/player/_/id/2577189/brett-hundley">Brett Hundley</a>
+</td>
+<td>GB</td>
+<td>4</td>
+</tr>
+<tr class="last">
+<td>55. <a href="http://www.espn.com/nfl/player/_/id/16593/matt-mcgloin">Matt McGloin</a>
+</td>
+<td>OAK</td>
+<td>10</td>
+</tr>
+<tr class="last">
+<td>56. <a href="http://www.espn.com/nfl/player/_/id/16943/tom-savage">Tom Savage</a>
+</td>
+<td>HOU</td>
+<td>9</td>
+</tr>
+<tr class="last">
+<td>57. <a href="http://www.espn.com/nfl/player/_/id/5615/matt-schaub">Matt Schaub</a>
+</td>
+<td>ATL</td>
+<td>11</td>
+</tr>
+<tr class="last">
+<td>58. <a href="http://www.espn.com/nfl/player/_/id/15891/ryan-nassib">Ryan Nassib</a>
+</td>
+<td>NYG</td>
+<td>8</td>
+</tr>
+<tr class="last">
+<td>59. <a href="http://www.espn.com/nfl/player/_/id/5631/luke-mccown">Luke McCown</a>
+</td>
+<td>NO</td>
+<td>5</td>
+</tr>
+<tr class="last">
+<td>60. <a href="http://www.espn.com/nfl/player/_/id/11128/matt-moore">Matt Moore</a>
+</td>
+<td>MIA</td>
+<td>8</td>
+</tr>
+</tbody>
+</table>
+</aside>
