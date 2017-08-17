@@ -37,7 +37,7 @@ points_per = [
     'ppFG50' # points for 50+ yard FG
 ]
 
-
+# namedtuples are immutable
 Ruleset = namedtuple('Ruleset', ' '.join(points_per) )
 ## set all point rewards to zero by default
 Ruleset.__new__.__defaults__ = (0,) * len(Ruleset._fields)

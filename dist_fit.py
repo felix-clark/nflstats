@@ -139,7 +139,7 @@ def to_poisson( data=[] ):
     mu = float( sum( data ) ) / n
     err_mu = sqrt( mu / n )
     log_L_per_ndf = mu * ( log(mu) - 1 ) * n/(n-1) \
-                    - sum( gammaln( np.array(data)+1 ) ) / (n-1)
+                    - sum( gammaln( np.asarray(data)+1 ) ) / (n-1)
     return (mu, err_mu), log_L_per_ndf
 
 def to_geometric( data=[] ):
@@ -162,7 +162,7 @@ def to_neg_binomial( data=[] ):
     for x in data:
         if x < 0:
             print 'warning: negative value in data set. negative binomial may not be appropriate.'
-    arr_ks = np.array( data )
+    arr_ks = np.asarray( data )
     n = len( arr_ks )
     mean = float( sum( arr_ks ) ) / n
     rp0 = (mean, 0.5) # initial guess. r > 0 and 0 < p < 1
@@ -191,7 +191,7 @@ def to_gaussian_int( bounds, data=[] ):
     if not data:
         print 'error: empty data set'
         exit(1)
-    arr_ks = np.array( data )
+    arr_ks = np.asarray( data )
     n = len( arr_ks )
     mean = float( sum( arr_ks ) ) / n
     stddev = sum( (arr_ks - mean)**2 ) / n # just for initial guess -- we don't need to worry about n-1
@@ -199,7 +199,7 @@ def to_gaussian_int( bounds, data=[] ):
     method = 'L-BFGS-B'
     
     func = lambda pars: - sum_log_gaussian_int( bounds, arr_ks, *pars )
-    grad = lambda pars: - np.array( grad_sum_log_gaussian_int( bounds, arr_ks, *pars ) )
+    grad = lambda pars: - np.asarray( grad_sum_log_gaussian_int( bounds, arr_ks, *pars ) )
     opt_result = opt.minimize( func, rp0, method=method, jac=grad, bounds=[(0,None),(1,bounds[1]-bounds[0])] )
     # print opt_result.message
     if not opt_result.success:
@@ -234,7 +234,7 @@ def to_exp_poly_ratio( (n_p,n_q), dom_bounds, data=[] ):
     if n_q % 2 != 0:
         print 'need even order of q'
         exit(1)
-    arr_ks = np.array( data )
+    arr_ks = np.asarray( data )
     n = len( arr_ks )
     if n_p+n_q > n:
         print 'polynomial is under-constrained'
@@ -303,6 +303,8 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
     ndata = len( data )
     maxdata = max( data )
 
+    # # instead of fitting unbinned likelihood fits, since the results are all integers
+    # #   we may get speedup by fitting to histograms (which will require an additional implementation)
     # # probably don't need to save all return values
     entries, bin_edges, patches = plt.hist( data, bins=np.arange(-0.0,maxdata+4,1),
                                             # range=[-0.5, maxtds+1.5],
@@ -314,7 +316,7 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
     # yerrs = [ sqrt( x / ndata ) for x in entries ] if norm else [ sqrt( x ) for x in entries ]
     yerrs = sqrt( entries ) / ndata if norm else sqrt( entries )
     
-    xfvals = np.linspace(0, maxdata+3, 1000)
+    xfvals = np.linspace(0, maxdata+3, 1000) # get from bin_edges instead?
 
     # do likelihood fits for each type
 
