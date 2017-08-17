@@ -29,7 +29,12 @@ points_per = [
     'pp2PRE', # points per 2pt receiving conversion
     'ppREY100', # bonus for 100-199 yard receiving game
     'ppREY200', # bonus for 200+ yard receiving game
-    'ppFUML' # points per fumble lost
+    'ppFUML', # points per fumble lost
+    'ppPAT', # points per PAT  made
+    'ppFGM', # points per missed FG
+    'ppFG0', # points for 0-39 yard FG
+    'ppFG40', # points for 40-49 yard FG
+    'ppFG50' # points for 50+ yard FG
 ]
 
 
@@ -58,7 +63,12 @@ bro_league = Ruleset(
     ppRETD40=2,
     ppRETD50=3,
     pp2PRE=2,
-    ppFUML=-2
+    ppFUML=-2,
+    ppPAT=1,
+    ppFGM=-1,
+    ppFG0=3,
+    ppFG40=4,
+    ppFG50=5
 )
 
 phys_league = Ruleset(
@@ -78,5 +88,10 @@ phys_league = Ruleset(
     pp2PRE=2,
     ppREY100=1,
     ppREY200=2,
-    ppFUML=-2
+    ppFUML=-2,
+    ppPAT=1,
+    ppFGM=-1,
+    ppFG0=3,
+    ppFG40=4,
+    ppFG50=5
     )
