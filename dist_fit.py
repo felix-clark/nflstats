@@ -36,14 +36,14 @@ def gaussian_int( bounds, k, mu, sigma ):
     return exp( -c*(k-mu)**2 ) / norm_factor
 
 def exp_poly_ratio( bounds, k, pis, qis):
-    # p(x) = p0 + p1*x + ...
-    px = lambda x: sum( ( x**i*pi for i,pi in enumerate(pis) ) )
+    # p(x) = 1 + p1*x + ...
+    px = lambda x: 1 + sum( ( pi*x**(i+1) for i,pi in enumerate(pis) ) )
     # q(x) = 1 + q1*x + ...
-    qx = lambda x: 1 + sum( ( x**i*qi for i,qi in enumerate(qis, start=1) ) )
+    qx = lambda x: 1 + sum( ( qi*x**(i+1) for i,qi in enumerate(qis) ) )
     polyr = lambda x: px(x)/qx(x)
     dom = np.arange(*bounds) # domain of distribution
-    norm_factor = sum( exp( polyr( dom ) ) )
-    return exp( polyr(k) ) / norm_factor
+    norm_factor = sum( exp( - polyr( dom ) ) )
+    return exp( - polyr(k) ) / norm_factor
 
 
 def sum_log_neg_binomial( ks, r, p ):
@@ -80,48 +80,50 @@ def grad_sum_log_gaussian_int( bounds, ks, mu, sigma):
 
 def sum_log_exp_poly_ratio( bounds, ks, pis, qis):
     N = len( ks )
-    # p(x) = p0 + p1*x + ...
-    px = lambda x: sum( ( x**i*pi for i,pi in enumerate(pis) ) )
+    # p(x) = 1 + p1*x + ...
+    px = lambda x: 1 + sum( ( pi*x**(i+1) for i,pi in enumerate(pis) ) )
     # q(x) = 1 + q1*x + ...
-    qx = lambda x: 1 + sum( ( x**i*qi for i,qi in enumerate(qis, start=1) ) )
+    qx = lambda x: 1 + sum( ( qi*x**(i+1) for i,qi in enumerate(qis) ) )
     polyr = lambda x: px(x)/qx(x)
     dom = np.arange(*bounds) # domain of distribution
-    norm_factor = N*log( sum( exp( polyr( dom ) ) ) )
+    norm_factor = N*log( sum( exp( - polyr( dom ) ) ) )
     # if np.isnan( norm_factor ):
     # print dom
     # print polyr( dom ) # these values get too big
-    sum_ll = sum( polyr( ks ) )
+    sum_ll = sum( - polyr( ks ) )
     return sum_ll - norm_factor
 
 def _grad_sum_log_exp_poly_noratio( bounds, ks, pis ):
     N = len( ks )
-    # p(x) = p0 + p1*x + ...
-    px = lambda x: sum( ( x**i*pi for i,pi in enumerate(pis) ) )
-    grad_px = lambda x: np.array([ x**i for i,_ in enumerate(pis) ]) # dp(x)/dpi = i*pi*x**(i-1)
-    grad_sumll = sum( grad_px( ks ).T )
+    # p(x) = 1 + p1*x + ...
+    px = lambda x: 1 + sum( ( pi*x**(i+1) for i,pi in enumerate(pis) ) )
+    grad_px = lambda x: np.array([ x**(i+1) for i,_ in enumerate(pis) ]) # dp(x)/dpi = i*pi*x**(i-1)
+    grad_sumll = - sum( grad_px( ks ).T )
     dom = np.arange(*bounds) # domain of distribution
-    fdom = exp( px( dom ) ) # array of f(k) mapped over domain
-    fgraddom = ( exp(px(k)) * grad_px(k) for k in dom )
+    fdom = exp( - px( dom ) ) # array of f(k) mapped over domain
+    fgraddom = ( - exp( -px(k) ) * grad_px(k) for k in dom )
+    # fgraddom = - exp( -px(dom) ) * grad_px(dom)
     grad_norm_fact = N * sum( fgraddom ) / sum( fdom )
     return grad_sumll - grad_norm_fact
 
+# should switch to a parameterization for p(x) and q(x) ~ 1 + a*x + ...
+#  that is manifestly positive, e.g.
+#  (a*x**2 + b*x + sin(t))**2 + (c*x + cos(t))**2
 def grad_sum_log_exp_poly_ratio( bounds, ks, pis, qis ):
-    if not qis:
-        return _grad_sum_log_exp_poly_noratio( bounds, ks, pis )
     N = len( ks )
-    # p(x) = p0 + p1*x + ...
-    px = lambda x: sum( ( x**i*pi for i,pi in enumerate(pis) ) )
-    grad_px = lambda x: np.array([ x**i for i,_ in enumerate(pis) ]) # dp(x)/dpi = i*pi*x**(i-1)
+    # p(x) = 1 + p1*x + ...
+    px = lambda x: 1 + sum( ( pi*x**(i+1) for i,pi in enumerate(pis) ) )
+    grad_px = lambda x: np.array([ x**(i+1) for i in np.arange(len(pis)) ]) # dp(x)/dpi = x**i
     # q(x) = 1 + q1*x + ...
-    qx = lambda x: 1 + sum( ( x**i*qi for i,qi in enumerate(qis, start=1) ) )
-    grad_qx = lambda x: np.array([ x**i for i,_ in enumerate(qis, start=1) ])
+    qx = lambda x: 1 + sum( ( qi*x**(i+1) for i,qi in enumerate(qis) ) )
+    grad_qx = lambda x: np.array([ x**(i+1) for i in np.arange(len(qis)) ])
     polyr = lambda x: px(x)/qx(x)
     grad_polyr = lambda x: np.append( grad_px(x)/qx(x),
                                       -grad_qx(x)*px(x)/qx(x)**2 )
-    grad_sumll = sum( grad_polyr( ks ).T )
+    grad_sumll = - sum( grad_polyr( ks ).T )
     dom = np.arange(*bounds) # domain of distribution
-    fdom = exp( polyr( dom ) ) # array of f(k) mapped over domain
-    fgraddom = ( exp(polyr(k)) * grad_polyr(k) for k in dom )
+    fdom = exp( - polyr( dom ) ) # array of f(k) mapped over domain
+    fgraddom = ( - exp( - polyr(k) ) * grad_polyr(k) for k in dom )
     # grad_norm_fact = N * sum( fdomain * grad_polyr( dom ).T ) / sum( fdomain )
     grad_norm_fact = N * sum( fgraddom ) / sum( fdom )
     return grad_sumll - grad_norm_fact
@@ -209,9 +211,9 @@ def to_gaussian_int( bounds, data=[] ):
     neg_ll = opt_result.fun
     return (mu,sigma), cov_array, -neg_ll/(n-2)
 
-# fits to exp( (p0 + p1*x + ... + pnp*x**np)/(1 + q1*x + ... + qnq*x**nq) )
 def to_exp_poly_ratio( (n_p,n_q), dom_bounds, data=[] ):
     """
+    fits to exp( (1 + p1*x + ... + pnp*x**np)/(1 + q1*x + ... + qnq*x**nq) )
     n_p: order of polynomial p(x)
     n_q: order of polynomial q(x)
     dom_bounds: boundaries of integral domain (e.g. (2,6) -> [2,3,4,5])
@@ -224,39 +226,43 @@ def to_exp_poly_ratio( (n_p,n_q), dom_bounds, data=[] ):
         print 'require higher degree of polynomial in numerator than denominator'
         exit(1)
     assert( n_p >= 2 )
+    # don't technically need even order on p(x) for truly finite domain
     if n_p % 2 != 0:
         print 'need even order of p'
         exit(1)
+    # even order on q(x) to avoid guaranteeing a zero. if coefficients are small enough this might be okay, if n_q < n_p.
     if n_q % 2 != 0:
         print 'need even order of q'
         exit(1)
     arr_ks = np.array( data )
     n = len( arr_ks )
-    if n_p+n_q+1 > n:
+    if n_p+n_q > n:
         print 'polynomial is under-constrained'
         exit(1)
     mean = float( sum( arr_ks ) ) / n
-    var = sum( (arr_ks - mean)**2 ) / n # just for initial guess -- we don't need to worry about n-1
+    var = sum( (arr_ks - mean)**2 ) / (n-1)
 
     # start with a gaussian:
-    c = 1.0/(2*var)
-    pi0 = np.append( np.array( [-c*mean**2, 2*c*mean, -c] ), np.zeros( n_p-2 ) )
-    qi0 = np.zeros( n_q )
-                                    
-    sdx = 0.5*abs(dom_bounds[1] - dom_bounds[0]) # gives width scale of problem
-    # par0 = np.append( np.append( np.zeros(n_p), np.array([-1.0/sdx**n_p])) , np.zeros(n_q)) # initial guesses
+    pi0 = np.append( np.array( [-mean/var, 1.0/(2*var)] ), np.zeros( n_p-2 ) )
+    qi0 = np.zeros( n_q )                                    
     par0 = np.append( pi0, qi0 ) # initial guesses
+    # print par0
+    sdx = 0.5*abs(dom_bounds[1] - dom_bounds[0]) # gives width scale of problem
     # the highest-order p term should be negative
     #   (not necessary in general, but we want distributions that go to zero at |k| >> 1)
-    fit_bounds = [(-10.0/sdx**i,10.0/sdx**i) for i in range(n_p)] + [(None,0)] + [(-0.1/sdx**(i+1),0.1/sdx**(i+1)) for i in range(n_q)]
-    fit_bounds = None
+    fit_bounds = [(-10.0/sdx**(i+1),10.0/sdx**(i+1)) for i in range(n_p-1)] + [(0,None)] + [(-0.1/sdx**(i+1),0.1/sdx**(i+1)) for i in range(n_q)]
+    print fit_bounds
+    # fit_bounds = None
     allowed_methods = ['L-BFGS-B', 'TNC', 'SLSQP'] # these are the only ones that can handle bounds. they can also all handle jacobians. none of them can handle hessians.
     # only LBFGS returns Hessian, in form of "LbjgsInvHessProduct"
     method = allowed_methods[0]
 
-    assert( n_p + n_q + 1 == len(par0) )
-    func = lambda pars: - sum_log_exp_poly_ratio( dom_bounds, arr_ks, pars[:n_p+1], pars[n_p+1:] )
-    grad = lambda pars: - grad_sum_log_exp_poly_ratio( dom_bounds, arr_ks, pars[:n_p+1], pars[n_p+1:] )
+    assert( n_p + n_q == len(par0) )
+    # it could be worthwhile to use a parameterization that makes p(x) and q(x) explicitly positive
+    # e.g. (a*x**2 + b*x + sin(t))**2 + (c*x + cos(t))^2 for order 4
+    func = lambda pars: - sum_log_exp_poly_ratio( dom_bounds, arr_ks, pars[:n_p], pars[n_p:] )
+    grad = lambda pars: - grad_sum_log_exp_poly_ratio( dom_bounds, arr_ks, pars[:n_p], pars[n_p:] )
+    if n_q == 0: grad = lambda pars: - _grad_sum_log_exp_poly_noratio( dom_bounds, arr_ks, pars ) # this special case makes the general one not vectorizable
     # grad = None
     # in theory a constraint can be defined to keep q(x) non-zero.
     #   this might be difficult to define for arbitrary n_q.
@@ -264,12 +270,12 @@ def to_exp_poly_ratio( (n_p,n_q), dom_bounds, data=[] ):
     # print opt_result.message
     if not opt_result.success:
         print 'integer exponential polynomial ratio fit did not succeed.'
+        print 'jacobian = ', opt_result.jac # should be zero, or close to it
     result = opt_result.x
-    # print 'jacobian = ', opt_result.jac # should be zero, or close to it
     cov = opt_result.hess_inv
     cov_array = cov.todense()  # dense array
     neg_ll = opt_result.fun
-    return result, cov_array, -neg_ll/(n-n_p-n_q-1)
+    return result, cov_array, -neg_ll/(n-n_p-n_q)
 
 
 # # for floating point data
@@ -389,14 +395,14 @@ def plot_counts_poly( data=[], bounds=(-100,100), label='', norm=False ):
     plt.plot(xfvals, ndata*gaussian_int( bounds, xfvals, mu, sigma ), '--', lw=2, color='blue' )
     plt.yscale('log', nonposy='clip')
 
-    n_p = 4
+    n_p = 6
     n_q = 0
     pars,cov,logl = to_exp_poly_ratio( (n_p,n_q), bounds, data )
     errs = sqrt( np.diagonal(cov) )
-    assert( len(errs) == n_p + n_q + 1 )
-    pis,qis = pars[:n_p+1], pars[n_p+1:]
-    errpis,errqis = errs[:n_p+1], errs[n_p+1:]
-    for i,(p,dp) in enumerate(zip(pis,errpis)):
+    assert( len(errs) == n_p + n_q )
+    pis,qis = pars[:n_p], pars[n_p:]
+    errpis,errqis = errs[:n_p], errs[n_p:]
+    for i,(p,dp) in enumerate(zip(pis,errpis), start=1):
         print '    p{} = {:.3} '.format( i,p ) +  u'\u00B1' + ' {:.2}'.format( dp )
     for i,(q,dq) in enumerate(zip(qis,errqis), start=1):
         print '    q{} = {:.3} '.format( i,q ) +  u'\u00B1' + ' {:.2}'.format( dq )
@@ -406,6 +412,8 @@ def plot_counts_poly( data=[], bounds=(-100,100), label='', norm=False ):
     plt.subplot(122)
     plt.plot(xfvals, ndata*exp_poly_ratio( bounds, xfvals, pis, qis ), '-', lw=2, color='green' )
     plt.yscale('log', nonposy='clip')
+    xlow,xup,ylow,yup = plt.axis()
+    plt.axis( (xlow,xup,0.5,yup) )
     
     plt.show()
 
