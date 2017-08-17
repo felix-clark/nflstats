@@ -139,7 +139,7 @@ def to_poisson( data=[] ):
     mu = float( sum( data ) ) / n
     err_mu = sqrt( mu / n )
     log_L_per_ndf = mu * ( log(mu) - 1 ) * n/(n-1) \
-                    - sum( gammaln( np.array(x)+1 ) ) / (n-1)
+                    - sum( gammaln( np.array(data)+1 ) ) / (n-1)
     return (mu, err_mu), log_L_per_ndf
 
 def to_geometric( data=[] ):
@@ -313,7 +313,6 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
     
     # yerrs = [ sqrt( x / ndata ) for x in entries ] if norm else [ sqrt( x ) for x in entries ]
     yerrs = sqrt( entries ) / ndata if norm else sqrt( entries )
-    plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
     
     xfvals = np.linspace(0, maxdata+3, 1000)
 
@@ -325,8 +324,10 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
         print '    p = {:.3} '.format(p) + u'\u00B1' + ' {:.2}'.format( errp )
         print '    log(L)/NDF = {:.3}'.format( logl )    
         plt.subplot(121)
+        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*geometric( xfvals, p ), 'g-', lw=2)
         plt.subplot(122)
+        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*geometric( xfvals, p ), 'g-', lw=2)
         plt.yscale('log')
 
@@ -338,7 +339,7 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
         plt.subplot(121)
         plt.plot(xfvals, ndata*poisson( xfvals, mu ), 'r-', lw=2)
         plt.subplot(122)
-        plt.plot(xfvals, ndata*geometric( xfvals, p ), 'g-', lw=2)
+        plt.plot(xfvals, ndata*geometric( xfvals, mu ), 'r-', lw=2)
         plt.yscale('log')
 
     if 'neg_binomial' in fits:
@@ -353,8 +354,10 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
         # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
         # plt.plot(xfvals, yfvals, 'v-', lw=2 )
         plt.subplot(121)
+        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*neg_binomial( xfvals, r, p ), '--', lw=2, color='violet' )
         plt.subplot(122)
+        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*neg_binomial( xfvals, r, p ), '--', lw=2, color='violet' )
         plt.yscale('log')
 

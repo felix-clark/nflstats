@@ -7,18 +7,7 @@ from numpy import sqrt
 import matplotlib.pyplot as plt
 
 import dist_fit
-from ruleset import bro_league
-
-# rush_att = []
-# # rush_tds = []
-# all_tds = []
-# rush_yds = []
-# all_yds = []
-# rec_rec = []
-# all_twopta, all_twoptm = [],[] # can be split into receiving/rushing
-# #  there are other stats: fumbles lost, etc...
-
-fantasy_points = []
+from ruleset import bro_league, phys_league
 
 # doesn't cover every rule, just the main ones.
 # some stats are not as easily extracted
@@ -27,22 +16,33 @@ def getBasePoints( rs, plyr ):
     # note: for some reason a line like
     # + some_val
     # is valid python, but will not get added
-    fpts = rs.ppPY25 * (plyr.passing_yds / 25) \
+    fpts = \
+    + rs.ppPY * plyr.passing_yds \
+    + rs.ppPY25 * (plyr.passing_yds / 25) \
     + rs.ppPC * plyr.passing_cmp \
     + rs.ppINC * (plyr.passing_att - plyr.passing_cmp - plyr.passing_int) \
     + rs.ppPTD * plyr.passing_tds \
     + rs.ppINT * plyr.passing_int \
     + rs.pp2PC * plyr.passing_twopc \
+    + rs.ppRY * plyr.rushing_yds \
     + rs.ppRY10 * (plyr.rushing_yds / 10) \
     + rs.ppRTD * plyr.rushing_tds \
     + rs.pp2PR * plyr.rushing_twoptm \
+    + rs.ppREY * plyr.receiving_yds \
     + rs.ppREY10 * (plyr.receiving_yds / 10) \
     + rs.ppREC * plyr.receiving_rec \
     + rs.ppRETD * plyr.receiving_tds \
     + rs.pp2PRE * plyr.receiving_twoptm \
     + rs.ppFUML * plyr.fumbles_lost
     return fpts
-    
+
+
+qb_fpts = []
+rb_fpts = []
+wr_fpts = []
+te_fpts = []
+
+
 # for year in range(2009, 2017):
 for year in range(2016, 2017):
     # year = 2009 # options range from 2009 to present
@@ -64,7 +64,7 @@ for year in range(2016, 2017):
         # print qbstat.formatted_stats() # relatively nicely printed out
 
         base_pts = getBasePoints( bro_league, qbstat )
-        fantasy_points.append( base_pts )
+        qb_fpts.append( base_pts )
 
         
         
@@ -94,7 +94,7 @@ for year in range(2016, 2017):
 
 
 print 'season fantasy points:'
-print fantasy_points
+print qb_fpts
 # in a single game
 # dist_fit.plot_counts( fantasy_points, label='points', fits=['neg_binomial'] )
 # dist_fit.plot_counts_poly( fantasy_points, bounds=(-50,400), label='total yards' )
