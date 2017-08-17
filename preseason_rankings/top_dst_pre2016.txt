@@ -1,0 +1,32 @@
+1. Seattle Seahawks
+2. Denver Broncos
+3. Carolina Panthers
+4. Cincinnati Bengals
+5. Houston Texans
+6. Kansas City Chiefs
+7. Arizona Cardinals
+8. Green Bay Packers
+9. Oakland Raiders
+10. New England Patriots
+11. Minnesota Vikings
+12. New York Jets
+13. Buffalo Bills
+14. Los Angeles Rams
+15. Indianapolis Colts
+16. Jacksonville Jaguars
+17. Baltimore Ravens
+18. Pittsburgh Steelers
+19. Philadelphia Eagles
+20. Tampa Bay Buccaneers
+21. Chicago Bears
+22. Detroit Lions
+23. Washington Redskins
+24. New York Giants
+25. Tennessee Titans
+26. Atlanta Falcons
+27. San Diego Chargers
+28. Miami Dolphins
+29. San Francisco 49ers
+30. Dallas Cowboys
+31. Cleveland Browns
+32. New Orleans Saints

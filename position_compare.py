@@ -9,6 +9,35 @@ import matplotlib.pyplot as plt
 import dist_fit
 from ruleset import bro_league, phys_league
 
+def getPreseasonRanksPosYear( position, year ):
+    """
+    position: 'qb', 'rb', 'wr', 'te', 'k'
+    """
+    pos_dict = {}
+    filename = 'preseason_rankings/top_' + position.lower() + 's_pre' + str(year) + '.txt'
+    f = open(filename, 'r')
+    for l in f:
+        ldata = l.split('. ')
+        rank = int( ldata[0] )
+        name = ldata[1].rstrip('\n')
+        pos_dict[rank] = name
+            
+    return pos_dict
+        
+        # players = [p for p in nflgame.find( name ) if p.position == position]
+        # if not players:
+        #     print 'Could not find player ', name
+        #     exit(1) # probably an overreaction
+        # if len( players ) > 1:
+        #     print 'Found multiple ', name, 's!'
+        #     print players
+        #     exit(1)
+        # player = players[0]
+        # pid = player.playerid
+        # if name != player.name:
+        #     print 'names don\'t match'
+        #     print name,player.name
+
 # doesn't cover every rule, just the main ones.
 # some stats are not as easily extracted
 def getBasePoints( rs, plyr ):
@@ -52,6 +81,10 @@ k_fpts = []
 for year in range(2016, 2017):
     # year = 2009 # options range from 2009 to present
     print 'processing {} season'.format( year )
+
+    qbs_pre_ranked = getPreseasonRanksPosYear( 'QB', year )
+    print qbs_pre_ranked
+    
     games = nflgame.games_gen( year )
     # get game-level stats
     all_players = nflgame.combine_game_stats( games )
@@ -68,12 +101,23 @@ for year in range(2016, 2017):
     # top_player_names = [ p.player.full_name for p in all_players.passing().sort('passing_yds').limit( n_top_players ) ]
     # top_playerids = [ p.playerid for p in all_players.passing().sort('passing_yds').limit( n_top_players ) ]
 
+    qb_rank_dict = {}
+    
     for qbstat in top_qbs:
         # print qbstat.rushing_lng, qbstat.rushing_lngtd # longest rush, longest TD rush
         # print qbstat.stats # dict of the stats
         # print qbstat.formatted_stats() # relatively nicely printed out version of the stats dict
         base_pts = getBasePoints( bro_league, qbstat )
         qb_fpts.append( base_pts )
+        qbrank = -1
+        for (rank,name) in qbs_pre_ranked.items():
+            if name == qbstat.player.full_name.strip():
+                qbrank = rank
+                break
+        if qbrank < 0:
+            print 'count not find ', qbstat.player.full_name, ' in top QBs.'
+        else:
+            qb_rank_dict[qbrank] = base_pts
     for rbstat in top_rbs:
         base_pts = getBasePoints( bro_league, rbstat )
         rb_fpts.append( base_pts )
@@ -101,18 +145,6 @@ for year in range(2016, 2017):
     #         # print dir(pstat) # to check methods
     #         rshyd = pstat.rushing_yds
     #         rshtd = pstat.rushing_tds
-    #         rec = pstat.receiving_rec
-    #         recyd = pstat.receiving_yds
-    #         rectd = pstat.receiving_tds
-    #         tds = pstat.tds
-    #         # print rshtd,rectd,tds
-    #         rush_att.append( pstat.rushing_att )
-    #         # rush_tds.append( rshtd )
-    #         # rush_yds.append( rshyd )
-    #         all_yds.append( rshyd + recyd )
-    #         rec_rec.append( rec )
-    #         all_tds.append( tds )
-
 
 print 'season fantasy points:'
 print 'QB:'
@@ -135,8 +167,6 @@ print k_fpts
 # dist_fit.plot_counts( rush_yds, label='rushing yards' )
 
 
-# qb_names = ['Tom Brady', 'Drew Brees', 'Russell Wilson']
-# qbs = []
 # for qbn in qb_names:
 #     qbs += nflgame.find( qbn )
 # # player = None
