@@ -112,3 +112,10 @@ g = sns.lmplot(x='preseason_rank',y='fantasy_points',hue='position',
 g.set_axis_labels('ESPN staff preseason ranking', 'yearly fantasy points (w/out bonus)')
 g.savefig('compare_pos.png')
 
+# simple scatter plot
+# sns.jointplot(data=df, x='preseason_rank', y='fantasy_points')
+
+# get distribution of fantasy_points by position, fit to various distributions.
+#   look up DataFrame interface to extract this.
+# this could be used to generate value distributions for a draft analysis
+
