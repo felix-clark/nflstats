@@ -3,25 +3,9 @@
 import nflgame
 
 import numpy as np
-from numpy import sqrt
 import matplotlib.pyplot as plt
 
 import dist_fit
-
-# def get_rush_att( player_name = 'todd gurley', year = 2013 ):
-#     '''
-#     player: 
-#     year: season ( >= 2009 )
-#     '''
-
-# player = None
-# players = nflgame.find( player_name )
-# if not players:
-#     print 'Could not find player ', player_name
-#     exit(1)
-# if len( players ) > 1:
-#     print 'Found multiple ', player_name, 's!'
-#     exit(1)
 
 rush_att = []
 # rush_tds = []
