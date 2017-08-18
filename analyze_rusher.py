@@ -36,8 +36,12 @@ def generatePlayerDataFile( player_name='todd gurley', years=range(2009, 2017) )
         for week in range(1,18):
             # print 'looking at week ', week
             weekly_games = nflgame.games_gen( year, week )
-            # use combine_play_stats() to get play-level information
-            weekly_player_stats = nflgame.combine_game_stats( weekly_games )
+            try:
+                # use combine_play_stats() to get play-level information
+                weekly_player_stats = nflgame.combine_game_stats( weekly_games )
+            except TypeError:
+                print str(year), ' not in database.'
+                break
             for pstat in weekly_player_stats.rushing().filter( playerid=playerid ):
                 base_pts = getBasePoints( bro_league, pstat )
                 datalist.append({'year':year,
