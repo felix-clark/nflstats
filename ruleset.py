@@ -95,3 +95,24 @@ phys_league = Ruleset(
     ppFG40=4,
     ppFG50=5
     )
+
+dude_league = Ruleset(
+    ppPY=0.04,
+    ppPTD=4,
+    ppINT=-2,
+    pp2PC=2,
+    ppRY=0.1,
+    ppRTD=6,
+    pp2PR=2,
+    ppREY=0.1,
+    ppREC=0.25,
+    ppRETD=6,
+    pp2PRE=2,
+    ppFUML=-2,
+    ppPAT=1,
+    ppFGM=-1, # yahoo's point deduction depends on the distance
+    ppFG0=2,
+    # there is another 30-39 yd category here
+    ppFG40=4,
+    ppFG50=5
+)
