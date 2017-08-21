@@ -156,9 +156,9 @@ def to_geometric( data=[] ):
 # it would reduce the dimensionality of the fit algorithm, however.
 # then p is easily expressed in terms of the mean and r.
 def to_neg_binomial( data=[] ):
-    if not data:
-        print 'error: empty data set'
-        exit(1)
+    # if not data:
+    #     print 'error: empty data set'
+    #     exit(1)
     for x in data:
         if x < 0:
             print 'warning: negative value in data set. negative binomial may not be appropriate.'
@@ -188,9 +188,9 @@ def to_neg_binomial( data=[] ):
     return (r,p),cov_array,-neg_ll/(n-2)
 
 def to_gaussian_int( bounds, data=[] ):
-    if not data:
-        print 'error: empty data set'
-        exit(1)
+    # if not data:
+    #     print 'error: empty data set'
+    #     exit(1)
     arr_ks = np.asarray( data )
     n = len( arr_ks )
     mean = float( sum( arr_ks ) ) / n
@@ -219,9 +219,9 @@ def to_exp_poly_ratio( (n_p,n_q), dom_bounds, data=[] ):
     dom_bounds: boundaries of integral domain (e.g. (2,6) -> [2,3,4,5])
     data: integral data to fit
     """
-    if not data:
-        print 'error: empty data set'
-        exit(1)
+    # if not data:
+    #     print 'error: empty data set'
+    #     exit(1)
     if n_p <= n_q:
         print 'require higher degree of polynomial in numerator than denominator'
         exit(1)
