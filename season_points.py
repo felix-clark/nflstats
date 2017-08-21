@@ -16,7 +16,7 @@ from getPoints import *
 import dist_fit
 
 # this will create a data file with summary data for all positions
-def generateSummaryDataFile( fname, years ):
+def generateSummaryDataFile( fname, years, league_rules ):
     # this list will be used as a constructor to the DataFrame
     # perhaps there is a slicker way to construct a DataFrame?
     datalist = []
@@ -45,7 +45,7 @@ def generateSummaryDataFile( fname, years ):
                 # print qbstat.stats # dict of the stats
                 # print qbstat.formatted_stats() # relatively nicely printed out version of the stats dict
                 pfullname = pstat.player.full_name.strip()
-                base_pts = getBasePoints( bro_league, pstat )
+                base_pts = getBasePoints( league_rules, pstat )
                 # make a list of dicts to create a pandas data frame
                 datalist.append({'position':pos,
                                  'year':year,
@@ -61,7 +61,7 @@ def generateSummaryDataFile( fname, years ):
 datafilename = 'season_points.csv'
 if not os.path.isfile( datafilename ):
     # at the moment we only have preseason ranking data for 2015 and 2016
-    generateSummaryDataFile( datafilename, range(2009,2017) )
+    generateSummaryDataFile( datafilename, range(2009,2017), league_rules = bro_league )
 
 
                 
