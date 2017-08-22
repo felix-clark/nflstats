@@ -6,13 +6,14 @@ import os.path
 import itertools
 import random
 
-VERBOSE = True
+VERBOSE = False
 
 random.seed() # no argument (or None) seeds from urandom if available
 
 n_teams = 14
 # n_roster_per_team = {'QB':1,'RB':2,'WR':2,'TE':1,'K':1,'FLEX':1}
 n_roster_per_team = {'QB':1,'RB':2,'WR':2,'TE':1,'K':1}
+flex_pos = ['RB', 'WR', 'TE']
 n_draft_rounds = sum( (n for (_,n) in n_roster_per_team.items()) )
 n_starters = {}
 for pos,nper in n_roster_per_team.items():
@@ -27,6 +28,7 @@ def picksTilNextTurn( n_teams, pick_in_first_round, n_this_round ):
         #  first / third / fifth round (start at zero)
         return 2*(n_teams - pick_in_first_round) - 1
     else:
+        # second / fourth / sixth ... round
         return 2*pick_in_first_round + 1
 
 def stratPickMaxVal( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
@@ -37,6 +39,16 @@ def stratPickMaxVal( pos_values_dict, pos_picked_league_dict, team_roster, n_pic
         posval = vals[index]
         if len(team_roster[pos]) < n_roster_per_team[pos] and posval > maxval:
             bestpos,maxval = pos,posval
+    # check flex option
+    nflex = sum( (team_roster[pos] for pos in flex_pos) )
+    baseflexallowed = sum( (n_roster_per_team[pos] for pos in flex_pos) )
+    if nflex >= baseflexallowed and nflex < baseflexallowed + n_roster_per_team['FLEX']:
+        # we can pick an additional flex player
+        for pos in flex_pos:
+            index = pos_picked_league_dict[pos]
+            posval = pos_values_dict[pos][index]
+            if posval > maxval:
+                bestpos,maxval = pos,posval
     return bestpos
     
 def pointsOverWorstStarter( pos_values_dict, pos_picked_league_dict, picks_til_next_turn=None ):
@@ -47,6 +59,17 @@ def pointsOverWorstStarter( pos_values_dict, pos_picked_league_dict, picks_til_n
     result_dict = {}
     for pos,vals in pos_values_dict.items():
         result_dict[pos] = vals[pos_picked_league_dict[pos]] - vals[n_starters[pos]]
+    remaining_flex_list = np.sort( list(itertools.chain.from_iterable( (pos_values_dict[pos][pos_picked_league_dict[pos]:] for pos in flex_pos) ) ) )
+    n_picked_flex = sum( (pos_picked_league_dict[pos] for pos in flex_pos) )
+    last_flex_index = sum( (n_starters[pos] for pos in flex_pos) )
+    worst_flex_starter = remaining_flex_list[last_flex_index - n_picked_flex]
+    max_flex_val = -1000
+    bestflex = ''
+    for pos in flex_pos:
+        flexposval = pos_values_dict[pos][pos_picked_league_dict[pos]]
+        if flexposval > max_flex_val:
+            bestflex,max_flex_val = pos,flexposval
+    result_dict['FLEX'] = (bestflex, max_flex_val - worst_flex_starter)
     return result_dict
 
 def stratPickMaxValOverWorstStarter( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
@@ -58,7 +81,43 @@ def stratPickMaxValOverWorstStarter( pos_values_dict, pos_picked_league_dict, te
         val = pos_vals[npicked] - pos_vals[n_starters[pos]]
         if len(team_roster[pos]) < n_roster_per_team[pos] and val > maxval:
             bestpos,maxval = pos,val
+    # TODO: flex # consider refactoring to pop off picked players from position_values_dict ?
     return bestpos
+
+# def stratPickMaxValOverMeanStarter( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
+#     maxval = -1000
+#     bestpos = ''
+#     for pos,pos_vals in pos_values_dict.items():
+#         npicked = pos_picked_league_dict[pos]
+#         val = pos_vals[npicked] - np.mean(pos_vals[0:n_starters[pos]+1])
+#         if len(team_roster[pos]) < n_roster_per_team[pos] and val > maxval:
+#             bestpos,maxval = pos,val
+#     return bestpos
+
+def stratPickMaxValOverMeanRemainingStarter( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
+    maxval = -1000
+    bestpos = ''
+    for pos,pos_vals in pos_values_dict.items():
+        npicked = pos_picked_league_dict[pos]
+        val = pos_vals[npicked] - np.mean(pos_vals[npicked:n_starters[pos]+1])
+        if len(team_roster[pos]) < n_roster_per_team[pos] and val > maxval:
+            bestpos,maxval = pos,val
+    return bestpos
+
+def stratPickMaxValOverMeanRemainingAndWorstStarter( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
+    maxval = -1000
+    bestpos = ''
+    worst_weight = 0.6 # this one is better, so we should rate it higher. weight of 0.5 usually still does better.
+    mean_weight = 1-worst_weight
+    for pos,pos_vals in pos_values_dict.items():
+        npicked = pos_picked_league_dict[pos]
+        mean_val = pos_vals[npicked] - np.mean(pos_vals[npicked:n_starters[pos]+1])
+        worst_val = pos_vals[npicked] - pos_vals[n_starters[pos]]
+        val = mean_weight*mean_val + worst_weight*worst_val
+        if len(team_roster[pos]) < n_roster_per_team[pos] and val > maxval:
+            bestpos,maxval = pos,val
+    return bestpos
+
 
 def pointsOverWorstNextTurn( pos_values_dict, pos_picked_dict, picks_til_next_turn ):
     """
@@ -68,7 +127,7 @@ def pointsOverWorstNextTurn( pos_values_dict, pos_picked_dict, picks_til_next_tu
     for pos,vals in pos_values_dict.items():
         n_already_picked = pos_picked_dict[pos]
         # print pos
-        pointsWorst = vals[n_already_picked+picks_til_next_turn] if len(vals) > n_already_picked+picks_til_next_turn else vals[-1]
+        pointsWorst = vals[n_already_picked+picks_til_next_turn] if len(vals) > n_already_picked+picks_til_next_turn else 0
         pointsOverWorst = vals[n_already_picked] - pointsWorst
         result_dict[pos] = pointsOverWorst
     return result_dict
@@ -152,6 +211,7 @@ def stratPickRandom( pos_values_dict, pos_picked_league_dict, team_roster, n_pic
 def stratPickRandomSkill( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn ):
     """
     will pick skill players before kickers or defense, in order to follow common sense
+    otherwise dumbly random
     """
     poss_pos = []
     for pos,players in team_roster.items():
@@ -165,14 +225,18 @@ def stratPickRandomSkill( pos_values_dict, pos_picked_league_dict, team_roster, 
     return pick
 
 
-stratlist = [# stratPickRandom, # this one is bad enough that we shouldn't include it cuz people should be smarter
-             # stratPickRandomSkill, # consistently worse than the following; should leave it out so those get more trials ( can put it back in for a baseline comparison )
-             # stratPickMaxVal, # this is worse than both of the following
-             stratPickMaxValOverWorstStarter, # this is the best of the simple strats
-             stratPickMaxValOverWorstNextTurn, # this is the second-best
-             stratPickMaxValOverWorstStarterAndWorstNextTurn # combo of the best two strats
-             # stratPickMaxValOverWorstEndOfRound, # this one sucks
-             # stratPickMaxValOverNext # and this one sucks worse
+stratlist = [
+    # stratPickRandom, # this one is bad enough that we shouldn't include it cuz people should be smarter
+    # stratPickRandomSkill, # consistently worse than the following; should leave it out so those get more trials ( can put it back in for a baseline comparison )
+    # stratPickMaxVal, # this is worse than both of the following
+    stratPickMaxValOverWorstStarter, # this is the best of the simple strats
+    stratPickMaxValOverWorstNextTurn, # this is the next-best after mean remaining
+    # stratPickMaxValOverWorstStarterAndWorstNextTurn, # combo of the best two strats. ignoring for now because it's somewhat arbitrary
+    # stratPickMaxValOverMeanStarter, # little better than random
+    stratPickMaxValOverMeanRemainingStarter, # 2nd best simple option, to value over worst starter
+    stratPickMaxValOverMeanRemainingAndWorstStarter # better than either simple part on their own; not by a lot though (few points per season)
+    # stratPickMaxValOverWorstEndOfRound, # this one sucks
+    # stratPickMaxValOverNext # and this one sucks worse
 ]
 def getRandomStrats( n_teams ):
     randfuncs = [stratlist[random.randint(0,len(stratlist)-1)] for _ in range(n_teams)]
@@ -198,7 +262,7 @@ position_values = {}
 
 strat_totals = [[] for _ in stratlist]
     
-n_trials = 100
+n_trials = 200
 
 for i_trial in range(n_trials):
     if VERBOSE: print '\n**************** trial {} ****************'.format( i_trial )
