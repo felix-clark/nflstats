@@ -108,13 +108,34 @@ def stratPickMaxValOverMeanRemainingStarter( pos_values_dict, pos_picked_league_
 def stratPickMaxValOverMeanRemainingAndWorstStarter( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
     maxval = -1000
     bestpos = ''
+    # worst_weight = 0.5 # this one is better, so we should rate it higher. weight of 0.5 usually still does better.
+    # mean_weight = 1-worst_weight
+    for pos,pos_vals in pos_values_dict.items():
+        npicked = pos_picked_league_dict[pos]
+        best_in_pos = pos_vals[npicked]
+        num_avg = n_starters[pos]+1-npicked
+        weights = [np.exp(i)/num_avg for i in range(num_avg)] # exponential does just as fine, possibly better
+        # weights = [(1.0+i)/num_avg for i in range(num_avg)] # linear weights seems to do comparable to only comparing to worst. # TODO: try different slopes? most seem worse
+        sum_weights = sum(weights)
+        weighted_vals = (w*(best_in_pos - pv) for w,pv in zip(weights,pos_vals[npicked:n_starters[pos]+1]))
+        val = sum(weighted_vals)/sum_weights if sum_weights > 0 else 0
+        # mean_val = best_in_pos - np.mean(pos_vals[npicked:n_starters[pos]+1])
+        # worst_val = best_in_pos - pos_vals[n_starters[pos]]
+        # val = mean_weight*mean_val + worst_weight*worst_val
+        if len(team_roster[pos]) < n_roster_per_team[pos] and val > maxval:
+            bestpos,maxval = pos,val
+    return bestpos
+
+def stratPickMaxValOverMeanRemainingAndWorstStarterAlt( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
+    maxval = -1000
+    bestpos = ''
     worst_weight = 0.5 # this one is better, so we should rate it higher. weight of 0.5 usually still does better.
     mean_weight = 1-worst_weight
     for pos,pos_vals in pos_values_dict.items():
         npicked = pos_picked_league_dict[pos]
         best_in_pos = pos_vals[npicked]
         # num_avg = n_starters[pos]+1-npicked
-        # weights = [float(i) for i in range(num_avg)] # linear weights does worse than averaging mean and worst
+        # weights = [(1.0+i)/num_avg for i in range(num_avg)] # linear weights seems to do comparable to only comparing to worst.
         # sum_weights = sum(weights)
         # weighted_vals = (w*(best_in_pos - pv) for w,pv in zip(weights,pos_vals[npicked:n_starters[pos]+1]))
         # val = sum(weighted_vals)/sum_weights if sum_weights > 0 else 0
@@ -150,20 +171,20 @@ def stratPickMaxValOverWorstNextTurn( pos_values_dict, pos_picked_league_dict, t
             bestpick,maxval = pos,modval
     return bestpick
 
-def stratPickMaxValOverWorstStarterAndWorstNextTurn( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn ):
-    pointsOverWorstStarterDict = pointsOverWorstStarter( pos_values_dict, pos_picked_league_dict )
-    pointsOverWorstNextTurnDict = pointsOverWorstNextTurn( pos_values_dict, pos_picked_league_dict, n_picks_til_next_turn )
-    maxval = -1000
-    bestpick = ''
-    stweight,ntweight = 0.9,0.05 # possibly better; possibly no statistical significance
-    for pos,ntval in pointsOverWorstNextTurnDict.items():
-        stval = pointsOverWorstStarterDict[pos]
-         # combo of two best easy strats
-        # modval = stweight*stval/(n_roster_per_team[pos]) + (1-stweight)*min(ntval,stval)*1.0
-        modval = stweight*stval + ntweight*min(ntval,stval)
-        if len(team_roster[pos]) < n_roster_per_team[pos] and modval > maxval:
-            bestpick,maxval = pos,modval
-    return bestpick
+# def stratPickMaxValOverWorstStarterAndWorstNextTurn( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn ):
+#     pointsOverWorstStarterDict = pointsOverWorstStarter( pos_values_dict, pos_picked_league_dict )
+#     pointsOverWorstNextTurnDict = pointsOverWorstNextTurn( pos_values_dict, pos_picked_league_dict, n_picks_til_next_turn )
+#     maxval = -1000
+#     bestpick = ''
+#     stweight,ntweight = 0.9,0.05 # possibly better; possibly no statistical significance
+#     for pos,ntval in pointsOverWorstNextTurnDict.items():
+#         stval = pointsOverWorstStarterDict[pos]
+#          # combo of two best easy strats
+#         # modval = stweight*stval/(n_roster_per_team[pos]) + (1-stweight)*min(ntval,stval)*1.0
+#         modval = stweight*stval + ntweight*min(ntval,stval)
+#         if len(team_roster[pos]) < n_roster_per_team[pos] and modval > maxval:
+#             bestpick,maxval = pos,modval
+#     return bestpick
 
 
 def pointsOverWorstEndOfRound( pos_values_dict, pos_picked_dict, picks_til_next_turn ):
@@ -241,7 +262,8 @@ stratlist = [
     # stratPickMaxValOverWorstStarterAndWorstNextTurn, # combo of the best two strats. ignoring for now because it's somewhat arbitrary
     # stratPickMaxValOverMeanStarter, # little better than random
     stratPickMaxValOverMeanRemainingStarter, # 2nd best simple option, to value over worst starter
-    stratPickMaxValOverMeanRemainingAndWorstStarter # better than either simple part on their own; not by a lot though (few points per season)
+    stratPickMaxValOverMeanRemainingAndWorstStarter, # better than either simple part on their own; not by a lot though (few points per season)
+    stratPickMaxValOverMeanRemainingAndWorstStarterAlt # less sophisticated average (mean + worst) than previous option. they perform too similar to compare by eye (within stat errors)
     # stratPickMaxValOverWorstEndOfRound, # this one sucks
     # stratPickMaxValOverNext # and this one sucks worse
 ]
@@ -270,7 +292,7 @@ position_values = {}
 strat_totals = [[] for _ in stratlist]
 draft_position_totals = [[] for _ in range(n_teams)]
 
-n_trials = 200
+n_trials = 500
 
 for i_trial in range(n_trials):
     if VERBOSE: print '\n**************** trial {} ****************'.format( i_trial )
