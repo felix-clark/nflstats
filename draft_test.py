@@ -82,6 +82,7 @@ def stratPickMaxValOverWorstStarter( pos_values_dict, pos_picked_league_dict, te
         if len(team_roster[pos]) < n_roster_per_team[pos] and val > maxval:
             bestpos,maxval = pos,val
     # TODO: flex # consider refactoring to pop off picked players from position_values_dict ?
+    ## yes we should: will be necessary for dealing with sub-optimal choices
     return bestpos
 
 # def stratPickMaxValOverMeanStarter( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
