@@ -108,12 +108,18 @@ def stratPickMaxValOverMeanRemainingStarter( pos_values_dict, pos_picked_league_
 def stratPickMaxValOverMeanRemainingAndWorstStarter( pos_values_dict, pos_picked_league_dict, team_roster, n_picks_til_next_turn=None ):
     maxval = -1000
     bestpos = ''
-    worst_weight = 0.6 # this one is better, so we should rate it higher. weight of 0.5 usually still does better.
+    worst_weight = 0.5 # this one is better, so we should rate it higher. weight of 0.5 usually still does better.
     mean_weight = 1-worst_weight
     for pos,pos_vals in pos_values_dict.items():
         npicked = pos_picked_league_dict[pos]
-        mean_val = pos_vals[npicked] - np.mean(pos_vals[npicked:n_starters[pos]+1])
-        worst_val = pos_vals[npicked] - pos_vals[n_starters[pos]]
+        best_in_pos = pos_vals[npicked]
+        # num_avg = n_starters[pos]+1-npicked
+        # weights = [float(i) for i in range(num_avg)] # linear weights does worse than averaging mean and worst
+        # sum_weights = sum(weights)
+        # weighted_vals = (w*(best_in_pos - pv) for w,pv in zip(weights,pos_vals[npicked:n_starters[pos]+1]))
+        # val = sum(weighted_vals)/sum_weights if sum_weights > 0 else 0
+        mean_val = best_in_pos - np.mean(pos_vals[npicked:n_starters[pos]+1])
+        worst_val = best_in_pos - pos_vals[n_starters[pos]]
         val = mean_weight*mean_val + worst_weight*worst_val
         if len(team_roster[pos]) < n_roster_per_team[pos] and val > maxval:
             bestpos,maxval = pos,val
@@ -262,7 +268,8 @@ n_players = {'QB':32,'RB':64,'WR':72,'TE':48,'K':48}
 position_values = {}
 
 strat_totals = [[] for _ in stratlist]
-    
+draft_position_totals = [[] for _ in range(n_teams)]
+
 n_trials = 200
 
 for i_trial in range(n_trials):
@@ -300,13 +307,17 @@ for i_trial in range(n_trials):
 
     # print team_rosters
     # print team_strats
-    for strat,rost in zip(team_strats,team_rosters):
+    for i_team in range(n_teams):
+        strat = team_strats[i_team]
+        rost = team_rosters[i_team]
         roster_value = getSumValue( rost )
-        i_strat = -1
+        draft_position_totals[i_team].append( roster_value )
         for check_st,sttot in zip(stratlist,strat_totals):
             if strat is check_st:
-                sttot.append(roster_value)
+                sttot.append( roster_value )
 
 for i_st,st in enumerate(strat_totals):
     st_name = stratlist[i_st].__name__
-    print '{}:'.format(st_name), sum(st)*1.0/len(st)
+    print '{}: {}'.format(st_name, np.mean(st))
+for i_tm,dpt in enumerate(draft_position_totals):
+    print 'position {}: {}'.format( i_tm, np.mean(dpt) )
