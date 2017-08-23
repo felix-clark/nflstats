@@ -21,12 +21,14 @@ def printTopChoices(df, ntop=8, npos=3):
 def printHelp():
     print '[h]elp:\tprint this message'
     print '[q]uit:\texit program'
-    print 'list:\tprint summary'
-    print 'pick N [N1 N2 ...]: remove player with index N (... from available'
-    print 'pickme: pick but do other features like save positions and handcuffs (unimplemented)'
-    print 'enter a position (qb,rb,wr,te,flex,k) to list more top players'
+    print 'list [ls]:\tprint summary'
+    print 'pick i [i1 i2 ...]: remove player with index i from available player list'
+    print '  coming soon:'
+    print 'pickme: pick but do other features e.g. save positions and handcuffs (not implemented)'
+    print '<pos> N: enter a position (qb,rb,wr,te,flex,k) to list N top players'
     print 'unpick N [N1 N2 ...]: move player from picked list to available (not implemented)'
     print 'find <player>: find player (not implemented)'
+    print '[s]ave output: save changes to output.csv (not implemented)'
         
 def verifyAndQuit():
     user_verify = raw_input('Are you sure you want to quit and lose all progress [y/N]? ')
@@ -208,4 +210,4 @@ if __name__=='__main__':
             
     exit(0) # return from main
     
-    
+
