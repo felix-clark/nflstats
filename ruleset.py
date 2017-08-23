@@ -30,7 +30,7 @@ points_per = [
     'ppREY100', # bonus for 100-199 yard receiving game
     'ppREY200', # bonus for 200+ yard receiving game
     'ppFUML', # points per fumble lost
-    'ppPAT', # points per PAT  made
+    'ppPAT', # points per PAT made
     'ppFGM', # points per missed FG
     'ppFG0', # points for 0-39 yard FG
     'ppFG40', # points for 40-49 yard FG

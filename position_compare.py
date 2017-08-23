@@ -64,9 +64,6 @@ def generateSummaryDataFile( fname, years ):
                                  # 'playerid':pstat.playerid
                 })
 
-                # can and should factor the reading of data from nflgame
-                # and the plotting of it.
-                # use DataFrame.read_csv(<filename>) (and to_csv(<filename>) ?)
                 df = pd.DataFrame(datalist)
                 df.to_csv( fname )
             

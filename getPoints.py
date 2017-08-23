@@ -1,5 +1,6 @@
 
 # import ruleset
+# import pandas as pd
 
 # doesn't cover every rule, just the main ones.
 # some stats are not as easily extracted
@@ -31,3 +32,119 @@ def getBasePoints( rs, plyr ):
     + rs.ppFGM * (plyr.kicking_fga - plyr.kicking_fgm) \
     + rs.ppFG0 * plyr.kicking_fgm
     return fpts
+
+def decorateDataFrame( rs, df, name='fantasy_points' ):
+    """
+    repeating ourselves a lot here; it would be good to combine code w/ above (or only use this)
+    rs: rule set
+    df: dataframe containing player stats
+    name: name of decorated stat
+    """
+    df[name] = \
+    + rs.ppPY * df['passing_yds'] \
+    + rs.ppPY25 * (df['passing_yds'] / 25) \
+    + rs.ppPC * df['passing_cmp'] \
+    + rs.ppINC * (df['passing_att'] - df['passing_cmp']) \
+    + rs.ppPTD * df['passing_tds'] \
+    + rs.ppINT * df['passing_ints'] \
+    + rs.pp2PC * df['passing_twoptm'] \
+    + rs.ppRY * df['rushing_yds'] \
+    + rs.ppRY10 * (df['rushing_yds'] / 10) \
+    + rs.ppRTD * df['rushing_tds'] \
+    + rs.pp2PR * df['rushing_twoptm'] \
+    + rs.ppREY * df['receiving_yds'] \
+    + rs.ppREY10 * (df['receiving_yds'] / 10) \
+    + rs.ppREC * df['receiving_rec'] \
+    + rs.ppRETD * df['receiving_tds'] \
+    + rs.pp2PRE * df['receiving_twoptm'] \
+    + rs.ppFUML * df['fumbles_lost'] \
+    + rs.ppPAT * df['kicking_xpmade'] \
+    + rs.ppFGM * (df['kicking_fga'] - df['kicking_fgm']) \
+    + rs.ppFG0 * df['kicking_fgm']
+    return df
+
+## these are really just bad hacks to work w/ fantasy pros projections.
+## no two point conversions. TODO need to make this general so it works fine for missing keys, instead of duplicating this code everywhere
+def decorateQBDataFrame( rs, df, name='fantasy_points' ):
+    """
+    repeating ourselves a lot here; it would be good to combine code w/ above (or only use this)
+    rs: rule set
+    df: dataframe containing player stats
+    name: name of decorated stat
+    """
+    df[name] = \
+    + rs.ppPY * df['passing_yds'] \
+    + rs.ppPY25 * (df['passing_yds'] / 25) \
+    + rs.ppPC * df['passing_cmp'] \
+    + rs.ppINC * (df['passing_att'] - df['passing_cmp']) \
+    + rs.ppPTD * df['passing_tds'] \
+    + rs.ppINT * df['passing_ints'] \
+    + rs.ppRY * df['rushing_yds'] \
+    + rs.ppRY10 * (df['rushing_yds'] / 10) \
+    + rs.ppRTD * df['rushing_tds'] \
+    + rs.ppFUML * df['fumbles_lost']
+    return df
+
+def decorateRBDataFrame( rs, df, name='fantasy_points' ):
+    """
+    repeating ourselves a lot here; it would be good to combine code w/ above (or only use this)
+    rs: rule set
+    df: dataframe containing player stats
+    name: name of decorated stat
+    """
+    df[name] = \
+    + rs.ppRY * df['rushing_yds'] \
+    + rs.ppRY10 * (df['rushing_yds'] / 10) \
+    + rs.ppRTD * df['rushing_tds'] \
+    + rs.ppREY * df['receiving_yds'] \
+    + rs.ppREY10 * (df['receiving_yds'] / 10) \
+    + rs.ppREC * df['receiving_rec'] \
+    + rs.ppRETD * df['receiving_tds'] \
+    + rs.ppFUML * df['fumbles_lost']
+    return df
+
+def decorateWRDataFrame( rs, df, name='fantasy_points' ):
+    """
+    repeating ourselves a lot here; it would be good to combine code w/ above (or only use this)
+    rs: rule set
+    df: dataframe containing player stats
+    name: name of decorated stat
+    """
+    df[name] = \
+    + rs.ppRY * df['rushing_yds'] \
+    + rs.ppRY10 * (df['rushing_yds'] / 10) \
+    + rs.ppRTD * df['rushing_tds'] \
+    + rs.ppREY * df['receiving_yds'] \
+    + rs.ppREY10 * (df['receiving_yds'] / 10) \
+    + rs.ppREC * df['receiving_rec'] \
+    + rs.ppRETD * df['receiving_tds'] \
+    + rs.ppFUML * df['fumbles_lost']
+    return df
+
+def decorateTEDataFrame( rs, df, name='fantasy_points' ):
+    """
+    rs: rule set
+    df: dataframe containing player stats
+    name: name of decorated stat
+    """
+    df[name] = \
+    + rs.ppREY * df['receiving_yds'] \
+    + rs.ppREY10 * (df['receiving_yds'] / 10) \
+    + rs.ppREC * df['receiving_rec'] \
+    + rs.ppRETD * df['receiving_tds'] \
+    + rs.ppFUML * df['fumbles_lost']
+    return df
+
+
+def decorateKDataFrame( rs, df, name='fantasy_points' ):
+    """
+    repeating ourselves a lot here; it would be good to combine code w/ above (or only use this)
+    rs: rule set
+    df: dataframe containing player stats
+    name: name of decorated stat
+    """
+    df[name] = \
+    + rs.ppPAT * df['kicking_xpmade'] \
+    + rs.ppFGM * (df['kicking_fga'] - df['kicking_fgm']) \
+    + rs.ppFG0 * df['kicking_fgm']
+    return df
