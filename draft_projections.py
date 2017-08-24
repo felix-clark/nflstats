@@ -20,23 +20,10 @@ def printTopChoices(df, ntop=8, npos=3):
         for pos in main_positions:
             print df[df.position==pos].head(npos)
 
-def printHelp():
-    print '\nhelp (h):\t\tprint this message'
-    print 'quit (q):\t\texit program'
-    print 'list (ls) [N M] :\tprint N top available players and M top players at each position'
-    print '<pos> [N]:\t\tenter a position (qb,rb,wr,te,flex,k) to list N top players'
-    print 'find <player name>:\tfind player by name'
-    print 'handcuff i [...]:\tfind potential handcuffs for player with index i'
-    print 'pick (pop) i [...]:\tremove player(s) with index(ces) i (,...) from available player list'
-    print 'lspick:\t\t\tprint summary of picked players'
-    print 'unpick (unpop) i [...]:\tmove player(s) from picked list to available'
-    print 'save (s) <output>:\tsave player lists to output'
-    print 'load <output>:\t\tload from output'
-        
 def verifyAndQuit():
     user_verify = raw_input('Are you sure you want to quit and lose all progress [y/N]? ')
     if user_verify.strip() == 'y':
-        print 'Make sure you beat Russell!'
+        print 'Make sure you beat Russell.'
         exit(0)
     elif user_verify.lower().strip() == 'n':
         print 'OK then, will not quit after all.'
