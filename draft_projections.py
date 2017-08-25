@@ -178,7 +178,7 @@ def findByTeam(team, ap, pp):
 # something to play with in the further future
 class MainPrompt(Cmd):
     # overriding default member variable
-    prompt = ' $$ '
+    prompt = ' $_$ '
 
     # member variables to have access to the player dataframes
     ap = pd.DataFrame()
@@ -205,7 +205,7 @@ class MainPrompt(Cmd):
         prints N top available players and M top players at each position
         """
         spl_args = [w for w in args.split(' ') if w]
-        ntop,npos = 8,3
+        ntop,npos = 10,3
         try:
             if spl_args: ntop = int(spl_args[0])
             if spl_args[1:]: npos = int(spl_args[1])
@@ -226,11 +226,12 @@ class MainPrompt(Cmd):
             print 'Provide a position (qb|rb|wr|te|flex|k) to the `lspos` command.'
             return
         pos = spl_args[0]
-        ntop = 8
-        try:
-            ntop = int(spl_args[1])
-        except ValueError:
-            print '`lspos` requires an integer second argument.'
+        ntop = 16
+        if spl_args[1:]:
+            try:
+                ntop = int(spl_args[1])
+            except ValueError:
+                print '`lspos` requires an integer second argument.'
         printTopPosition(self.ap, pos, ntop)
         
     def do_find(self, args):
