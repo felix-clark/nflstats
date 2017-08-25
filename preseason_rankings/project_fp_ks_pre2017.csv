@@ -1,4 +1,5 @@
-name,team,kicking_fgm,kicking_fga,kicking_xpmade,FPTS
+name,team,kicking_fgm,kicking_fga,kicking_xpmade,fp_projection
+
 Stephen Gostkowski,NE,31.2,36.0,49.6,143.3
 Matt Bryant,ATL,30.1,34.2,46.9,137.1
 Justin Tucker,BAL,32.0,35.1,34.7,130.6
@@ -7,7 +8,7 @@ Graham Gano,CAR,29.7,36.4,38.2,127.4
 Will Lutz,NO,26.9,32.3,46.2,126.9
 Dan Bailey,DAL,27.4,31.6,43.1,125.3
 Sebastian Janikowski,OAK,28.1,33.7,40.1,124.5
-Adam Vinatieri,IND,27.6,31.3,41.1,124.1
+Adam Vinatieri,IND,27.6,31.3,41.2,124.1
 Dustin Hopkins,WAS,28.4,34.3,38.6,123.7
 Cairo Santos,KC,28.7,33.6,36.4,122.4
 Blair Walsh,SEA,28.1,34.1,37.0,121.4
@@ -29,9 +30,9 @@ Robbie Gould,SF,23.5,27.2,31.0,101.5
 Connor Barth,CHI,22.9,29.0,32.0,100.8
 Mike Nugent,NYG,22.7,28.3,32.5,100.6
 Andrew Franks,MIA,21.2,26.5,35.9,99.6
-Chandler Catanzaro,NYJ,23.1,28.5,28.3,97.7
+Chandler Catanzaro,NYJ,23.0,28.4,28.2,97.2
+Greg Zuerlein,LAR,22.3,27.2,28.3,95.4
 Cody Parkey,CLE,22.3,27.7,28.2,94.9
-Greg Zuerlein,LAR,22.2,27.1,28.2,94.9
 Jake Elliott,CIN,17.7,21.0,24.7,77.8
 Zane Gonzalez,CLE,15.6,19.1,18.9,65.7
 Harrison Butker,CAR,14.2,16.7,19.2,61.6
