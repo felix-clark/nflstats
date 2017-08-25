@@ -1,26 +1,26 @@
 #!/usr/bin/python
-import numpy as np
-import pandas as pd
-from scipy import stats
-import os.path
+# import numpy as np
 import sys
-import itertools
+import os.path
 import argparse
 from cmd import Cmd
+import pandas as pd
 
 # from draftStrategies import *
 from getPoints import *
 from ruleset import bro_league, phys_league, dude_league
 
 # this method will be our main output
-def printTopChoices(df, ntop=8, npos=3):
-    with pd.option_context('display.max_rows', None):
-        print df.head(ntop)
+def print_top_choices(df, ntop=8, npos=3):
     if npos > 0:
+        # ... let's just leave out the kicker. or: put it at top
+        main_positions = ['K', 'QB', 'RB', 'WR', 'TE']
         for pos in main_positions:
             print df[df.position == pos].head(npos)
+    with pd.option_context('display.max_rows', None):
+        print df.head(ntop)
 
-def verifyAndQuit():
+def verify_and_quit():
     user_verify = raw_input('Are you sure you want to quit and lose all progress [y/N]? ')
     if user_verify.strip() == 'y':
         print 'Make sure you beat Russell.'
@@ -30,13 +30,13 @@ def verifyAndQuit():
     else:
         print 'Did not recognize confirmation. Will not quit.'
 
-def popFromPlayerList(index, ap, pp=None):
+def pop_from_player_list(index, ap, pp=None, manager=None):
     """
     index: index of player to be removed from available
     """
     if index not in ap.index:
         print 'Error: The index ({}) does not indicate an available player!'.format(index)
-        return
+        raise IndexError('bad index for player')
     player = ap.loc[index] # a dictionary of the entry
     # were using iloc, but the data may get re-organized so this should be safer
     if pp is not None:
@@ -46,37 +46,40 @@ def popFromPlayerList(index, ap, pp=None):
             print 'DEBUG: picked players w/index:', pp.loc[index]
             print 'DEBUG: available players w/index:', ap.loc[index]
         pp.loc[index] = player
-    # player = df.pop(index) # DataFrame.pop pops a column, not a row
+        if manager is not None:
+            pp.loc[index, 'manager'] = manager
+            pp.manager = pp.manager.astype(int)
+        # player = df.pop(index) # DataFrame.pop pops a column, not a row
     name = player['name']
     pos = player['position']
     team = player['team']
     print 'selecting {} ({}) - {}'.format(name, team, pos)
     ap.drop(index, inplace=True)
 
-def pushToPlayerList(index, ap, pp):
+def push_to_player_list(index, ap, pp):
     """
     index: index of player to be removed from available
     """
     if index not in pp.index:
         print 'Error: The index ({}) does not indicate a picked player!'.format(index)
-        return
+        raise IndexError('bad index for player')
     player = pp.loc[index]
     if len(ap[ap.index == index]) > 0:
-        print 'It seems like the index of the picked player is already in the available player list.'
+        print 'The index of the picked player is already in the available player list.'
         print 'Someone needs to clean up the logic...'
         print 'DEBUG: picked players w/index:', pp.loc[index]
         print 'DEBUG: available players w/index:', ap.loc[index]
     # must use loc, not iloc, since positions may move
     ap.loc[index] = player
-    # ap = ap.sort_values('vaws', ascending=False) # re-sort
-    ap.sort_values('vaws', ascending=False, inplace=True) # re-sort
+    ap.sort_values('vols', ascending=False, inplace=True) # re-sort
     name = player['name']
     pos = player['position']
     team = player['team']
     print 'replacing {} ({}) - {}'.format(name, team, pos)
     pp.drop(index, inplace=True)
-    
-def printTopPosition(df, pos, ntop=24):
+
+def print_top_position(df, pos, ntop=24):
+    """prints the top `ntop` players in the position in dataframe df"""
     if pos.upper() == 'FLEX':
         with pd.option_context('display.max_rows', None):
             print df.loc[df['position'].isin(['RB', 'WR', 'TE'])].head(ntop)
@@ -84,7 +87,8 @@ def printTopPosition(df, pos, ntop=24):
         with pd.option_context('display.max_rows', None):
             print df[df.position == pos.upper()].head(ntop)
 
-def printPickedPlayers(df):
+def print_picked_players(df):
+    """prints the players in dataframe df as if they have been selected"""
     if df.shape[0] == 0:
         print 'No players have been picked yet.'
     else:
@@ -95,14 +99,16 @@ def printPickedPlayers(df):
         # TODO: minor annoyance... this prints out an additional line with the Name and dtype.
         # would be ideal to remove it.
         print df.position.value_counts()
-    
-            
-def savePlayerList(outname, ap, pp=None):
+
+def save_player_list(outname, ap, pp=None):
+    """saves the available and picked player sets with label "outname"."""
     print 'Saving with label {}.'.format(outname)
     ap.to_csv(outname+'.csv')
-    if pp is not None: pp.to_csv(outname+'_picked.csv')
+    if pp is not None:
+        pp.to_csv(outname+'_picked.csv')
 
-def loadPlayerList(outname):
+def load_player_list(outname):
+    """loads the available and picked player data from the label \"outname\""""
     print 'Loading with label {}.'.format(outname)
     if os.path.isfile(outname+'.csv'):
         # we saved it directly we could use from_csv, but read_csv is encouraged
@@ -114,12 +120,12 @@ def loadPlayerList(outname):
         pp = pd.DataFrame.from_csv(outname+'_picked.csv')
     else:
         print 'Could not find file {}_picked.csv!'.format(outname)
-    return ap,pp
+    return ap, pp
 
 # adding features to search by team name/city/abbreviation might be nice,
 #   but probably not worth the time for the additional usefulness.
 #   It could also complicate the logic and create edge cases.
-def findPlayer(search_words, ap, pp):
+def find_player(search_words, ap, pp):
     """
     prints the players with one of the words in search_words in their name.
     useful for finding which index certain players are if they are not in the top when drafted.
@@ -127,24 +133,22 @@ def findPlayer(search_words, ap, pp):
     ap: dataframe of available players
     pp: dataframe of picked players
     """
-    # check if any of the search words are in either of the first or last names
-    # checkfunc = lamda name: [[sw in fl for fl in name.lower().strip().split(' ')].any() for sw in search_words].any()
-    # we shouldn't actually need to split up into first and last names for this to work, though
+    # check if any of the search words are in the full name
     checkfunc = lambda name: any([sw in name.strip().lower() for sw in search_words])
-    filtered_ap = ap[ ap['name'].map(checkfunc) ] # map creates a boolean mask
+    filtered_ap = ap[ap['name'].map(checkfunc)] # map creates a boolean mask
     if len(filtered_ap) == 0:
         print '\n  Could not find any available players.'
     else:
         print '\n  Available players:'
         print filtered_ap
-    filtered_pp = pp[ pp['name'].map(checkfunc) ]
+    filtered_pp = pp[pp['name'].map(checkfunc)]
     if len(filtered_pp) > 0:
         # print '  Could not find any picked players.'
     # else:
         print '\n  Picked players:'
         print filtered_pp
 
-def findHandcuff(index, ap, pp):
+def find_handcuff(index, ap, pp):
     """
     prints a list of players with the same team and position as the indexed player.
     ap: dataframe of available players
@@ -154,10 +158,9 @@ def findHandcuff(index, ap, pp):
     ## the "name" attribute is the index, so need dictionary syntax to grab actual name
     name, pos, team = player['name'], player.position, player.team
     print 'Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos)
-    # print ap # still full
     ah = ap[(ap.position == pos) & (ap.team == team) & (ap.name != name)]
     if len(ah) > 0:
-        print 'The following handcuffs are available:'
+        print 'The following potential handcuffs are available:'
         print ah
     ph = pp[(pp.position == pos) & (pp.team == team) & (pp.name != name)]
     if len(ph) > 0:
@@ -165,15 +168,15 @@ def findHandcuff(index, ap, pp):
         print ph
     print # end on a newline
 
-def printTeams(ap, pp):
+def print_teams(ap, pp):
     """
     prints a list of teams in both the available and picked player lists
     """
-    teams = pd.concat([ap,pp])['team']
+    teams = pd.concat([ap, pp])['team']
     # unique() does not sort, but assumes a sorted list
     print teams.sort_values().unique()
 
-def findByTeam(team, ap, pp):
+def find_by_team(team, ap, pp):
     """
     prints players on the given team
     """
@@ -187,26 +190,110 @@ def findByTeam(team, ap, pp):
     if len(picked) > 0:
         print 'Picked players:'
         print picked
-    
+
+# maybe not necessary rn
+# could give it to AI managers as
+# def pick_vona(ap, pp, coach, coaches_til_next):
+#     #TODO
+#     return
+
+# instead of passing managers_til_next, could pass "forward" or "backward"
+def print_vona(ap, pp, manager, managers_til_next):
+    """prints VONA at each position, assuming each manager picks with VOLS"""
+    # TODO
+    # need a function that walks through and predicts other managers' picks:
+    # predict_next_board(ap, pp, manager, managers_til_next) (or predict_next_available)
+    return
+
+# evaluateRoster()
+
 # note that this class can be used with tab-autocompletion...
 # something to play with in the further future
 class MainPrompt(Cmd):
     # overriding default member variable
-    prompt = ' $_$ '
+    prompt = ' $$ '
 
     # member variables to have access to the player dataframes
     ap = pd.DataFrame()
     pp = pd.DataFrame()
-    
-    def set_dataframes(self, ap, pp):
-        self.ap = ap
-        self.pp = pp
+
+    flex_pos = ['RB', 'WR', 'TE']
+
+    # member variables for DRAFT MODE !!!
+    draft_mode = False
+    i_manager_turn = None
+    manager_picks = [] # if initialized, will look like [1,2,3,...,11,12,12,11,10,...]
+    user_manager = None
+    manager_names = {}
+    # snake_forward = True # is the draft going forwards (hasn't been reversed yet)?
+    n_teams = None
+    n_roster_per_team = {}
+
+    def _advance_snake(self):
+        """move up one step in the snake draft"""
+        self.i_manager_turn = self.i_manager_turn + 1
+        if self.i_manager_turn >= len(self.manager_picks):
+            print 'Draft is over!'
+            print 'I guess you won\'t get a chance to undo anything now'
+            self.draft_mode = False
+            i_manager_turn = None
+            manager_picks = []
+        self._set_prompt()
+
+    def _regress_snake(self):
+        """move up one step in the snake draft"""
+        self.i_manager_turn = self.i_manager_turn - 1
+        self._set_prompt()
+
+    def _get_current_manager(self):
+        """returns number of current manager"""
+        return self.manager_picks[self.i_manager_turn] if self.manager_picks else None
+
+    def _get_manager_name(self, num=None):
+        """
+        returns name of manager number num
+        if num is None then uses current manager
+        """
+        if num is None:
+            num = self._get_current_manager()
+        return self.manager_names[num] if num in self.manager_names else 'manager {}'.format(num)        
         
+    def _set_prompt(self):
+        if self.draft_mode:
+            teamno = self.manager_picks[self.i_manager_turn]
+            managername = self._get_manager_name()
+            if self.user_manager is not None and teamno == self.user_manager:
+                self.prompt = ' s~({},{})s~  your pick! $$ '.format(self.i_manager_turn+1, teamno)
+            else:
+                self.prompt = ' s~({},{})s~  {}\'s pick $$ '.format(self.i_manager_turn+1, teamno, managername)
+        else:
+            self.prompt = ' $$ '
+
+    def _get_manager_roster(self, manager):
+        """returns dataframe of manager's roster"""
+        # this will return a small copy w/ the manager index removed
+        if len(self.pp) == 0:
+            return self.pp # there isn't anything in here yet, and we haven't added the "manager" branch
+        return self.pp[self.pp.manager == manager].drop('manager', inplace=False, axis=1)
+
+    def set_dataframes(self, avail, picked):
+        """set the member dataframes so the methods here have access"""
+        # it might be more pythonic to just set the members directly...
+        self.ap = avail
+        self.pp = picked
+
+    def emptyline(self):
+        """
+        do nothing when an empty line is entered.
+        (without this definition, the last command is repeated)
+        """
+        pass
+
     def do_quit(self, _):
         """
         exit the program
         """
-        verifyAndQuit()
+        verify_and_quit()
     def do_q(self, args):
         """alias for `quit`"""
         self.do_quit(args)
@@ -219,17 +306,20 @@ class MainPrompt(Cmd):
         prints N top available players and M top players at each position
         """
         spl_args = [w for w in args.split(' ') if w]
-        ntop,npos = 10,3
+        ntop, npos = 10, 3
         try:
-            if spl_args: ntop = int(spl_args[0])
-            if spl_args[1:]: npos = int(spl_args[1])
+            if spl_args:
+                ntop = int(spl_args[0])
+            if spl_args[1:]:
+                npos = int(spl_args[1])
         except ValueError as e:
             print '`ls` requires integer arguments.'
             print e
-        printTopChoices(self.ap, ntop, npos)
+        print_top_choices(self.ap, ntop, npos)
     def do_list(self, args):
         """alias for `ls`"""
         self.do_ls(args)
+
     def do_lspos(self, args):
         """
         usage: lspos POS [N]
@@ -246,15 +336,74 @@ class MainPrompt(Cmd):
                 ntop = int(spl_args[1])
             except ValueError:
                 print '`lspos` requires an integer second argument.'
-        printTopPosition(self.ap, pos, ntop)
-        
+        print_top_position(self.ap, pos, ntop)
+
     def do_find(self, args):
         """
         usage: find NAME...
         finds and prints players with the string(s) NAME in their name.
         """
         search_words = [word for word in args.split(' ') if word]
-        findPlayer(search_words, self.ap, self.pp)
+        find_player(search_words, self.ap, self.pp)
+
+    def do_pick(self, args):
+        """
+        usage: pick I...
+        remove player(s) with index(ces) I from available player list
+        """
+        indices = []
+        try:
+            indices = [int(i) for i in args.split(' ') if i]
+        except ValueError as e:
+            print '`pick` requires integer indices.'
+            print e
+        if self.draft_mode and len(indices) > 1:
+            print 'Picking multiple indices at once is not supported in draft mode.'
+            return
+        manager = self._get_current_manager()
+        for i in indices:
+            try:
+                pop_from_player_list(i, self.ap, self.pp, manager=manager)
+                if self.draft_mode:
+                    self._advance_snake()
+            except IndexError as e:
+                print e
+                print 'could not pick player from list.'
+                
+                
+
+    def do_pop(self, args):
+        """alias for `pick`"""
+        self.do_pick(args)
+
+    def do_lspick(self, args):
+        """prints summary of players that have already been picked"""
+        # manager = self._get_current_manager()
+        #TODO: make this print out roster for specific manager if an argument is provided ?
+        print_picked_players(self.pp)
+
+    def do_unpick(self, args):
+        """
+        usage: unpick
+        moves player(s) with index(ces) I from picked list to available.
+        if no index is provided, then the last player picked will be returned.
+        """
+        # we used to allow indices, and multiple indices, but this gets too complicated w/ draft mode.
+        if len(self.pp) > 0:
+            lasti = self.pp.index[-1]
+            try:
+                push_to_player_list(lasti, self.ap, self.pp)
+                if self.draft_mode:
+                    self._regress_snake()
+            except IndexError as e:
+                print e
+                print 'could not put player ({}) back in available list.'.format(lasti)
+        else:
+            print 'No players have been picked.'
+
+    def do_unpop(self, args):
+        """alias for unpick"""
+        self.do_unpick(args)
 
     def do_handcuff(self, args):
         """
@@ -268,90 +417,198 @@ class MainPrompt(Cmd):
             print '`handcuff` requires integer indices.'
             print e
         for i in indices:
-            findHandcuff(i, self.ap, self.pp)
-
-    def do_pick(self, args):
-        """
-        usage: pick I...
-        remove player(s) with index(ces) I from available player list
-        """
-        indices = []
-        try:
-            indices = [int(i) for i in args.split(' ') if i]
-        except ValueError as e:
-            print '`pick` requires integer indices.'
-            print e
-        for i in indices:
-            popFromPlayerList(i, self.ap, self.pp)
-    def do_pop(self, args):
-        """alias for `pick`"""
-        self.do_pick(args)
-            
-    def do_lspick(self, args):
-        """prints summary of players that have already been picked"""
-        printPickedPlayers(self.pp)
-        
-    def do_unpick(self, args):
-        """
-        usage: unpick [I]...
-        moves player(s) with index(ces) I from picked list to available.
-        if no index is provided, then the last player picked will be returned.
-        """
-        indices = []
-        try:
-            indices = [int(i) for i in args.split(' ') if i]
-        except ValueError as e:
-            print '`unpick` requires integer indices.'
-            print e
-        for i in indices:
-            pushToPlayerList(i, self.ap, self.pp)
-        if not args:
-            # empty argument: unpick the last player picked
-            npicked = self.pp.shape[0]
-            if npicked > 0:
-                lasti = self.pp.index[npicked-1]
-                pushToPlayerList(lasti, self.ap, self.pp)
-            else:
-                print 'No players have been picked.'
-            
-    def do_unpop(self, args):
-        """alias for unpick"""
-        self.do_unpick(args)
+            find_handcuff(i, self.ap, self.pp)
 
     def do_team(self, args):
         """
         usage: team [TEAM]
-        Lists players by TEAM abbreviation or, if no argument is provided, lists the available teams.
+        lists players by TEAM abbreviation.
+        if no argument is provided, lists the available teams.
         """
         if args:
-            findByTeam(args, self.ap, self.pp)
+            find_by_team(args, self.ap, self.pp)
         else:
-            printTeams(self.ap, self.pp)
+            print_teams(self.ap, self.pp)
 
     def do_sort(self, args):
         """choose a stat to sort by (unimplemented)"""
         return
-            
+
+    def do_snake(self, args):
+        """
+        usage: snake [N]
+        initiate snake draft mode, with the user in draft position N
+        """
+        if self.draft_mode:
+            print 'You are already in draft mode!'
+            return
+        if len(self.pp) > 0:
+            print 'There are already picked players. This is not starting a draft from scratch.'
+            print 'It is recommended you just quit and start fresh. Draft command will be canceled.'
+            return
+        numprompt = 'Enter your position in the snake draft [1,...,{}]: '.format(self.n_teams)
+        numstr = args if args else raw_input(numprompt)
+        try:
+            self.user_manager = int(numstr)
+            if self.user_manager not in range(1,self.n_teams+1):
+                raise ValueError('Argument not in range.')
+        except ValueError as e:
+            print e
+            print 'Could not cast argument to draft.'
+            print 'Use a single number from 1 to {}'.format(self.n_teams)        
+            return
+        # perhaps there is a proxy we can use for this to reduce the number of variables
+        self.draft_mode = True
+        n_rounds = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
+        print '{} rounds of drafting commencing.'.format(n_rounds)
+        self.manager_picks = []
+        for i in range(n_rounds):
+            if i % 2 == 0:
+                self.manager_picks.extend(range(1,self.n_teams+1))
+            else:
+                self.manager_picks.extend(range(self.n_teams,0,-1))
+        self.i_manager_turn = 0
+        self._set_prompt()
+
+    def do_name(self, args):
+        """
+        name [N] <manager name>
+        names the current manager if first argument is not an integer
+        """
+        if not args:
+            print 'need to pass more than that to `name`'
+            return
+        mannum = self._get_current_manager()
+        splitargs = args.split(' ')
+        firstarg = splitargs[0]
+        manname = args
+        try:
+            mannum = int(firstarg)
+            manname = ' '.join(splitargs[1:])
+        except ValueError as e:
+            if mannum is None:
+                print e
+                print 'Could not figure out a valid manager to assign name to.'
+                print 'If not in draft mode, enter a number manually.'
+        self.manager_names[mannum] = manname
+        self._set_prompt()
+
+    def do_vona(self, args):
+        """print out VONA for each position, probably assuming VOLS strategy for others"""
+
+        return
+
     def do_save(self, args):
         """
         usage: save [OUTPUT]
         saves player lists to OUTPUT.csv (default OUTPUT is draft_players)
         """
         outname = args if args else 'draft_players'
-        savePlayerList(outname, self.ap, self.pp)
+        save_player_list(outname, self.ap, self.pp)
 
     def do_load(self, args):
         """
         usage load [OUTPUT]
         loads player lists from OUTPUT.csv (default OUTPUT is draft_players)
-        """        
+        """
+        print 'if you quit from draft mode, then that state will not be saved.'
+        print 'in principle this can be extracted from the manager of the picked players,'
+        print 'but that is not yet implemented.'
         outname = args if args else 'draft_players'
-        self.ap, self.pp = loadPlayerList(outname)
+        self.ap, self.pp = load_player_list(outname)
 
-if __name__ == '__main__':
-## use argument parser
+    def do_roster(self, args):
+        """
+        prints the roster of each manager so far
+        can take a number to print only that manager's (not yet implemented)
+        """
+        for i_man in range(1, 1+self.n_teams):
+            manname = self._get_manager_name(i_man)
+            print '\n {}: '.format(manname)
+            theroster = self._get_manager_roster(i_man)
+            if len(theroster) > 0:
+                print theroster
+            else:
+                print 'No players on this team yet.'
+
+    def do_test_vols(self, args):
+        """quick test for pick_vols"""
+        manager = self._get_current_manager()
+        pick = self.pick_vols(manager)
+        print self.ap.loc[pick]
+                
+    def pick_vols(self, manager):
+        """
+        picks the player with the highest value over lowest starter in that position
+        returns the index of that player? (should be able to get everything else from self.ap.loc[index])
+        """
+        if not self.draft_mode:
+            print 'WARNING: i think you will need to be in draft mode for this, or manager will not be defined'
+            
+        roster = self._get_manager_roster(manager)
+        total_roster_spots = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
+        if len(roster) >= total_roster_spots:
+            manname = self._get_manager_name()
+            print '{}\'s roster has no available spots left'.format(manname)
+            return None
+        
+        # starting_roster_spots = sum([self.n_roster_per_team[pos]
+        #                              for pos in self.n_roster_per_team
+        #                              if pos.upper() is not 'BENCH'])
+        crap_positions = ['K'] # add DST when (or if) we bother
+        crap_starting_roster_spots = sum([self.n_roster_per_team[pos] for pos in crap_positions])
+        # key_starting_roster_spots = starting_roster_spots - crap_starting_roster_spots
+        
+
+        key_positions = ['QB', 'RB', 'WR', 'TE'] # this concept includes FLEX so don't count it
+        # realistically this will just be QBs but let's keep it flexible
+        key_nonflex_positions = [pos for pos in key_positions if pos not in self.flex_pos]
+        needed_key_starter_positions = []
+        needed_key_starter_positions.extend([pos for pos in key_nonflex_positions
+                                             if len(roster[roster.position == pos])
+                                             < self.n_roster_per_team[pos]])
+        used_flex_spot = not any([len(roster[roster.position == pos]) > self.n_roster_per_team[pos]
+                                      for pos in self.flex_pos])
+        flex_mult = 0 if used_flex_spot else 1
+        needed_key_starter_positions.extend([pos for pos in self.flex_pos
+                                             if len(roster[roster.position == pos])
+                                             < self.n_roster_per_team[pos]
+                                             + flex_mult*self.n_roster_per_team['FLEX']])
+        # needed_starter_backups = [...] #work on getting starter limit +1 of everything. then an extra flex
+        
+        if needed_key_starter_positions:
+            topstart = self.ap[self.ap.position.isin(needed_key_starter_positions)].sort_values('vols', ascending=False)
+            # player = topstart.iloc[0] # this is the player
+            player_index = topstart.index[0]
+            return player_index
+        elif len(roster) < total_starting_roster_spots - crap_starting_roster_spots:
+            print 'LITERALLY A DISASTER'
+            ## make sure to grab one level of backup for each position before getting more
+            pass
+            # fill up bench with more starters
+        else:
+            print 'YEAH YOU WILL PROLLY NEED TO DEBUG IN HERE'
+            needed_crap_positions = [pos for pos in crap_positions
+                                     if len(roster[roster.position == pos])
+                                     < self.n_roster_per_team[pos]]
+            print needed_crap_positions
+            topcrap = self.ap[self.ap.position.isin(needed_crap_positions)].sort_values('vols', ascending=False)
+            player = topcrap.iloc[0]
+            print player
+            player_index = topcrap.index[0]
+            print player_index
+            return player_index
+
+        print self.n_roster_per_team['QB']
+        return
+
+
+                
+def main():
+    """main function that runs upon execution"""
+    ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys','dude','bro'], default='bro', help='which ruleset to use of the leagues I am in')
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro'], default='bro', help='which ruleset to use of the leagues I am in')
     parser.add_argument('--n-teams', type=int, default=14, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of QB per team')
     parser.add_argument('--n-rb', type=int, default=2, help='number of RB per team')
@@ -370,27 +627,31 @@ if __name__ == '__main__':
         'WR':args.n_wr,
         'TE':args.n_te,
         'FLEX':args.n_flex,
+        # ignoring defense for the draft
+        #'DST':args.n_dst,
         'K':args.n_k,
         'BENCH':args.n_bench
     }
-    # n_roster_per_team['DST'] = args.n_dst
     n_roster_per_league = {}
-    for pos,nper in n_roster_per_team.items():
+    for pos, nper in n_roster_per_team.items():
         n_roster_per_league[pos] = nper * n_teams
 
     # in principle FLEX can be defined in a different way,
     # so we'll leave this definition local so that we might change it later.
     flex_pos = ['RB', 'WR', 'TE']
 
-    if args.ruleset == 'phys': ruleset = phys_league
-    if args.ruleset == 'dude': ruleset = dude_league
-    if args.ruleset == 'bro': ruleset = bro_league
+    if args.ruleset == 'phys':
+        rules = phys_league
+    if args.ruleset == 'dude':
+        rules = dude_league
+    if args.ruleset == 'bro':
+        rules = bro_league
 
     print 'Initializing with ruleset:'
     # print some output to verify the ruleset we are working with
-    rulestr = '  {} team, {} PPR'.format(n_teams, ruleset.ppREC)
-    if ruleset.ppPC != 0 or ruleset.ppINC != 0:
-        rulestr += ', {}/{} PPC/I'.format(ruleset.ppPC, ruleset.ppINC)
+    rulestr = '  {} team, {} PPR'.format(n_teams, rules.ppREC)
+    if rules.ppPC != 0 or rules.ppINC != 0:
+        rulestr += ', {}/{} PPC/I'.format(rules.ppPC, rules.ppINC)
     print rulestr
     rosterstr = ' '
     for pos in ['QB', 'RB', 'WR', 'TE', 'FLEX']: # there's always just 1 DST and K, right?
@@ -398,7 +659,7 @@ if __name__ == '__main__':
         rosterstr += ' {}{} /'.format(nper, pos)
     print rosterstr[:-2]
     
-    main_positions = ['QB','RB','WR','TE','K']
+    main_positions = ['QB', 'RB', 'WR', 'TE', 'K']
 
     posdfs = []
     for pos in main_positions:
@@ -425,38 +686,37 @@ if __name__ == '__main__':
             print '{} already in data frame!'.format(st)
 
     # decorate the dataframe with projections for our ruleset
-    availdf['projection'] = getPointsFromDataFrame(ruleset, availdf)
+    availdf['projection'] = get_points_from_data_frame(rules, availdf)
     # can go ahead and filter out stats once we have projections
-    availdf = availdf[['name','team','position','projection']]    
+    availdf = availdf[['name', 'team', 'position', 'projection']]    
 
-    # availdf['level'] = np.nan
     # label nominal (non-flex) starters by their class
     for pos in main_positions:
         # sort the players in each position so we can grab the top indices
-        availpos = availdf.loc[availdf.position==pos,:].sort_values('projection', ascending=False)
+        availpos = availdf.loc[availdf.position == pos, :].sort_values('projection', ascending=False)
         for i_class in range(n_roster_per_team[pos]):
-            ia,ib = i_class*n_teams, (i_class+1)*n_teams
+            ia, ib = i_class*n_teams, (i_class+1)*n_teams
             itoppos = availpos.index[ia:ib]
             icls = availdf.index.isin(itoppos)
-            availdf.loc[icls,'level'] = '{}{}'.format(pos,i_class+1)
-            # print availdf.loc[icls,:]
-    availflex = availdf.loc[(availdf.position.isin(flex_pos)) & (availdf['level'].isnull()),:].sort_values('projection', ascending=False)
+            availdf.loc[icls, 'level'] = '{}{}'.format(pos, i_class+1)
+    availflex = availdf.loc[(availdf.position.isin(flex_pos)) & (availdf['level'].isnull()), :].sort_values('projection', ascending=False)
     for i_class in range(n_roster_per_team['FLEX']):
-        ia,ib = i_class*n_teams, (i_class+1)*n_teams
+        ia, ib = i_class*n_teams, (i_class+1)*n_teams
         itoppos = availflex.index[ia:ib]
         icls = availdf.index.isin(itoppos)
-        availdf.loc[icls,'level'] = 'FLEX{}'.format(i_class+1)
-        
+        availdf.loc[icls, 'level'] = 'FLEX{}'.format(i_class+1)
+
     # players that have been assigned a class so far are starters
-    # use this to find the worst value of each starter and subtract it from the projection to get the "VOLS" (value over last starter)
+    # use this to find the worst value of each starter and subtract it
+    #  from the projection to get the "VOLS" (value over last starter).
     # this is just a static calculation right now.
-    # in the future we could adjust this for draft position and dynamically update in the case of other teams making "mistakes".
+    # in the future we could adjust this for draft position and dynamically
+    #  update in the case of other teams making "mistakes".
     starter_mask = availdf['level'].notnull()
     starterdf = availdf.loc[starter_mask]
     for pos in main_positions:
-        worst_starter_value = starterdf[starterdf.position==pos]['projection'].min()
-        availdf.loc[availdf.position==pos,'vols'] = availdf['projection'] - worst_starter_value
-    # print starterdf['level'].value_counts()
+        worst_starter_value = starterdf[starterdf.position == pos]['projection'].min()
+        availdf.loc[availdf.position == pos, 'vols'] = availdf['projection'] - worst_starter_value
 
     # define an "absolute" bench by collecting the top projections of all players that can fit on benches (this is probably dumb, but it's a check) -- yeah it's actually too dumb
     total_bench_positions = n_roster_per_league['BENCH']
@@ -468,14 +728,10 @@ if __name__ == '__main__':
         # a totally-not-rigorous estimate how how many bench spots will be taken up by each position.
         # assumes K and D/ST will not be drafted multiply (not unreasonable)
         n_pos_bench = n_roster_per_team[pos] * total_bench_positions / total_nonsuck_positions
-        # print pos, n_pos_bench
-        pos_nsdf = nonstarterdf.loc[nonstarterdf.position==pos].sort_values('projection',ascending=False)
+        pos_nsdf = nonstarterdf.loc[nonstarterdf.position == pos].sort_values('projection', ascending=False)
         ipos = pos_nsdf.index[:n_pos_bench]
         ibnch_mask = availdf.index.isin(ipos)
-        availdf.loc[ibnch_mask,'level'] = 'BU'
-
-    # print 'this many backup:'
-    # print len(availdf[availdf['level'] == 'BU'])
+        availdf.loc[ibnch_mask, 'level'] = 'BU'
 
     # now we've given the backups a class, the worst projection at each position is the worst bench value.
     # we will define this as the VORP (value over replacement player)
@@ -484,16 +740,16 @@ if __name__ == '__main__':
     draftable_mask = availdf.level.notnull()
     draftable_df = availdf.loc[draftable_mask]
     for pos in main_positions:
-        worst_draftable_value = draftable_df[draftable_df.position==pos]['projection'].min()
-        availdf.loc[availdf.position==pos,'vorp'] = availdf['projection'] - worst_draftable_value
+        worst_draftable_value = draftable_df[draftable_df.position == pos]['projection'].min()
+        availdf.loc[availdf.position == pos, 'vorp'] = availdf['projection'] - worst_draftable_value
 
     ## now label remaining players as waiver wire material
-    availdf.loc[availdf.level.isnull(),'level'] = 'WAIV'
+    availdf.loc[availdf.level.isnull(), 'level'] = 'WAIV'
     
 
     ## finally sort by our stat of choice for display
     availdf = availdf.sort_values('vols', ascending=False)
-    availdf.reset_index(drop=True,inplace=True) # will re-number our list to sort by vols
+    availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by vols
     
     # make an empty dataframe with these reduces columns to store the picked players
     # this might be better as another level index in the dataframe, or simply as an additional variable in the dataframe.
@@ -502,6 +758,8 @@ if __name__ == '__main__':
 
     prompt = MainPrompt()
     prompt.set_dataframes(availdf, pickdf)
+    prompt.n_teams = n_teams
+    prompt.n_roster_per_team = n_roster_per_team
     try:
         prompt.cmdloop()
     except (SystemExit, KeyboardInterrupt, EOFError):
@@ -512,7 +770,7 @@ if __name__ == '__main__':
         backup_fname = 'draft_backup'
         print 'Error: {}'.format(sys.exc_info())
         print 'Backup save with label \"{}\".'.format(backup_fname)
-        savePlayerList(backup_fname, prompt.ap, prompt.pp)
+        save_player_list(backup_fname, prompt.ap, prompt.pp)
         raise
         
     # # should this be used for bench distribution?
@@ -530,5 +788,7 @@ if __name__ == '__main__':
     #     'DST':1.0,
     #     'K':1.0 # place kickers are rarely injured. whatever injury factor they have will be overshadowed by their bye week.
     # }
-    # ## This block of code is useless right here right now. It should be used in a function that both evaluates starting projections and guesses bench value.
+    # ## The above block of code is useless right here right now. It should be used in a function that both evaluates starting projections and guesses bench value.
         
+if __name__ == '__main__':
+    main()
