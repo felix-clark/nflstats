@@ -8,7 +8,7 @@ import itertools
 import argparse
 from cmd import Cmd
 
-from draftStrategies import *
+# from draftStrategies import *
 from getPoints import *
 from ruleset import bro_league, phys_league, dude_league
 
@@ -18,7 +18,7 @@ def printTopChoices(df, ntop=8, npos=3):
         print df.head(ntop)
     if npos > 0:
         for pos in main_positions:
-            print df[df.position==pos].head(npos)
+            print df[df.position == pos].head(npos)
 
 def verifyAndQuit():
     user_verify = raw_input('Are you sure you want to quit and lose all progress [y/N]? ')
@@ -40,8 +40,9 @@ def popFromPlayerList(index, ap, pp=None):
     player = ap.loc[index] # a dictionary of the entry
     # were using iloc, but the data may get re-organized so this should be safer
     if pp is not None:
-        if len(pp[pp.index==index]) > 0:
-            print 'It seems like the index of the player is already in the picked player list. Someone needs to clean up the logic...'
+        if len(pp[pp.index == index]) > 0:
+            print 'It seems like the index of the player is already in the picked player list.'
+            print 'Someone needs to clean up the logic...'
             print 'DEBUG: picked players w/index:', pp.loc[index]
             print 'DEBUG: available players w/index:', ap.loc[index]
         pp.loc[index] = player
@@ -60,8 +61,9 @@ def pushToPlayerList(index, ap, pp):
         print 'Error: The index ({}) does not indicate a picked player!'.format(index)
         return
     player = pp.loc[index]
-    if len(ap[ap.index==index]) > 0:
-        print 'It seems like the index of the picked player is already in the available player list. Someone needs to clean up the logic...'
+    if len(ap[ap.index == index]) > 0:
+        print 'It seems like the index of the picked player is already in the available player list.'
+        print 'Someone needs to clean up the logic...'
         print 'DEBUG: picked players w/index:', pp.loc[index]
         print 'DEBUG: available players w/index:', ap.loc[index]
     # must use loc, not iloc, since positions may move
@@ -73,16 +75,28 @@ def pushToPlayerList(index, ap, pp):
     team = player['team']
     print 'replacing {} ({}) - {}'.format(name, team, pos)
     pp.drop(index, inplace=True)
-
     
 def printTopPosition(df, pos, ntop=24):
     if pos.upper() == 'FLEX':
         with pd.option_context('display.max_rows', None):
-            print df.loc[df['position'].isin(['RB','WR','TE'])].head(ntop)
+            print df.loc[df['position'].isin(['RB', 'WR', 'TE'])].head(ntop)
     else:
         with pd.option_context('display.max_rows', None):
-            print df[df.position==pos.upper()].head(ntop)
+            print df[df.position == pos.upper()].head(ntop)
 
+def printPickedPlayers(df):
+    if df.shape[0] == 0:
+        print 'No players have been picked yet.'
+    else:
+        with pd.option_context('display.max_rows', None):
+            ## TODO: we can probably stand to improve this output:'
+            print df
+        print '\nPlayers picked by position:'
+        # TODO: minor annoyance... this prints out an additional line with the Name and dtype.
+        # would be ideal to remove it.
+        print df.position.value_counts()
+    
+            
 def savePlayerList(outname, ap, pp=None):
     print 'Saving with label {}.'.format(outname)
     ap.to_csv(outname+'.csv')
@@ -275,12 +289,14 @@ class MainPrompt(Cmd):
             
     def do_lspick(self, args):
         """prints summary of players that have already been picked"""
-        ## (TODO: we can probably stand to improve this output):'
-        with pd.option_context('display.max_rows', None):
-            print self.pp
+        printPickedPlayers(self.pp)
         
     def do_unpick(self, args):
-        """move player(s) from picked list to available"""
+        """
+        usage: unpick [I]...
+        moves player(s) with index(ces) I from picked list to available.
+        if no index is provided, then the last player picked will be returned.
+        """
         indices = []
         try:
             indices = [int(i) for i in args.split(' ') if i]
@@ -289,6 +305,15 @@ class MainPrompt(Cmd):
             print e
         for i in indices:
             pushToPlayerList(i, self.ap, self.pp)
+        if not args:
+            # empty argument: unpick the last player picked
+            npicked = self.pp.shape[0]
+            if npicked > 0:
+                lasti = self.pp.index[npicked-1]
+                pushToPlayerList(lasti, self.ap, self.pp)
+            else:
+                print 'No players have been picked.'
+            
     def do_unpop(self, args):
         """alias for unpick"""
         self.do_unpick(args)
@@ -302,7 +327,11 @@ class MainPrompt(Cmd):
             findByTeam(args, self.ap, self.pp)
         else:
             printTeams(self.ap, self.pp)
-        
+
+    def do_sort(self, args):
+        """choose a stat to sort by (unimplemented)"""
+        return
+            
     def do_save(self, args):
         """
         usage: save [OUTPUT]
@@ -319,31 +348,39 @@ class MainPrompt(Cmd):
         outname = args if args else 'draft_players'
         self.ap, self.pp = loadPlayerList(outname)
 
-if __name__=='__main__':
+if __name__ == '__main__':
 ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset',type=str,choices=['phys','dude','bro'],default='bro',help='which ruleset to use of the leagues I am in')
-    parser.add_argument('--n-teams',type=int,default=14,help='number of teams in the league')
-    parser.add_argument('--n-qb',type=int,default=1,help='number of QB per team')
-    parser.add_argument('--n-rb',type=int,default=2,help='number of RB per team')
-    parser.add_argument('--n-wr',type=int,default=2,help='number of WR per team')
-    parser.add_argument('--n-te',type=int,default=1,help='number of TE per team')
-    parser.add_argument('--n-flex',type=int,default=1,help='number of FLEX per team')
-    parser.add_argument('--n-k',type=int,default=1,help='number of K per team')
-    parser.add_argument('--n-dst',type=int,default=1,help='number of D/ST per team')
+    parser.add_argument('--ruleset', type=str, choices=['phys','dude','bro'], default='bro', help='which ruleset to use of the leagues I am in')
+    parser.add_argument('--n-teams', type=int, default=14, help='number of teams in the league')
+    parser.add_argument('--n-qb', type=int, default=1, help='number of QB per team')
+    parser.add_argument('--n-rb', type=int, default=2, help='number of RB per team')
+    parser.add_argument('--n-wr', type=int, default=2, help='number of WR per team')
+    parser.add_argument('--n-te', type=int, default=1, help='number of TE per team')
+    parser.add_argument('--n-flex', type=int, default=1, help='number of FLEX per team')
+    parser.add_argument('--n-dst', type=int, default=1, help='number of D/ST per team')
+    parser.add_argument('--n-k', type=int, default=1, help='number of K per team')
+    parser.add_argument('--n-bench', type=int, default=6, help='number of bench slots per team')
 
     args = parser.parse_args()
     n_teams = args.n_teams
-    n_roster_per_team['QB'] = args.n_qb
-    n_roster_per_team['RB'] = args.n_rb
-    n_roster_per_team['WR'] = args.n_wr
-    n_roster_per_team['TE'] = args.n_te
-    n_roster_per_team['FLEX'] = args.n_flex
-    n_roster_per_team['K'] = args.n_k
+    n_roster_per_team = {
+        'QB':args.n_qb,
+        'RB':args.n_rb,
+        'WR':args.n_wr,
+        'TE':args.n_te,
+        'FLEX':args.n_flex,
+        'K':args.n_k,
+        'BENCH':args.n_bench
+    }
     # n_roster_per_team['DST'] = args.n_dst
     n_roster_per_league = {}
     for pos,nper in n_roster_per_team.items():
         n_roster_per_league[pos] = nper * n_teams
+
+    # in principle FLEX can be defined in a different way,
+    # so we'll leave this definition local so that we might change it later.
+    flex_pos = ['RB', 'WR', 'TE']
 
     if args.ruleset == 'phys': ruleset = phys_league
     if args.ruleset == 'dude': ruleset = dude_league
@@ -352,10 +389,8 @@ if __name__=='__main__':
     print 'Initializing with ruleset:'
     # print some output to verify the ruleset we are working with
     rulestr = '  {} team, {} PPR'.format(n_teams, ruleset.ppREC)
-    if ruleset.ppPC != 0:
-        rulestr += ', {} PPC'.format(ruleset.ppPC)        
-    if ruleset.ppINC != 0:
-        rulestr += ', {} PPINC'.format(ruleset.ppINC)
+    if ruleset.ppPC != 0 or ruleset.ppINC != 0:
+        rulestr += ', {}/{} PPC/I'.format(ruleset.ppPC, ruleset.ppINC)
     print rulestr
     rosterstr = ' '
     for pos in ['QB', 'RB', 'WR', 'TE', 'FLEX']: # there's always just 1 DST and K, right?
@@ -368,11 +403,10 @@ if __name__=='__main__':
     posdfs = []
     for pos in main_positions:
         # TODO: don't hardcode in the source file names.
-        # also, make a script to automatically clean up csv's from FP.
-        # TODO: better yet, use Beautiful Soup to grab the latest projections.
+        # TODO: better yet, use e.g. Beautiful Soup to grab the latest projections from the web.
         filename = 'preseason_rankings/project_fp_{}s_pre2017.csv'.format(pos.lower())
         posdf = pd.read_csv(filename)
-        ## TODO (low priority): try using a multi-indexed dataframe instead of decorating every entry with the position
+        ## TODO (low priority): try using a multi-indexed dataframe instead of decorating every entry with the position?
         posdf['position'] = pos
         posdfs.append(posdf)
     # create dataframe of all available players
@@ -392,50 +426,78 @@ if __name__=='__main__':
 
     # decorate the dataframe with projections for our ruleset
     availdf['projection'] = getPointsFromDataFrame(ruleset, availdf)
+    # can go ahead and filter out stats once we have projections
+    availdf = availdf[['name','team','position','projection']]    
 
-    # print 'generates draft board using static \"value above worst starter\" quantity.'
-    # print 'this strategy seems to do comparably to other simple ones, well within the larger difference determined by draft position.'
-    # print 'This will deal with starters only. You may wish to delay e.g. drafting kickers until after getting bench players.'
-
-
-    position_values = {}
-    worst_starters_dict = {}
-    n_starters_up_to_round = {}
-    for pos in n_roster_per_team.keys():
-        if pos == 'FLEX': continue # deal with FLEX separately
-        posdf = availdf[availdf.position==pos]
-        point_data = posdf['projection'] # use this simple list of projections to get the values for the worst starters
-        unnormed_vals = np.sort(point_data)[::-1]
-        worst_starters_dict[pos] = unnormed_vals[ n_roster_per_league[pos]-1 ]
-        position_values[pos] = [int(round(x)) for x in unnormed_vals]
-        n_starters_up_to_round[pos] = [n_teams*(i+1) for i in range(n_roster_per_team[pos])]
-    flex_only_list = np.sort(list(itertools.chain.from_iterable((position_values[pos][n_roster_per_league[pos]:] for pos in flex_pos))))[::-1] # values of players that aren't good enough to be an WR/RB 1 or 2 (up to number on roster for each)
-    worst_flex_value = flex_only_list[n_roster_per_league['FLEX']-1]
-    worst_starters_dict['FLEX'] = worst_flex_value # should be worst than the worst starter of each position independently
-    for pos in flex_pos:
-        pos_vals = position_values[pos]
-        n_pos_in_flex = len(list(itertools.takewhile(lambda n: n >= worst_flex_value, pos_vals)))
-        pos_n_starters = n_starters_up_to_round[pos]
-        # need to check that there are actually any players in this position that would work in FLEX.
-        # in PPR for instance, often FLEX is all WR
-        if n_pos_in_flex > pos_n_starters[-1]:
-            pos_n_starters.append(n_pos_in_flex)
-            # change the worst starter threshold (often just for WR in PPR) if there are starters in the flex category.
-            worst_starters_dict[pos] = pos_vals[n_pos_in_flex-1]
+    # availdf['level'] = np.nan
+    # label nominal (non-flex) starters by their class
+    for pos in main_positions:
+        # sort the players in each position so we can grab the top indices
+        availpos = availdf.loc[availdf.position==pos,:].sort_values('projection', ascending=False)
+        for i_class in range(n_roster_per_team[pos]):
+            ia,ib = i_class*n_teams, (i_class+1)*n_teams
+            itoppos = availpos.index[ia:ib]
+            icls = availdf.index.isin(itoppos)
+            availdf.loc[icls,'level'] = '{}{}'.format(pos,i_class+1)
+            # print availdf.loc[icls,:]
+    availflex = availdf.loc[(availdf.position.isin(flex_pos)) & (availdf['level'].isnull()),:].sort_values('projection', ascending=False)
+    for i_class in range(n_roster_per_team['FLEX']):
+        ia,ib = i_class*n_teams, (i_class+1)*n_teams
+        itoppos = availflex.index[ia:ib]
+        icls = availdf.index.isin(itoppos)
+        availdf.loc[icls,'level'] = 'FLEX{}'.format(i_class+1)
         
-    ## decorate dataframe with value above worst starter
-    for pos in worst_starters_dict.keys():
-        worst_value = worst_starters_dict[pos]
-        # ap[ap.position==pos]['vaws'] = ... # this uses a copy; will not assign
-        availdf.loc[availdf.position==pos,'vaws'] = availdf['projection'] - worst_value
+    # players that have been assigned a class so far are starters
+    # use this to find the worst value of each starter and subtract it from the projection to get the "VOLS" (value over last starter)
+    # this is just a static calculation right now.
+    # in the future we could adjust this for draft position and dynamically update in the case of other teams making "mistakes".
+    starter_mask = availdf['level'].notnull()
+    starterdf = availdf.loc[starter_mask]
+    for pos in main_positions:
+        worst_starter_value = starterdf[starterdf.position==pos]['projection'].min()
+        availdf.loc[availdf.position==pos,'vols'] = availdf['projection'] - worst_starter_value
+    # print starterdf['level'].value_counts()
 
-    availdf = availdf[['name','team','position','projection','vaws']].sort_values('vaws', ascending=False)
-    availdf.reset_index(drop=True,inplace=True) # will re-number our list to sort by vaws
+    # define an "absolute" bench by collecting the top projections of all players that can fit on benches (this is probably dumb, but it's a check) -- yeah it's actually too dumb
+    total_bench_positions = n_roster_per_league['BENCH']
+    nonsuck_pos = ['QB', 'RB', 'WR', 'TE']
+    total_nonsuck_positions = sum([n_roster_per_team[pos] for pos in nonsuck_pos])
+    nonstarter_mask = availdf.level.isnull()
+    nonstarterdf = availdf.loc[nonstarter_mask]
+    for pos in nonsuck_pos:
+        # a totally-not-rigorous estimate how how many bench spots will be taken up by each position.
+        # assumes K and D/ST will not be drafted multiply (not unreasonable)
+        n_pos_bench = n_roster_per_team[pos] * total_bench_positions / total_nonsuck_positions
+        # print pos, n_pos_bench
+        pos_nsdf = nonstarterdf.loc[nonstarterdf.position==pos].sort_values('projection',ascending=False)
+        ipos = pos_nsdf.index[:n_pos_bench]
+        ibnch_mask = availdf.index.isin(ipos)
+        availdf.loc[ibnch_mask,'level'] = 'BU'
+
+    # print 'this many backup:'
+    # print len(availdf[availdf['level'] == 'BU'])
+
+    # now we've given the backups a class, the worst projection at each position is the worst bench value.
+    # we will define this as the VORP (value over replacement player)
+    # this is also a static calculation right now, but in principle it could be dynamically updated like VOLS. this might be a lot of re-computation and/or more complicated code.
+    # doing this here instead of trying to grab the value from the loop above is less-than-optimized, but is more vulnerable to programmer error and edge cases.
+    draftable_mask = availdf.level.notnull()
+    draftable_df = availdf.loc[draftable_mask]
+    for pos in main_positions:
+        worst_draftable_value = draftable_df[draftable_df.position==pos]['projection'].min()
+        availdf.loc[availdf.position==pos,'vorp'] = availdf['projection'] - worst_draftable_value
+
+    ## now label remaining players as waiver wire material
+    availdf.loc[availdf.level.isnull(),'level'] = 'WAIV'
+    
+
+    ## finally sort by our stat of choice for display
+    availdf = availdf.sort_values('vols', ascending=False)
+    availdf.reset_index(drop=True,inplace=True) # will re-number our list to sort by vols
     
     # make an empty dataframe with these reduces columns to store the picked players
     # this might be better as another level index in the dataframe, or simply as an additional variable in the dataframe.
     # In the latter case we'd need to explicitly exclude it from print statements.
-    # it's a bit kludgey to move between (and pass in-and-out of functions), so maybe unifying these two dataframes is a worthy goal.
     pickdf = pd.DataFrame(columns=availdf.columns)
 
     prompt = MainPrompt()
@@ -452,4 +514,21 @@ if __name__=='__main__':
         print 'Backup save with label \"{}\".'.format(backup_fname)
         savePlayerList(backup_fname, prompt.ap, prompt.pp)
         raise
+        
+    # # should this be used for bench distribution?
+    # # 13 games in regular FF season
+    # bye_factor = 1.0/13
+    # # this is the approximate fraction of the time that each position spends on the field.
+    # # this should be useful for analyzing bench value.
+    # # from sportinjurypredictor.net, based on average games missed assuming 17 game season
+    # # obviously rough, but captures trend and follows intuition
+    # pos_injury_factor = {
+    #     'QB':0.94,
+    #     'RB':0.85,
+    #     'WR':0.89,
+    #     'TE':0.89,
+    #     'DST':1.0,
+    #     'K':1.0 # place kickers are rarely injured. whatever injury factor they have will be overshadowed by their bye week.
+    # }
+    # ## This block of code is useless right here right now. It should be used in a function that both evaluates starting projections and guesses bench value.
         
