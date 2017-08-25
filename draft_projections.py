@@ -150,12 +150,34 @@ def findHandcuff(index, ap, pp):
         print 'The following handcuffs have already been picked:'
         print ph
     print # end on a newline
-    
 
+def printTeams(ap, pp):
+    """
+    prints a list of teams in both the available and picked player lists
+    """
+    teams = pd.concat([ap,pp])['team']
+    # unique() does not sort, but assumes a sorted list
+    print teams.sort_values().unique()
+
+def findByTeam(team, ap, pp):
+    """
+    prints players on the given team
+    """
+    available = ap[ap.team == team.upper()]
+    if len(available) > 0:
+        print 'Available players:'
+        print available
+    else:
+        print 'No available players found on team {}'.format(team)
+    picked = pp[pp.team == team.upper()]
+    if len(picked) > 0:
+        print 'Picked players:'
+        print picked
+    
 # note that this class can be used with tab-autocompletion...
 # something to play with in the further future
 class MainPrompt(Cmd):
-    # overriding defaults
+    # overriding default member variable
     prompt = ' $$ '
 
     # member variables to have access to the player dataframes
@@ -270,6 +292,16 @@ class MainPrompt(Cmd):
         """alias for unpick"""
         self.do_unpick(args)
 
+    def do_team(self, args):
+        """
+        usage: team [TEAM]
+        Lists players by TEAM abbreviation or, if no argument is provided, lists the available teams.
+        """
+        if args:
+            findByTeam(args, self.ap, self.pp)
+        else:
+            printTeams(self.ap, self.pp)
+        
     def do_save(self, args):
         """
         usage: save [OUTPUT]
