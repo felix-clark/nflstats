@@ -49,7 +49,7 @@ def popFromPlayerList(index, ap, pp=None):
     name = player['name']
     pos = player['position']
     team = player['team']
-    print 'removing {} - {} ({})'.format(name, pos, team)
+    print 'selecting {} ({}) - {}'.format(name, team, pos)
     ap.drop(index, inplace=True)
 
 def pushToPlayerList(index, ap, pp):
@@ -71,7 +71,7 @@ def pushToPlayerList(index, ap, pp):
     name = player['name']
     pos = player['position']
     team = player['team']
-    print 'replacing {} - {} ({})'.format(name, pos, team)
+    print 'replacing {} ({}) - {}'.format(name, team, pos)
     pp.drop(index, inplace=True)
 
     
@@ -139,7 +139,7 @@ def findHandcuff(index, ap, pp):
     player = pd.concat([ap, pp]).loc[index]
     ## the "name" attribute is the index, so need dictionary syntax to grab actual name
     name, pos, team = player['name'], player.position, player.team
-    print 'Looking for handcuffs for {} - {} ({})...\n'.format(name, pos, team)
+    print 'Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos)
     # print ap # still full
     ah = ap[(ap.position == pos) & (ap.team == team) & (ap.name != name)]
     if len(ah) > 0:
@@ -351,7 +351,12 @@ if __name__=='__main__':
 
     print 'Initializing with ruleset:'
     # print some output to verify the ruleset we are working with
-    print '  {} team, {} PPR'.format(n_teams, ruleset.ppREC)
+    rulestr = '  {} team, {} PPR'.format(n_teams, ruleset.ppREC)
+    if ruleset.ppPC != 0:
+        rulestr += ', {} PPC'.format(ruleset.ppPC)        
+    if ruleset.ppINC != 0:
+        rulestr += ', {} PPINC'.format(ruleset.ppINC)
+    print rulestr
     rosterstr = ' '
     for pos in ['QB', 'RB', 'WR', 'TE', 'FLEX']: # there's always just 1 DST and K, right?
         nper = n_roster_per_team[pos]
