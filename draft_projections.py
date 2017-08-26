@@ -11,6 +11,9 @@ import pandas as pd
 from getPoints import *
 from ruleset import bro_league, phys_league, dude_league
 
+## TODO: make this compatible with python 3 :,(
+##   (it's probably 95% print statement parentheses)
+
 def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     """
     applies projection for season points, with an approximation for bench value
@@ -505,10 +508,33 @@ class MainPrompt(Cmd):
             else:
                 break
         comp_mans.remove(current_team) # don't include our own roster
+
         # here we loop through the managers and see how many starting spots they have
+        starting_pos = [pos for pos,numpos in self.n_roster_per_team.items()
+                        if numpos > 0 and pos not in ['FLEX', 'BENCH']]
+        pos_totals = {key:0 for key in starting_pos}
+        pos_totals['FLEX'] = 0
         for man in comp_mans:
-            
-            pass
+            print '{} needs starters at:'.format(self._get_manager_name(man))
+            roster = self._get_manager_roster(man)
+            for pos in starting_pos:
+                hasleft = self.n_roster_per_team[pos] - len(roster[roster.position == pos])
+                if hasleft > 0:
+                    print '{}: {}'.format(pos, hasleft)
+                    pos_totals[pos] = pos_totals[pos] + hasleft
+            flexused = sum([min(0, len(roster[roster.position == pos])
+                            - self.n_roster_per_team[pos])
+                            for pos in self.flex_pos])
+            flexleft = self.n_roster_per_team['FLEX'] - flexused
+            if flexleft > 0:
+                print 'FLEX: {}'.format(flexleft)
+                pos_totals['FLEX'] = pos_totals['FLEX'] + flexleft
+        if sum(pos_totals.values()) > 0:
+            print '\ntotal open starting roster spots ({} picks):'.format(2*len(comp_mans))
+            for pos,n in pos_totals.items():
+                if n > 0:
+                    print '{}: {}'.format(pos, n)
+                
 
     def do_pick(self, args):
         """
