@@ -35,8 +35,7 @@ def pop_from_player_list(index, ap, pp=None, manager=None):
     index: index of player to be removed from available
     """
     if index not in ap.index:
-        print 'Error: The index ({}) does not indicate an available player!'.format(index)
-        raise IndexError('bad index for player')
+        raise IndexError('The index ({}) does not indicate an available player!'.format(index))
     player = ap.loc[index] # a dictionary of the entry
     # were using iloc, but the data may get re-organized so this should be safer
     if pp is not None:
@@ -61,8 +60,7 @@ def push_to_player_list(index, ap, pp):
     index: index of player to be removed from available
     """
     if index not in pp.index:
-        print 'Error: The index ({}) does not indicate a picked player!'.format(index)
-        raise IndexError('bad index for player')
+        raise IndexError('The index ({}) does not indicate a picked player!'.format(index))
     player = pp.loc[index]
     if len(ap[ap.index == index]) > 0:
         print 'The index of the picked player is already in the available player list.'
@@ -176,6 +174,11 @@ def print_teams(ap, pp):
     # unique() does not sort, but assumes a sorted list
     print teams.sort_values().unique()
 
+def evaluate_roster(rosdf, n_roster_per_team):
+    """applies projection for season points, TODO with an approximation for bench value"""
+    # round values to int() for josh :)
+    print 'your team sucks'
+
 def find_by_team(team, ap, pp):
     """
     prints players on the given team
@@ -260,12 +263,14 @@ class MainPrompt(Cmd):
         
     def _set_prompt(self):
         if self.draft_mode:
-            teamno = self.manager_picks[self.i_manager_turn]
+            manno = self._get_current_manager()
             managername = self._get_manager_name()
-            if self.user_manager is not None and teamno == self.user_manager:
-                self.prompt = ' s~({},{})s~  your pick! $$ '.format(self.i_manager_turn+1, teamno)
+            vols = self.pick_vols(manno)
+            
+            if self.user_manager is not None and manno == self.user_manager:
+                self.prompt = ' s~({},{})s~  your pick! (VOLS: {}) $$ '.format(self.i_manager_turn+1, manno, vols)
             else:
-                self.prompt = ' s~({},{})s~  {}\'s pick $$ '.format(self.i_manager_turn+1, teamno, managername)
+                self.prompt = ' s~({},{})s~  {}\'s pick (VOLS: {}) $$ '.format(self.i_manager_turn+1, manno, managername, vols)
         else:
             self.prompt = ' $$ '
 
@@ -349,18 +354,24 @@ class MainPrompt(Cmd):
     def do_pick(self, args):
         """
         usage: pick I...
+               pick vols  (in snake draft mode)
         remove player(s) with index(ces) I from available player list
+        in snake draft mode, `pick vols` can be used to pick the VOLS recommended player.
         """
+        # it may not be worth supporting removing multiple indices at once.
+        manager = self._get_current_manager()
         indices = []
+        if self.draft_mode and args.lower() == 'vols':
+            indices = [self.pick_vols(manager)]
         try:
-            indices = [int(i) for i in args.split(' ') if i]
+            if not indices:
+                indices = [int(i) for i in args.split(' ') if i]
         except ValueError as e:
             print '`pick` requires integer indices.'
             print e
         if self.draft_mode and len(indices) > 1:
             print 'Picking multiple indices at once is not supported in draft mode.'
             return
-        manager = self._get_current_manager()
         for i in indices:
             try:
                 pop_from_player_list(i, self.ap, self.pp, manager=manager)
@@ -519,23 +530,60 @@ class MainPrompt(Cmd):
 
     def do_roster(self, args):
         """
-        prints the roster of each manager so far
-        can take a number to print only that manager's (not yet implemented)
+        usage: roster [N]...
+               roster all
+        prints the roster of the current manager so far
+        can take a number or series of numbers to print only those manager's
+        if "all" is passed then it will output all rosters
         """
-        for i_man in range(1, 1+self.n_teams):
-            manname = self._get_manager_name(i_man)
-            print '\n {}: '.format(manname)
-            theroster = self._get_manager_roster(i_man)
+        if not self.draft_mode:
+            print 'The `roster` command is only available in draft mode.'
+            return
+        if args.lower() == 'all':
+            for i_man in range(1, 1+self.n_teams):
+                manname = self._get_manager_name(i_man)
+                print '\n {}:'.format(manname)
+                theroster = self._get_manager_roster(i_man)
+                if len(theroster) > 0:
+                    print theroster
+                else:
+                    print 'No players on this team yet.\n'
+            print
+            return
+        if not args:
+            print '\n {}:'.format( self._get_manager_name() )
+            theroster = self._get_manager_roster(self._get_current_manager())
+            if len(theroster) > 0:
+                print theroster
+                print
+            else:
+                print 'No players on this team yet.\n'
+            return
+        indices = []
+        try:
+            indices = [int(i) for i in args.split(' ')]
+        except ValueError as e:
+            print '`roster` requires integer arguments'
+            print e
+            return
+        for i in indices:
+            manname = self._get_manager_name(i)
+            print '\n {}:'.format(manname)
+            theroster = self._get_manager_roster(i)
             if len(theroster) > 0:
                 print theroster
             else:
                 print 'No players on this team yet.'
+        print # newline
 
     def do_test_vols(self, args):
         """quick test for pick_vols"""
         manager = self._get_current_manager()
         pick = self.pick_vols(manager)
-        print self.ap.loc[pick]
+        # print self.ap.loc[pick] # instead of printing the whole player, print the line of the df:
+        print ' VOLS recommended:'
+        print self.ap[self.ap.index == pick]
+        print
                 
     def pick_vols(self, manager):
         """
@@ -544,7 +592,6 @@ class MainPrompt(Cmd):
         """
         if not self.draft_mode:
             print 'WARNING: i think you will need to be in draft mode for this, or manager will not be defined'
-            
         roster = self._get_manager_roster(manager)
         total_roster_spots = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
         if len(roster) >= total_roster_spots:
@@ -552,13 +599,12 @@ class MainPrompt(Cmd):
             print '{}\'s roster has no available spots left'.format(manname)
             return None
         
-        # starting_roster_spots = sum([self.n_roster_per_team[pos]
-        #                              for pos in self.n_roster_per_team
-        #                              if pos.upper() is not 'BENCH'])
+        starting_roster_spots = sum([self.n_roster_per_team[pos]
+                                     for pos in self.n_roster_per_team
+                                     if pos.upper() is not 'BENCH'])
         crap_positions = ['K'] # add DST when (or if) we bother
         crap_starting_roster_spots = sum([self.n_roster_per_team[pos] for pos in crap_positions])
         # key_starting_roster_spots = starting_roster_spots - crap_starting_roster_spots
-        
 
         key_positions = ['QB', 'RB', 'WR', 'TE'] # this concept includes FLEX so don't count it
         # realistically this will just be QBs but let's keep it flexible
@@ -567,21 +613,25 @@ class MainPrompt(Cmd):
         needed_key_starter_positions.extend([pos for pos in key_nonflex_positions
                                              if len(roster[roster.position == pos])
                                              < self.n_roster_per_team[pos]])
-        used_flex_spot = not any([len(roster[roster.position == pos]) > self.n_roster_per_team[pos]
+        # print [len(roster[roster.position == pos])
+        #        > self.n_roster_per_team[pos] for pos in self.flex_pos]
+        used_flex_spot = any([len(roster[roster.position == pos]) > self.n_roster_per_team[pos]
                                       for pos in self.flex_pos])
         flex_mult = 0 if used_flex_spot else 1
+        print 'allowing flex: ', flex_mult
         needed_key_starter_positions.extend([pos for pos in self.flex_pos
                                              if len(roster[roster.position == pos])
                                              < self.n_roster_per_team[pos]
                                              + flex_mult*self.n_roster_per_team['FLEX']])
         # needed_starter_backups = [...] #work on getting starter limit +1 of everything. then an extra flex
+        print 'needed key starter positions:', needed_key_starter_positions
         
         if needed_key_starter_positions:
             topstart = self.ap[self.ap.position.isin(needed_key_starter_positions)].sort_values('vols', ascending=False)
             # player = topstart.iloc[0] # this is the player
             player_index = topstart.index[0]
             return player_index
-        elif len(roster) < total_starting_roster_spots - crap_starting_roster_spots:
+        elif len(roster) < starting_roster_spots - crap_starting_roster_spots:
             print 'LITERALLY A DISASTER'
             ## make sure to grab one level of backup for each position before getting more
             pass
@@ -599,7 +649,6 @@ class MainPrompt(Cmd):
             print player_index
             return player_index
 
-        print self.n_roster_per_team['QB']
         return
 
 
