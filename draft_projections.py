@@ -343,12 +343,12 @@ class MainPrompt(Cmd):
         if self.draft_mode:
             manno = self._get_current_manager()
             managername = self._get_manager_name()
-            vols = self.pick_vols(manno)
+            # vols = self.pick_vols(manno)
             
             if self.user_manager is not None and manno == self.user_manager:
-                self.prompt = ' s~({},{})s~  your pick! (VOLS: {}) $$ '.format(manno, self.i_manager_turn+1, vols)
+                self.prompt = ' s~({},{})s~  your pick! $$ '.format(manno, self.i_manager_turn+1)
             else:
-                self.prompt = ' s~({},{})s~  {}\'s pick (VOLS: {}) $$ '.format(manno, self.i_manager_turn+1, managername, vols)
+                self.prompt = ' s~({},{})s~  {}\'s pick $$ '.format(manno, self.i_manager_turn+1, managername)
         else:
             self.prompt = ' $$ '
 
@@ -358,6 +358,52 @@ class MainPrompt(Cmd):
         if len(self.pp) == 0:
             return self.pp # there isn't anything in here yet, and we haven't added the "manager" branch
         return self.pp[self.pp.manager == manager].drop('manager', inplace=False, axis=1)
+
+    def _update_vorp(self):
+        """
+        updates the VORP values in the available players dataframe
+        based on how many players in that position have been picked.
+        a replacement for a 1-st round pick comes from the top of the bench,
+        while a replacement for a bottom bench player comes from the waivers.
+        """
+
+        # not the smoothest or safest way to get the positions...
+        positions = [pos for pos in self.n_roster_per_team.keys() if pos not in ['FLEX', 'BENCH']]
+        
+        for pos in positions:
+            # also implement: maximum players on roster
+            # TODO: implement that max in the WAIV designation as well (elsewhere)
+            # maximum probably won't matter for most drafts, so de-prioritize it
+            # while your draft is in an hour :E
+            
+            pos_picked = self.pp[self.pp.position == pos]
+            n_pos_picked = len(pos_picked.index)
+            n_waiv_picked = len(pos_picked[pos_picked.level == 'WAIV'].index)
+            # if people picked waiver-level players, then we can shed the next-worst bench player from our calculations
+            # we can still shed all WAIV players since this raises the value of the threshold
+            ## list of possible baseline players -- they will mostly be in the bench
+            # in theory the first baseline should be the -worst- starter, not a bench player
+            # but that's a small correction to implement later
+            pos_draftable = self.ap[(self.ap.position == pos) & (self.ap.level != 'WAIV')]
+            n_pos_draftable = len(pos_draftable.index) - n_waiv_picked
+            vorp_baseline = 0
+            if n_pos_draftable <= 0:
+                # no more "draftable" players -- vorp should be zero for top
+                vorp_baseline = pos_draftable['projection'].max()
+            else:
+                frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
+                pos_baseline = pos_draftable[pos_draftable.level == 'BU']
+                n_pos_baseline = len(pos_baseline.index)
+                if n_pos_baseline == 0:
+                    # this can happen, e.g. with kickers who have no "backup" level players
+                    self.ap.loc[self.ap.position == pos, 'vorp'] = self.ap['vols']
+                    continue
+                index = int(frac_through_bench * n_pos_baseline)
+                if index >= len(pos_baseline):
+                    print 'warning: check index here later'
+                    index = len(pos_baseline-1)
+                vorp_baseline = pos_baseline['projection'].sort_values( ascending=False ).iloc[index]
+            self.ap.loc[self.ap.position == pos, 'vorp'] = self.ap['projection'] - vorp_baseline
 
     def do_evaluate(self, args):
         """evaluate one or more rosters"""
@@ -440,6 +486,7 @@ class MainPrompt(Cmd):
         except ValueError as e:
             print '`ls` requires integer arguments.'
             print e
+        self._update_vorp()
         print_top_choices(self.ap, ntop, npos)
 
     def do_lspick(self, args):
@@ -561,6 +608,7 @@ class MainPrompt(Cmd):
             try:
                 pickno = self.i_manager_turn + 1 if self.draft_mode else None
                 pop_from_player_list(i, self.ap, self.pp, manager=manager, pickno=pickno)
+                self._update_vorp()
                 if self.draft_mode:
                     self._advance_snake()
             except IndexError as e:
@@ -699,6 +747,7 @@ class MainPrompt(Cmd):
             lasti = self.pp.index[-1]
             try:
                 push_to_player_list(lasti, self.ap, self.pp)
+                self._update_vorp()
                 if self.draft_mode:
                     self._regress_snake()
             except IndexError as e:
