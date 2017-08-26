@@ -10,115 +10,97 @@ import pandas as pd
 from getPoints import *
 from ruleset import bro_league, phys_league, dude_league
 
-# this method will be our main output
-def print_top_choices(df, ntop=8, npos=3):
-    if npos > 0:
-        # ... let's just leave out the kicker. or: put it at top
-        main_positions = ['K', 'QB', 'RB', 'WR', 'TE']
-        for pos in main_positions:
-            print df[df.position == pos].head(npos)
-    with pd.option_context('display.max_rows', None):
-        print df.head(ntop)
-
-def verify_and_quit():
-    user_verify = raw_input('Are you sure you want to quit and lose all progress [y/N]? ')
-    if user_verify.strip() == 'y':
-        print 'Make sure you beat Russell.'
-        exit(0)
-    elif user_verify.lower().strip() == 'n':
-        print 'OK then, will not quit after all.'
-    else:
-        print 'Did not recognize confirmation. Will not quit.'
-
-def pop_from_player_list(index, ap, pp=None, manager=None):
+def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     """
-    index: index of player to be removed from available
+    applies projection for season points, with an approximation for bench value
+    returns tuple of starter, bench value
     """
-    if index not in ap.index:
-        raise IndexError('The index ({}) does not indicate an available player!'.format(index))
-    player = ap.loc[index] # a dictionary of the entry
-    # were using iloc, but the data may get re-organized so this should be safer
-    if pp is not None:
-        if len(pp[pp.index == index]) > 0:
-            print 'It seems like the index of the player is already in the picked player list.'
-            print 'Someone needs to clean up the logic...'
-            print 'DEBUG: picked players w/index:', pp.loc[index]
-            print 'DEBUG: available players w/index:', ap.loc[index]
-        pp.loc[index] = player
-        if manager is not None:
-            pp.loc[index, 'manager'] = manager
-            pp.manager = pp.manager.astype(int)
-        # player = df.pop(index) # DataFrame.pop pops a column, not a row
-    name = player['name']
-    pos = player['position']
-    team = player['team']
-    print 'selecting {} ({}) - {}'.format(name, team, pos)
-    ap.drop(index, inplace=True)
 
-def push_to_player_list(index, ap, pp):
+    numplayers = len(rosdf)
+    numroster = sum([n_roster_per_team[pos] for pos in n_roster_per_team])
+    if numplayers < numroster:
+        print 'This roster is not full.'
+        # return (0,0)
+    if numplayers > numroster:
+        print 'This roster has too many players.'
+    
+    starterval, benchval = 0, 0
+    i_st = [] # the indices of the players we have counted
+    for pos in ['QB', 'RB', 'WR', 'TE', 'K']:
+        n_starters = n_roster_per_team[pos]
+        rospos = rosdf[rosdf.position == pos].sort_values('projection', ascending=False)
+        i_stpos = rospos.index[:n_starters]
+        val = rospos[rospos.index.isin(i_stpos)]['projection'].sum()
+        starterval = starterval + val
+        i_st.extend(i_stpos)
+
+    n_flex = n_roster_per_team['FLEX']
+    rosflex = rosdf[(~rosdf.index.isin(i_st)) & (rosdf.position.isin(flex_pos))].sort_values('projection', ascending=False)
+    i_flex = rosflex.index[:n_flex]
+    starterval = starterval + rosflex[rosflex.index.isin(i_flex)]['projection'].sum()
+    i_st.extend(i_flex)
+    
+    print '  starting lineup:'
+    print rosdf[rosdf.index.isin(i_st)].drop(['vols','volb'], axis=1)
+
+    benchdf = rosdf[~rosdf.index.isin(i_st)].drop(['vols','volb'], axis=1)
+    print '  bench:'
+    print benchdf
+
+    ## we're gonna do a really dumb estimation for bench value
+    # and pretend that the chance of a bench player being used
+    # is the same as that of a starter being out.
+    # we'll call this an "index" to avoid commiting to a meaning right now :)
+    bye_factor = (13.0-1.0)/13.0 # 13 games in regular FF season. we'll pretend they're independent.
+    # this is the approximate fraction of the time that each position spends on the field uninjured.
+    # from sportinjurypredictor.net, based on average games missed assuming 17 game season
+    # obviously rough, but captures trend and follows intuition
+    pos_injury_factor = {'QB':0.94, 'RB':0.85, 'WR':0.89, 'TE':0.89, 'DST':1.0, 'K':1.0}
+    for _,row in benchdf.iterrows():
+        pos = row.position
+        benchval = benchval + (1 - bye_factor*pos_injury_factor[pos])*row.projection
+        
+    # round values to whole numbers for josh, who doesn't like fractions :)
+    print '\nprojected starter points:\t{}'.format(int(round(starterval)))
+    print 'estimated bench value:\t{}'.format(int(round(benchval)))
+        
+    print
+    return starterval, benchval
+
+def find_by_team(team, ap, pp):
     """
-    index: index of player to be removed from available
+    prints players on the given team
     """
-    if index not in pp.index:
-        raise IndexError('The index ({}) does not indicate a picked player!'.format(index))
-    player = pp.loc[index]
-    if len(ap[ap.index == index]) > 0:
-        print 'The index of the picked player is already in the available player list.'
-        print 'Someone needs to clean up the logic...'
-        print 'DEBUG: picked players w/index:', pp.loc[index]
-        print 'DEBUG: available players w/index:', ap.loc[index]
-    # must use loc, not iloc, since positions may move
-    ap.loc[index] = player
-    ap.sort_values('vols', ascending=False, inplace=True) # re-sort
-    name = player['name']
-    pos = player['position']
-    team = player['team']
-    print 'replacing {} ({}) - {}'.format(name, team, pos)
-    pp.drop(index, inplace=True)
-
-def print_top_position(df, pos, ntop=24):
-    """prints the top `ntop` players in the position in dataframe df"""
-    if pos.upper() == 'FLEX':
-        with pd.option_context('display.max_rows', None):
-            print df.loc[df['position'].isin(['RB', 'WR', 'TE'])].head(ntop)
+    available = ap[ap.team == team.upper()]
+    if len(available) > 0:
+        print 'Available players:'
+        print available
     else:
-        with pd.option_context('display.max_rows', None):
-            print df[df.position == pos.upper()].head(ntop)
-
-def print_picked_players(df):
-    """prints the players in dataframe df as if they have been selected"""
-    if df.shape[0] == 0:
-        print 'No players have been picked yet.'
-    else:
-        with pd.option_context('display.max_rows', None):
-            ## TODO: we can probably stand to improve this output:'
-            print df
-        print '\nPlayers picked by position:'
-        # TODO: minor annoyance... this prints out an additional line with the Name and dtype.
-        # would be ideal to remove it.
-        print df.position.value_counts()
-
-def save_player_list(outname, ap, pp=None):
-    """saves the available and picked player sets with label "outname"."""
-    print 'Saving with label {}.'.format(outname)
-    ap.to_csv(outname+'.csv')
-    if pp is not None:
-        pp.to_csv(outname+'_picked.csv')
-
-def load_player_list(outname):
-    """loads the available and picked player data from the label \"outname\""""
-    print 'Loading with label {}.'.format(outname)
-    if os.path.isfile(outname+'.csv'):
-        # we saved it directly we could use from_csv, but read_csv is encouraged
-        ap = pd.DataFrame.from_csv(outname+'.csv')
-        # ap = pd.read_csv(outname+'.csv')
-    else:
-        print 'Could not find file {}.csv!'.format(outname)
-    if os.path.isfile(outname+'_picked.csv'):
-        pp = pd.DataFrame.from_csv(outname+'_picked.csv')
-    else:
-        print 'Could not find file {}_picked.csv!'.format(outname)
-    return ap, pp
+        print 'No available players found on team {}'.format(team)
+    picked = pp[pp.team == team.upper()]
+    if len(picked) > 0:
+        print 'Picked players:'
+        print picked
+    
+def find_handcuff(index, ap, pp):
+    """
+    prints a list of players with the same team and position as the indexed player.
+    ap: dataframe of available players
+    pp: dataframe of picked players
+    """
+    player = pd.concat([ap, pp]).loc[index]
+    ## the "name" attribute is the index, so need dictionary syntax to grab actual name
+    name, pos, team = player['name'], player.position, player.team
+    print 'Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos)
+    ah = ap[(ap.position == pos) & (ap.team == team) & (ap.name != name)]
+    if len(ah) > 0:
+        print 'The following potential handcuffs are available:'
+        print ah
+    ph = pp[(pp.position == pos) & (pp.team == team) & (pp.name != name)]
+    if len(ph) > 0:
+        print 'The following handcuffs have already been picked:'
+        print ph
+    print # end on a newline
 
 # adding features to search by team name/city/abbreviation might be nice,
 #   but probably not worth the time for the additional usefulness.
@@ -146,25 +128,64 @@ def find_player(search_words, ap, pp):
         print '\n  Picked players:'
         print filtered_pp
 
-def find_handcuff(index, ap, pp):
+    
+
+def load_player_list(outname):
+    """loads the available and picked player data from the label \"outname\""""
+    print 'Loading with label {}.'.format(outname)
+    if os.path.isfile(outname+'.csv'):
+        # we saved it directly we could use from_csv, but read_csv is encouraged
+        ap = pd.DataFrame.from_csv(outname+'.csv')
+        # ap = pd.read_csv(outname+'.csv')
+    else:
+        print 'Could not find file {}.csv!'.format(outname)
+    if os.path.isfile(outname+'_picked.csv'):
+        pp = pd.DataFrame.from_csv(outname+'_picked.csv')
+    else:
+        print 'Could not find file {}_picked.csv!'.format(outname)
+    return ap, pp
+
+def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
     """
-    prints a list of players with the same team and position as the indexed player.
-    ap: dataframe of available players
-    pp: dataframe of picked players
+    index: index of player to be removed from available
     """
-    player = pd.concat([ap, pp]).loc[index]
-    ## the "name" attribute is the index, so need dictionary syntax to grab actual name
-    name, pos, team = player['name'], player.position, player.team
-    print 'Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos)
-    ah = ap[(ap.position == pos) & (ap.team == team) & (ap.name != name)]
-    if len(ah) > 0:
-        print 'The following potential handcuffs are available:'
-        print ah
-    ph = pp[(pp.position == pos) & (pp.team == team) & (pp.name != name)]
-    if len(ph) > 0:
-        print 'The following handcuffs have already been picked:'
-        print ph
-    print # end on a newline
+    if index not in ap.index:
+        raise IndexError('The index ({}) does not indicate an available player!'.format(index))
+    player = ap.loc[index] # a dictionary of the entry
+    # were using iloc, but the data may get re-organized so this should be safer
+    if pp is not None:
+        if len(pp[pp.index == index]) > 0:
+            print 'It seems like the index of the player is already in the picked player list.'
+            print 'Someone needs to clean up the logic...'
+            print 'DEBUG: picked players w/index:', pp.loc[index]
+            print 'DEBUG: available players w/index:', ap.loc[index]
+        pp.loc[index] = player
+        if manager is not None:
+            pp.loc[index, 'manager'] = manager
+             # this method of making the variable an integer is ugly and over time redundant.
+            pp.manager = pp.manager.astype(int)
+        if pickno is not None:
+            pp.loc[index, 'pick'] = pickno
+            pp.pick = pp.pick.astype(int)
+        # player = df.pop(index) # DataFrame.pop pops a column, not a row
+    name = player['name']
+    pos = player['position']
+    team = player['team']
+    print 'selecting {} ({}) - {}'.format(name, team, pos)
+    ap.drop(index, inplace=True)
+
+def print_picked_players(df):
+    """prints the players in dataframe df as if they have been selected"""
+    if df.shape[0] == 0:
+        print 'No players have been picked yet.'
+    else:
+        with pd.option_context('display.max_rows', None):
+            ## TODO: we can probably still stand to improve this output:'
+            print df.drop([col for col in ['manager', 'pick'] if col in df], axis=1)
+        print '\nPlayers picked by position:'
+        # TODO: minor annoyance... this prints out an additional line with the Name and dtype.
+        # would be ideal to remove it.
+        print df.position.value_counts()
 
 def print_teams(ap, pp):
     """
@@ -174,25 +195,47 @@ def print_teams(ap, pp):
     # unique() does not sort, but assumes a sorted list
     print teams.sort_values().unique()
 
-def evaluate_roster(rosdf, n_roster_per_team):
-    """applies projection for season points, TODO with an approximation for bench value"""
-    # round values to int() for josh :)
-    print 'your team sucks'
+# this method will be our main output
+def print_top_choices(df, ntop=8, npos=3):
+    if npos > 0:
+        # ... let's just leave out the kicker. or: put it at top
+        main_positions = ['K', 'QB', 'RB', 'WR', 'TE']
+        for pos in main_positions:
+            print df[df.position == pos].head(npos)
+    with pd.option_context('display.max_rows', None):
+        print df.head(ntop)
 
-def find_by_team(team, ap, pp):
-    """
-    prints players on the given team
-    """
-    available = ap[ap.team == team.upper()]
-    if len(available) > 0:
-        print 'Available players:'
-        print available
+def print_top_position(df, pos, ntop=24):
+    """prints the top `ntop` players in the position in dataframe df"""
+    if pos.upper() == 'FLEX':
+        with pd.option_context('display.max_rows', None):
+            print df.loc[df['position'].isin(['RB', 'WR', 'TE'])].head(ntop)
     else:
-        print 'No available players found on team {}'.format(team)
-    picked = pp[pp.team == team.upper()]
-    if len(picked) > 0:
-        print 'Picked players:'
-        print picked
+        with pd.option_context('display.max_rows', None):
+            print df[df.position == pos.upper()].head(ntop)
+
+def push_to_player_list(index, ap, pp):
+    """
+    index: index of player to be removed from available
+    ap: dataframe of available players
+    pp: dataframe of picked players
+    """
+    if index not in pp.index:
+        raise IndexError('The index ({}) does not indicate a picked player!'.format(index))
+    player = pp.loc[index]
+    if len(ap[ap.index == index]) > 0:
+        print 'The index of the picked player is already in the available player list.'
+        print 'Someone needs to clean up the logic...'
+        print 'DEBUG: picked players w/index:', pp.loc[index]
+        print 'DEBUG: available players w/index:', ap.loc[index]
+    # must use loc, not iloc, since positions may move
+    ap.loc[index] = player
+    ap.sort_values('vols', ascending=False, inplace=True) # re-sort
+    name = player['name']
+    pos = player['position']
+    team = player['team']
+    print 'replacing {} ({}) - {}'.format(name, team, pos)
+    pp.drop(index, inplace=True)
 
 # maybe not necessary rn
 # could give it to AI managers as
@@ -208,7 +251,22 @@ def print_vona(ap, pp, manager, managers_til_next):
     # predict_next_board(ap, pp, manager, managers_til_next) (or predict_next_available)
     return
 
-# evaluateRoster()
+def save_player_list(outname, ap, pp=None):
+    """saves the available and picked player sets with label "outname"."""
+    print 'Saving with label {}.'.format(outname)
+    ap.to_csv(outname+'.csv')
+    if pp is not None:
+        pp.to_csv(outname+'_picked.csv')
+
+def verify_and_quit():
+    user_verify = raw_input('Are you sure you want to quit and lose all progress [y/N]? ')
+    if user_verify.strip() == 'y':
+        print 'Make sure you beat Russell.'
+        exit(0)
+    elif user_verify.lower().strip() == 'n':
+        print 'OK then, will not quit after all.'
+    else:
+        print 'Did not recognize confirmation. Will not quit.'
 
 # note that this class can be used with tab-autocompletion...
 # something to play with in the further future
@@ -237,11 +295,16 @@ class MainPrompt(Cmd):
         self.i_manager_turn = self.i_manager_turn + 1
         if self.i_manager_turn >= len(self.manager_picks):
             print 'Draft is over!'
-            print 'I guess you won\'t get a chance to undo anything now'
+            conf = raw_input('Are you done [y/N]? ')
+            if conf != 'y':
+                print 'Undoing last pick'
+                return self._regress_snake()
             self.draft_mode = False
             i_manager_turn = None
             manager_picks = []
+            print 'You\'re done! Type `evaluate all` to see a summary for each team.'
         self._set_prompt()
+        
 
     def _regress_snake(self):
         """move up one step in the snake draft"""
@@ -259,7 +322,7 @@ class MainPrompt(Cmd):
         """
         if num is None:
             num = self._get_current_manager()
-        return self.manager_names[num] if num in self.manager_names else 'manager {}'.format(num)        
+        return self.manager_names[num] if num in self.manager_names else 'manager {}'.format(num)
         
     def _set_prompt(self):
         if self.draft_mode:
@@ -268,9 +331,9 @@ class MainPrompt(Cmd):
             vols = self.pick_vols(manno)
             
             if self.user_manager is not None and manno == self.user_manager:
-                self.prompt = ' s~({},{})s~  your pick! (VOLS: {}) $$ '.format(self.i_manager_turn+1, manno, vols)
+                self.prompt = ' s~({},{})s~  your pick! (VOLS: {}) $$ '.format(manno, self.i_manager_turn+1, vols)
             else:
-                self.prompt = ' s~({},{})s~  {}\'s pick (VOLS: {}) $$ '.format(self.i_manager_turn+1, manno, managername, vols)
+                self.prompt = ' s~({},{})s~  {}\'s pick (VOLS: {}) $$ '.format(manno, self.i_manager_turn+1, managername, vols)
         else:
             self.prompt = ' $$ '
 
@@ -374,7 +437,8 @@ class MainPrompt(Cmd):
             return
         for i in indices:
             try:
-                pop_from_player_list(i, self.ap, self.pp, manager=manager)
+                pickno = self.i_manager_turn + 1 if self.draft_mode else None
+                pop_from_player_list(i, self.ap, self.pp, manager=manager, pickno=pickno)
                 if self.draft_mode:
                     self._advance_snake()
             except IndexError as e:
@@ -576,6 +640,32 @@ class MainPrompt(Cmd):
                 print 'No players on this team yet.'
         print # newline
 
+    def do_evaluate(self, args):
+        """evaluate one or more rosters"""
+        if not self.draft_mode:
+            print ' roster from selected players:'
+            evaluate_roster(self.pp,
+                            self.n_roster_per_team,
+                            self.flex_pos)
+            return
+        indices = []
+        if not args:
+            indices = [self._get_current_manager()]
+        elif args.lower() == 'all':
+            indices = range(1,self.n_teams+1)
+        else:
+            try:
+                indices = [int(a) for a in args.split(' ')]
+            except ValueError as e:
+                print 'Could not interpret managers to evaluate.'
+                print e
+        for i in indices:
+            print '{}\'s roster:'.format(self._get_manager_name(i))
+            evaluate_roster(self._get_manager_roster(i),
+                            self.n_roster_per_team,
+                            self.flex_pos)
+            
+        
     def do_test_vols(self, args):
         """quick test for pick_vols"""
         manager = self._get_current_manager()
@@ -643,7 +733,7 @@ class MainPrompt(Cmd):
                                      < self.n_roster_per_team[pos]]
             print needed_crap_positions
             topcrap = self.ap[self.ap.position.isin(needed_crap_positions)].sort_values('vols', ascending=False)
-            player = topcrap.iloc[0]
+            player = topcrap.iloc[0] # out of bounds error, could happen if people grab kickers too soon. need to check for it
             print player
             player_index = topcrap.index[0]
             print player_index
@@ -783,18 +873,19 @@ def main():
         availdf.loc[ibnch_mask, 'level'] = 'BU'
 
     # now we've given the backups a class, the worst projection at each position is the worst bench value.
-    # we will define this as the VORP (value over replacement player)
+    # we will define this as the VOLB (value over replacement player)
     # this is also a static calculation right now, but in principle it could be dynamically updated like VOLS. this might be a lot of re-computation and/or more complicated code.
     # doing this here instead of trying to grab the value from the loop above is less-than-optimized, but is more vulnerable to programmer error and edge cases.
     draftable_mask = availdf.level.notnull()
     draftable_df = availdf.loc[draftable_mask]
     for pos in main_positions:
         worst_draftable_value = draftable_df[draftable_df.position == pos]['projection'].min()
-        availdf.loc[availdf.position == pos, 'vorp'] = availdf['projection'] - worst_draftable_value
+        availdf.loc[availdf.position == pos, 'volb'] = availdf['projection'] - worst_draftable_value
 
     ## now label remaining players as waiver wire material
     availdf.loc[availdf.level.isnull(), 'level'] = 'WAIV'
-    
+
+    ## TODO: should think about defining an additional, dynamic quantity which interpolates somehow between VOLS and VOLB as the draft goes on. call this VORP?
 
     ## finally sort by our stat of choice for display
     availdf = availdf.sort_values('vols', ascending=False)
@@ -822,22 +913,6 @@ def main():
         save_player_list(backup_fname, prompt.ap, prompt.pp)
         raise
         
-    # # should this be used for bench distribution?
-    # # 13 games in regular FF season
-    # bye_factor = 1.0/13
-    # # this is the approximate fraction of the time that each position spends on the field.
-    # # this should be useful for analyzing bench value.
-    # # from sportinjurypredictor.net, based on average games missed assuming 17 game season
-    # # obviously rough, but captures trend and follows intuition
-    # pos_injury_factor = {
-    #     'QB':0.94,
-    #     'RB':0.85,
-    #     'WR':0.89,
-    #     'TE':0.89,
-    #     'DST':1.0,
-    #     'K':1.0 # place kickers are rarely injured. whatever injury factor they have will be overshadowed by their bye week.
-    # }
-    # ## The above block of code is useless right here right now. It should be used in a function that both evaluates starting projections and guesses bench value.
         
 if __name__ == '__main__':
     main()
