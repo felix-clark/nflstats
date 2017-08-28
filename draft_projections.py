@@ -201,15 +201,20 @@ def print_teams(ap, pp):
     print teams.sort_values().unique()
 
 # this method will be our main output
-def print_top_choices(df, ntop=10, npos=3):
-    print '   DRAFT BOARD   '.center( 80, '*')
+def print_top_choices(df, ntop=10, npos=3, drop_stats=None, hide_pos=None):
+    print '   DRAFT BOARD   '.center( pd.options.display.width, '*')
+    if drop_stats is None:
+        drop_stats = []
+    if hide_pos is None:
+        hide_pos = []
     with pd.option_context('display.max_rows', None):
-        print df.drop('volb', inplace=False, axis=1).head(ntop) # rn volb is showing but at the moment it's inconvenient
+        print df[~df.position.isin(hide_pos)].drop(drop_stats, inplace=False, axis=1).head(ntop)
     if npos > 0:
-        # ... let's just leave out the kickers, they can be requested specifically with e.g. lspos k
-        main_positions = ['QB', 'RB', 'WR', 'TE']
-        for pos in main_positions:
-            print df[df.position == pos].drop('volb', inplace=False, axis=1).head(npos)
+        positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+        for pos in positions:
+            if pos in hide_pos:
+                continue
+            print df[df.position == pos].drop(drop_stats, inplace=False, axis=1).head(npos)
 
 def print_top_position(df, pos, ntop=24):
     """prints the top `ntop` players in the position in dataframe df"""
@@ -290,6 +295,9 @@ class MainPrompt(Cmd):
 
     flex_pos = ['RB', 'WR', 'TE']
 
+    hide_pos = ['K', 'DST']
+    hide_stats = ['volb']
+    
     # member variables for DRAFT MODE !!!
     draft_mode = False
     i_manager_turn = None
@@ -407,9 +415,6 @@ class MainPrompt(Cmd):
             # if any managers picked waiver-level players, then we can shed
             #  the next-worst bench player from our calculations
             # we can still shed all WAIV players since this case raises the value of the threshold
-            # list of possible baseline players -- they will mostly be in the bench.
-            # in theory the first baseline should be the -worst- starter, not a bench player
-            # but that's a small correction to implement later
             pos_draftable = self.ap[(self.ap.position == pos) & (self.ap.level != 'WAIV')]
             n_pos_draftable = len(pos_draftable.index) - n_waiv_picked
             vorp_baseline = 0
@@ -418,7 +423,15 @@ class MainPrompt(Cmd):
                 vorp_baseline = self.ap[self.ap.position == pos]['projection'].max()
             else:
                 frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
-                pos_baseline = pos_draftable[pos_draftable.level == 'BU']
+                backup_mask = pos_draftable['level'] == 'BU'
+                # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
+                worst_starters = pos_draftable[pos_draftable['level'] != 'BU'].sort_values('projection', ascending=True)
+                ls_index = None
+                if len(worst_starters) >= 0:
+                    ls_index = worst_starters.index[0]
+                ls_mask = pos_draftable.index == ls_index
+                draftable_mask = backup_mask | ls_mask
+                pos_baseline = pos_draftable[draftable_mask]
                 n_pos_baseline = len(pos_baseline.index)
                 if n_pos_baseline == 0:
                     # this can happen, e.g. with kickers who have no "backup" level players
@@ -482,6 +495,21 @@ class MainPrompt(Cmd):
         for i in indices:
             find_handcuff(i, self.ap, self.pp)
 
+    def do_hide(self, args):
+        """hide a position or statistic from view"""
+        for arg in args.split(' '):
+            if arg.lower() in self.ap:
+                print 'Hiding {}.'.format(arg.lower())
+                self.hide_stats.append(arg.lower())
+            elif arg.upper() in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
+                print 'Hiding {}s.'.format(arg.upper())
+                self.hide_pos.append(arg.upper())
+            else:
+                print 'Could not interpret command to hide {}.'.format(arg)
+                print 'Available options are in:'
+                print 'QB, RB, WR, TE, K, DST'
+                print self.ap.columns
+
     def do_list(self, args):
         """alias for `ls`"""
         self.do_ls(args)
@@ -513,7 +541,7 @@ class MainPrompt(Cmd):
             print '`ls` requires integer arguments.'
             print e
         self._update_vorp()
-        print_top_choices(self.ap, ntop, npos)
+        print_top_choices(self.ap, ntop, npos, self.hide_stats, self.hide_pos)
 
     def do_lspick(self, args):
         """prints summary of players that have already been picked"""
@@ -713,6 +741,21 @@ class MainPrompt(Cmd):
         outname = args if args else 'draft_players'
         save_player_list(outname, self.ap, self.pp)
 
+    def do_show(self, args):
+        """show a position or statistic that has been hidden"""
+        for arg in args.split(' '):
+            if arg.lower() in self.hide_stats:
+                print 'Showing {}.'.format(arg.lower())
+                self.hide_stats.remove(arg.lower())
+            elif arg.upper() in self.hide_pos:
+                print 'Showing {}.'.format(arg.upper())
+                self.hide_pos.remove(arg.upper())
+            else:
+                print 'Could not interpret command to show {}.'.format(arg)
+                print 'Available options are in:'
+                print self.hide_stats
+                print self.hide_pos
+
     def do_snake(self, args):
         """
         usage: snake [N]
@@ -799,10 +842,10 @@ class MainPrompt(Cmd):
         manager = self._get_current_manager()
         pick = self.pick_rec(manager, 'vols')
         player = self.ap.loc[pick]
-        print ' VOLS recommended: {} ({}) - {}'.format(player['name'], player.team, player.position)
+        print ' VOLS recommended: {}\t{} ({}) - {}'.format(pick, player['name'], player.team, player.position)
         pick = self.pick_rec(manager, 'vorp')
         player = self.ap.loc[pick]
-        print ' VORP recommended: {} ({}) - {}'.format(player['name'], player.team, player.position)
+        print ' VORP recommended: {}\t{} ({}) - {}'.format(pick, player['name'], player.team, player.position)
                 
     def pick_rec(self, manager, strat='vols'):
         """
@@ -839,6 +882,7 @@ class MainPrompt(Cmd):
                                              if len(roster[roster.position == pos])
                                              < self.n_roster_per_team[pos]
                                              + flex_mult*self.n_roster_per_team['FLEX']])
+        ## TODO: if picked for a flex spot, they should be evaluated by a separate VOLS/VORP for FLEX (?) -- otherwise e.g. TEs get recommended for flex too often
 
         current_roster_size = len(roster)
         acceptable_positions = []
@@ -868,7 +912,7 @@ class MainPrompt(Cmd):
         #     print 'roster is overfull.'
         #     acceptable_positions = key_positions
         if strat == 'vorp':
-            self._update_vorp() # just make sure
+            self._update_vorp() # just make sure we're using the right value
         toppicks = self.ap[self.ap.position.isin(acceptable_positions)].sort_values(strat, ascending=False)
         if len(toppicks) <= 0:
             print 'error: no available players in any position in {}'.format(acceptable_positions)
@@ -1035,6 +1079,10 @@ def main():
     # In the latter case we'd need to explicitly exclude it from print statements.
     pickdf = pd.DataFrame(columns=availdf.columns)
 
+    # set some pandas display options
+    pd.options.display.precision = 4 # default is 6
+    pd.options.display.width = 96 # default is 80
+    
     prompt = MainPrompt()
     prompt.ap = availdf
     prompt.pp = pickdf
