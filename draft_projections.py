@@ -278,16 +278,17 @@ def push_to_player_list(index, ap, pp):
 
 # maybe not necessary rn
 # could give it to AI managers as alternative strategy
-# def pick_vona(ap, pp, coach, coaches_til_next):
+# def pick_vona(ap, pp, manager, coaches_til_next):
 #     #TODO
 #     return
 
 # instead of passing managers_til_next, could pass "forward" or "backward"
-def print_vona(ap, pp, manager, managers_til_next):
-    """prints VONA at each position, assuming each manager picks with VOLS"""
+def print_vona(ap, pp, manager, managers_til_next, strat='vorp'):
+    """prints VONA at each position, assuming each manager picks with strat"""
     # TODO
     # need a function that walks through and predicts other managers' picks:
     # predict_next_board(ap, pp, manager, managers_til_next) (or predict_next_available)
+    
     return
 
 def save_player_list(outname, ap, pp=None):
@@ -427,12 +428,14 @@ class MainPrompt(Cmd):
         else:
             self.prompt = ' $$ '
 
-    def _get_manager_roster(self, manager):
+    def _get_manager_roster(self, manager, pp=None):
         """returns dataframe of manager's roster"""
         # this will return a small copy w/ the manager index removed
-        if len(self.pp) == 0:
-            return self.pp # there isn't anything in here yet, and we haven't added the "manager" branch
-        return self.pp[self.pp.manager == manager].drop('manager', inplace=False, axis=1)
+        if pp is None:
+            pp = self.pp
+        if len(pp) == 0:
+            return pp # there isn't anything in here yet, and we haven't added the "manager" branch
+        return pp[pp.manager == manager].drop('manager', inplace=False, axis=1)
 
     def _update_vorp(self):
         """
@@ -757,12 +760,27 @@ class MainPrompt(Cmd):
         else:
             return [name for name in mod_avail_names]
 
-    def pick_rec(self, manager, strat='vols'):
+    # define this here for ease and move it later
+    def _step_vona(ap, pp,# manager, # should be able to get current manager
+                  managers_til_next, strat='adp'):
+        if not managers_til_next:
+            return (ap, pp)
+        manager = managers_til_next[0]
+        pickidx = self.pick_rec(, manager, strat=strat, ap=ap, pp=pp)
+        # COME HERE
+
+
+        
+    def pick_rec(self, manager, strat='vols', ap=None, pp=None):
         """
         picks the recommended player with the highest strat value 
         returns the index of that player? (should be able to get everything else from self.ap.loc[index])
         """
-        roster = self._get_manager_roster(manager)
+        if ap is None:
+            ap = self.ap
+        if pp is None:
+            pp = self.pp
+        roster = self._get_manager_roster(manager, pp)
         total_roster_spots = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
         if len(roster) >= total_roster_spots:
             manname = self._get_manager_name()
@@ -855,7 +873,7 @@ class MainPrompt(Cmd):
         for strat in self._known_strategies:
             pick = self.pick_rec(manager, strat)
             player = self.ap.loc[pick]
-            print ' {} recommended: {}\t{} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
+            print ' {} recommended:\t{}\t{} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
                 
     def do_roster(self, args):
         """
@@ -874,7 +892,7 @@ class MainPrompt(Cmd):
                 print '\n {}:'.format(manname)
                 theroster = self._get_manager_roster(i_man)
                 if len(theroster) > 0:
-                    print theroster
+                    print theroster.drop(self.hide_stats, axis=1)
                 else:
                     print 'No players on this team yet.\n'
             print
@@ -883,7 +901,7 @@ class MainPrompt(Cmd):
             print '\n {}:'.format( self._get_manager_name() )
             theroster = self._get_manager_roster(self._get_current_manager())
             if len(theroster) > 0:
-                print theroster
+                print theroster.drop(self.hide_stats, axis=1)
                 print
             else:
                 print 'No players on this team yet.\n'
@@ -918,7 +936,10 @@ class MainPrompt(Cmd):
         usage: show ITEM...
         show a position or statistic that has been hidden
         """
-        if arg
+        if args.strip().lower() == 'all':
+            print 'Showing all.'
+            self.hide_stats = []
+            self.hide_pos = []
         for arg in args.split(' '):
             if arg.lower() in self.hide_stats:
                 print 'Showing {}.'.format(arg.lower())
@@ -1045,6 +1066,7 @@ class MainPrompt(Cmd):
         strat = args.strip().lower() if args else None
         if strat not in self._known_strategies:
             print 'Strategy not recognized - cannot calculate VONA.'
+        
         return
 
                 
