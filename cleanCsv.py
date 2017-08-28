@@ -3,12 +3,15 @@ import argparse
 
 def getElems(line):
     # remove '"' and whitespace from each end of every element
-    splitline = (line.strip(' \n\r"').split('","'))
+    # splitline = (line.strip(' \n\r"').split('","'))
+    splitline = line.split('","')
     # remove commas which are placed into strings representing 4+ digit numbers
-    return [e.replace(',','') for e in splitline]
+    number_commas_removed = [e.replace(',','').strip(' \n\r"') for e in splitline]
+    return number_commas_removed
 
 def replaceTitleLine(line):
     """change names from those used online to those used in our code (e.g. 'INTS' to 'passing_ints')"""
+    # check https://github.com/BurntSushi/nfldb/wiki/The-data-model for list of full possible stats
     line = line.replace('"Player"', 'name')
     line = line.replace('"Team"', 'team')
     # the QB pattern is unambiguous, with CMP and INTS
@@ -19,10 +22,19 @@ def replaceTitleLine(line):
     line = line.replace('"ATT","YDS","TDS"', 'rushing_att,rushing_yds,rushing_tds')
     # then kickers
     line = line.replace('"FG","FGA","XPT"', 'kicking_fgm,kicking_fga,kicking_xpmade')
-    # at some point we'll add defense. if we even care about checking those stats. probably not.
     line = line.replace('"FL"', 'fumbles_lost')
+    # defense stats
+    line = line.replace('"SACK","INT","FR","FF","TD","ASSIST","SAFETY","PA","YDS_AGN",',
+                        'defense_sk,defense_int,defense_frec,defense_ffum,defense_tds,defense_ast,defense_safe,defense_pa,defense_lost_yds,')
     # more of a stylistic choice to replace this
     line = line.replace('"FPTS"', 'fp_projection')
+
+    # add options for ECP files (which include ADP). We'll use the half-PPR rankings.
+    line = line.replace('"Rank"', 'rank')
+    line = line.replace('"Bye"', 'bye')
+    line = line.replace('"Pos"', 'position')
+    line = line.replace('"Best","Worst","Avg","Std Dev","ADP","vs. ADP"', 'best,worst,ecp,ecp_std_dev,adp,ecp_vs_adp')
+
     return line
     
 if __name__=='__main__':
