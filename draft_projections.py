@@ -445,7 +445,12 @@ class MainPrompt(Cmd):
             self.ap.loc[self.ap.position == pos, 'vorp'] = self.ap['projection'] - vorp_baseline
 
     def do_evaluate(self, args):
-        """evaluate one or more rosters"""
+        """
+        usage: evaluate [MAN]...
+        evaluate one or more rosters
+        if no argument is provided, the current manager's roster is shown
+        type `evaluate all` to evaluate rosters of all managers
+        """
         if 'manager' not in self.pp:
             print 'roster from selected players:'
             evaluate_roster(self.pp,
@@ -496,7 +501,10 @@ class MainPrompt(Cmd):
             find_handcuff(i, self.ap, self.pp)
 
     def do_hide(self, args):
-        """hide a position or statistic from view"""
+        """
+        usage: hide ITEM...
+        hide a position or statistic from view
+        """
         for arg in args.split(' '):
             if arg.lower() in self.ap:
                 print 'Hiding {}.'.format(arg.lower())
@@ -658,9 +666,17 @@ class MainPrompt(Cmd):
             if index is None:
                 index = int(args) 
         except ValueError as e:
-            ## todo: find player by name
-            print '`pick` requires an integer index.'
-            print e
+            criterion = self.ap['name'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
+            filtered = self.ap[criterion]
+            if len(filtered) <= 0:
+                print 'Could not find available player with name {}.'.format(args)
+                return
+            if len(filtered) > 1:
+                print 'Found multiple players:'
+                print filtered
+                return
+            assert(len(filtered) == 1)
+            index = filtered.index[0]
         try:
             pickno = self.i_manager_turn + 1 if self.draft_mode else None
             pop_from_player_list(index, self.ap, self.pp, manager=manager, pickno=pickno)
@@ -670,10 +686,27 @@ class MainPrompt(Cmd):
         except IndexError as e:
             print e
             print 'could not pick player from list.'
+    def complete_pick(self, text, line, begidk, endidx):
+        """implements auto-complete for player names"""
+        avail_names = self.ap['name']
+        # TODO: make it look a bit prettier by allowing spaces instead of underscores.
+        # see: https://stackoverflow.com/questions/4001708/change-how-python-cmd-module-handles-autocompletion
+        # clean up the list a bit, removing ' characters and replacing spaces with underscores
+        mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
+                           for name in avail_names]
+        if text:
+            return [name for name in mod_avail_names
+                    if name.startswith(text.lower())]
+        else:
+            return [name for name in mod_avail_names]
 
-    def do_pop(self, args):
-        """alias for `pick`"""
-        self.do_pick(args)
+    # autocomplete doesn't seem to work for complete_pop, so let's just disable this alias
+    # for now anyway
+    # def do_pop(self, args):
+    #     """alias for `pick`"""
+    #     self.do_pick(args)
+    # def complete_pop(self, text, line, begidk, endidk):
+    #     return self.complete_pick(text, line, begidk, endidx)
 
     def do_q(self, args):
         """alias for `quit`"""
@@ -742,7 +775,10 @@ class MainPrompt(Cmd):
         save_player_list(outname, self.ap, self.pp)
 
     def do_show(self, args):
-        """show a position or statistic that has been hidden"""
+        """
+        usage: show ITEM...
+        show a position or statistic that has been hidden
+        """
         for arg in args.split(' '):
             if arg.lower() in self.hide_stats:
                 print 'Showing {}.'.format(arg.lower())
@@ -828,9 +864,9 @@ class MainPrompt(Cmd):
         else:
             print 'No players have been picked.'
 
-    def do_unpop(self, args):
-        """alias for unpick"""
-        self.do_unpick(args)
+    # def do_unpop(self, args):
+    #     """alias for unpick"""
+    #     self.do_unpick(args)
 
     def do_vona(self, args):
         """print out VONA for each position, probably assuming VORP strategy for others"""
