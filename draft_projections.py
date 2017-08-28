@@ -29,7 +29,7 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     
     starterval, benchval = 0, 0
     i_st = [] # the indices of the players we have counted so far
-    for pos in ['QB', 'RB', 'WR', 'TE', 'K']:
+    for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
         n_starters = n_roster_per_team[pos]
         rospos = rosdf[rosdf.position == pos].sort_values('projection', ascending=False)
         i_stpos = rospos.index[:n_starters]
@@ -188,9 +188,8 @@ def print_picked_players(df):
             ## TODO: we can probably still stand to improve this output:'
             print df.drop([col for col in ['manager', 'pick'] if col in df], axis=1)
         print '\nPlayers picked by position:'
-        # TODO: minor annoyance... this prints out an additional line with the Name and dtype.
-        # would be ideal to remove it.
-        print df.position.value_counts()
+        # to_string() suppresses the last line w/ "name" and "dtype" output
+        print (df.position.value_counts().to_string())
 
 def print_teams(ap, pp):
     """
@@ -427,7 +426,7 @@ class MainPrompt(Cmd):
                 # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
                 worst_starters = pos_draftable[pos_draftable['level'] != 'BU'].sort_values('projection', ascending=True)
                 ls_index = None
-                if len(worst_starters) >= 0:
+                if len(worst_starters) > 0:
                     ls_index = worst_starters.index[0]
                 ls_mask = pos_draftable.index == ls_index
                 draftable_mask = backup_mask | ls_mask
@@ -631,7 +630,7 @@ class MainPrompt(Cmd):
                 if hasleft > 0:
                     print '{}: {}'.format(pos, hasleft)
                     pos_totals[pos] = pos_totals[pos] + hasleft
-            flexused = sum([min(0, len(roster[roster.position == pos])
+            flexused = sum([max(0, len(roster[roster.position == pos])
                             - self.n_roster_per_team[pos])
                             for pos in self.flex_pos])
             flexleft = self.n_roster_per_team['FLEX'] - flexused
@@ -898,7 +897,7 @@ class MainPrompt(Cmd):
         starting_roster_spots = sum([self.n_roster_per_team[pos]
                                      for pos in self.n_roster_per_team
                                      if pos.upper() is not 'BENCH'])
-        crap_positions = ['K'] # add DST when (or if) we bother
+        crap_positions = ['K', 'DST'] # add DST when (or if) we bother
         crap_starting_roster_spots = sum([self.n_roster_per_team[pos] for pos in crap_positions])
         # key_starting_roster_spots = starting_roster_spots - crap_starting_roster_spots
 
@@ -984,8 +983,7 @@ def main():
         'WR':args.n_wr,
         'TE':args.n_te,
         'FLEX':args.n_flex,
-        # ignoring defense for the draft
-        #'DST':args.n_dst,
+        'DST':args.n_dst,
         'K':args.n_k,
         'BENCH':args.n_bench
     }
@@ -1016,13 +1014,13 @@ def main():
         rosterstr += ' {}{} /'.format(nper, pos)
     print rosterstr[:-2]
     
-    main_positions = ['QB', 'RB', 'WR', 'TE', 'K']
+    main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
 
     posdfs = []
     for pos in main_positions:
         # TODO: don't hardcode in the source file names.
         # TODO: better yet, use e.g. Beautiful Soup to grab the latest projections from the web.
-        filename = 'preseason_rankings/project_fp_{}s_pre2017.csv'.format(pos.lower())
+        filename = 'preseason_rankings/project_fp_{}_pre2017.csv'.format(pos.lower())
         posdf = pd.read_csv(filename)
         ## TODO (low priority): try using a multi-indexed dataframe instead of decorating every entry with the position?
         posdf['position'] = pos
@@ -1043,7 +1041,9 @@ def main():
             print '{} already in data frame!'.format(st)
 
     # decorate the dataframe with projections for our ruleset
-    availdf['projection'] = get_points_from_data_frame(rules, availdf)
+    availdf.loc[availdf.position != 'DST', 'projection'] = get_points_from_data_frame(rules, availdf)
+    # for DST, just take the FP projection.
+    availdf.loc[availdf.position == 'DST', 'projection'] = availdf['fp_projection']
     # can go ahead and filter out stats once we have projections
     availdf = availdf[['name', 'team', 'position', 'projection']]    
 
