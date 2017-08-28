@@ -135,6 +135,22 @@ def find_player(search_words, ap, pp):
         print '\n  Available players:'
         print filtered_ap
 
+def get_team_abbrev(full_team_name, team_abbrevs):
+    up_name = full_team_name.upper()
+    for ta in team_abbrevs:
+        un_split = up_name.split(' ')
+        # these are typically the first letter of the 1st two words:
+        # e.g. KC, TB, NE, ...
+        # can also be 1st letter of 3 words: LAR, LAC, ...
+        if ''.join([w[0] for w in un_split[:len(ta)]]) == ta:
+            # print full_team_name, ta
+            return ta
+        # the other class is the 1st 3 letters of the city
+        if up_name[:3] == ta:
+            # print full_team_name, ta
+            return ta
+    print 'error: could not find abbreviation for {}'.format(full_team_name)
+    
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
     print 'Loading with label {}.'.format(outname)
@@ -209,10 +225,9 @@ def print_top_choices(df, ntop=10, npos=3, drop_stats=None, hide_pos=None):
     with pd.option_context('display.max_rows', None):
         print df[~df.position.isin(hide_pos)].drop(drop_stats, inplace=False, axis=1).head(ntop)
     if npos > 0:
-        positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+        positions = [pos for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST'] if pos not in hide_pos]
+        # print df[df.position.isin(positions)].groupby('position')# .agg({'projection':sum}).nlargest(npos) # can't figure out groupby right now -- might tidy up the output
         for pos in positions:
-            if pos in hide_pos:
-                continue
             print df[df.position == pos].drop(drop_stats, inplace=False, axis=1).head(npos)
 
 def print_top_position(df, pos, ntop=24):
@@ -410,11 +425,11 @@ class MainPrompt(Cmd):
             
             pos_picked = self.pp[self.pp.position == pos]
             n_pos_picked = len(pos_picked.index)
-            n_waiv_picked = len(pos_picked[pos_picked.level == 'WAIV'].index)
-            # if any managers picked waiver-level players, then we can shed
+            n_waiv_picked = len(pos_picked[pos_picked.tier == 'WAIV'].index)
+            # if any managers picked waiver-tier players, then we can shed
             #  the next-worst bench player from our calculations
             # we can still shed all WAIV players since this case raises the value of the threshold
-            pos_draftable = self.ap[(self.ap.position == pos) & (self.ap.level != 'WAIV')]
+            pos_draftable = self.ap[(self.ap.position == pos) & (self.ap.tier != 'WAIV')]
             n_pos_draftable = len(pos_draftable.index) - n_waiv_picked
             vorp_baseline = 0
             if n_pos_draftable <= 0:
@@ -422,9 +437,9 @@ class MainPrompt(Cmd):
                 vorp_baseline = self.ap[self.ap.position == pos]['projection'].max()
             else:
                 frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
-                backup_mask = pos_draftable['level'] == 'BU'
+                backup_mask = pos_draftable['tier'] == 'BU'
                 # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
-                worst_starters = pos_draftable[pos_draftable['level'] != 'BU'].sort_values('projection', ascending=True)
+                worst_starters = pos_draftable[pos_draftable['tier'] != 'BU'].sort_values('projection', ascending=True)
                 ls_index = None
                 if len(worst_starters) > 0:
                     ls_index = worst_starters.index[0]
@@ -433,7 +448,7 @@ class MainPrompt(Cmd):
                 pos_baseline = pos_draftable[draftable_mask]
                 n_pos_baseline = len(pos_baseline.index)
                 if n_pos_baseline == 0:
-                    # this can happen, e.g. with kickers who have no "backup" level players
+                    # this can happen, e.g. with kickers who have no "backup" tier players
                     self.ap.loc[self.ap.position == pos, 'vorp'] = self.ap['vols']
                     continue
                 index = int(frac_through_bench * n_pos_baseline)
@@ -506,8 +521,11 @@ class MainPrompt(Cmd):
         """
         for arg in args.split(' '):
             if arg.lower() in self.ap:
-                print 'Hiding {}.'.format(arg.lower())
-                self.hide_stats.append(arg.lower())
+                if arg.lower() not in self.hide_stats:
+                    print 'Hiding {}.'.format(arg.lower())
+                    self.hide_stats.append(arg.lower())
+                else:
+                    print '{} is already hidden.'.format(arg)
             elif arg.upper() in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
                 print 'Hiding {}s.'.format(arg.upper())
                 self.hide_pos.append(arg.upper())
@@ -516,6 +534,17 @@ class MainPrompt(Cmd):
                 print 'Available options are in:'
                 print 'QB, RB, WR, TE, K, DST'
                 print self.ap.columns
+    def complete_hide(self, text, line, begidk, endidx):
+        """implements auto-complete for hide function"""
+        all_pos = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+        avail_hide_pos = [pos for pos in all_pos if pos not in self.hide_pos]
+        avail_hide_stat = [stat for stat in self.ap.columns if stat not in self.hide_stats]
+        avail_hides = avail_hide_pos + avail_hide_stat
+        if text:
+            return [name.lower() for name in avail_hides
+                    if name.startswith(text.lower())]
+        else:
+            return [name.lower() for name in avail_hides]
 
     def do_list(self, args):
         """alias for `ls`"""
@@ -790,6 +819,14 @@ class MainPrompt(Cmd):
                 print 'Available options are in:'
                 print self.hide_stats
                 print self.hide_pos
+    def complete_show(self, text, line, begidk, endidx):
+        """implements auto-complete for show function"""
+        avail_shows = [name.lower() for name in self.hide_pos + self.hide_stats]
+        if text:
+            return [name for name in avail_shows
+                    if name.startswith(text.lower())]
+        else:
+            return [name for name in avail_shows]
 
     def do_snake(self, args):
         """
@@ -1027,7 +1064,13 @@ def main():
         posdfs.append(posdf)
     # create dataframe of all available players
     availdf = pd.concat(posdfs, ignore_index=True)
+
+    # add the team acronym to the DST entries for consistency/elegance
+    teamlist = availdf[~availdf.team.isnull()]['team'].sort_values().unique()
+    availdf.loc[availdf.position == 'DST','team'] = availdf.loc[availdf.position == 'DST','name'].map(lambda n: get_team_abbrev(n, teamlist))
+    
     # if they have no stats listed (NaN) we can treat that as a zero
+    # this should be called before ADP is added, since it has some missing values.
     availdf.fillna(0, inplace=True)
 
     # fill in zeros for the additional stats that aren't included in FP projections
@@ -1055,13 +1098,13 @@ def main():
             ia, ib = i_class*n_teams, (i_class+1)*n_teams
             itoppos = availpos.index[ia:ib]
             icls = availdf.index.isin(itoppos)
-            availdf.loc[icls, 'level'] = '{}{}'.format(pos, i_class+1)
-    availflex = availdf.loc[(availdf.position.isin(flex_pos)) & (availdf['level'].isnull()), :].sort_values('projection', ascending=False)
+            availdf.loc[icls, 'tier'] = '{}{}'.format(pos, i_class+1)
+    availflex = availdf.loc[(availdf.position.isin(flex_pos)) & (availdf['tier'].isnull()), :].sort_values('projection', ascending=False)
     for i_class in range(n_roster_per_team['FLEX']):
         ia, ib = i_class*n_teams, (i_class+1)*n_teams
         itoppos = availflex.index[ia:ib]
         icls = availdf.index.isin(itoppos)
-        availdf.loc[icls, 'level'] = 'FLEX{}'.format(i_class+1)
+        availdf.loc[icls, 'tier'] = 'FLEX{}'.format(i_class+1)
 
     # players that have been assigned a class so far are starters
     # use this to find the worst value of each starter and subtract it
@@ -1069,7 +1112,7 @@ def main():
     # this is just a static calculation right now.
     # in the future we could adjust this for draft position and dynamically
     #  update in the case of other teams making "mistakes".
-    starter_mask = availdf['level'].notnull()
+    starter_mask = availdf['tier'].notnull()
     starterdf = availdf.loc[starter_mask]
     for pos in main_positions:
         worst_starter_value = starterdf[starterdf.position == pos]['projection'].min()
@@ -1079,7 +1122,7 @@ def main():
     total_bench_positions = n_roster_per_league['BENCH']
     nonsuck_pos = ['QB', 'RB', 'WR', 'TE']
     total_nonsuck_positions = sum([n_roster_per_team[pos] for pos in nonsuck_pos])
-    nonstarter_mask = availdf.level.isnull()
+    nonstarter_mask = availdf.tier.isnull()
     nonstarterdf = availdf.loc[nonstarter_mask]
     for pos in nonsuck_pos:
         # a totally-not-rigorous estimate how how many bench spots will be taken up by each position.
@@ -1088,30 +1131,28 @@ def main():
         pos_nsdf = nonstarterdf.loc[nonstarterdf.position == pos].sort_values('projection', ascending=False)
         ipos = pos_nsdf.index[:n_pos_bench]
         ibnch_mask = availdf.index.isin(ipos)
-        availdf.loc[ibnch_mask, 'level'] = 'BU'
+        availdf.loc[ibnch_mask, 'tier'] = 'BU'
 
     # now we've given the backups a class, the worst projection at each position is the worst bench value.
     # we will define this as the VOLB (value over replacement player)
     # this is also a static calculation right now, but in principle it could be dynamically updated like VOLS. this might be a lot of re-computation and/or more complicated code.
     # doing this here instead of trying to grab the value from the loop above is less-than-optimized, but is more vulnerable to programmer error and edge cases.
-    # TODO: we probably shouldn't even bother saving VOLB once we have VORP, which is a dynamic version. should be less noisy.
-    draftable_mask = availdf.level.notnull()
+    # TODO: we possibly shouldn't even bother saving VOLB once validate VORP, which is a dynamic version. should be less noisy.
+    draftable_mask = availdf.tier.notnull()
     draftable_df = availdf.loc[draftable_mask]
     for pos in main_positions:
         worst_draftable_value = draftable_df[draftable_df.position == pos]['projection'].min()
         availdf.loc[availdf.position == pos, 'volb'] = availdf['projection'] - worst_draftable_value
 
     ## now label remaining players as waiver wire material
-    availdf.loc[availdf.level.isnull(), 'level'] = 'WAIV'
-
-    ## TODO: should think about defining an additional, dynamic quantity which interpolates somehow between VOLS and VOLB as the draft goes on. call this VORP?
+    availdf.loc[availdf.tier.isnull(), 'tier'] = 'WAIV'
 
     ## finally sort by our stat of choice for display
     availdf = availdf.sort_values('vols', ascending=False)
     availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by vols
     
     # make an empty dataframe with these reduces columns to store the picked players
-    # this might be better as another level index in the dataframe, or simply as an additional variable in the dataframe.
+    # this might be better as another level of index in the dataframe, or simply as an additional variable in the dataframe.
     # In the latter case we'd need to explicitly exclude it from print statements.
     pickdf = pd.DataFrame(columns=availdf.columns)
 
