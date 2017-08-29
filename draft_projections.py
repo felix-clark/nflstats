@@ -1,13 +1,13 @@
 #!/usr/bin/python
-# import numpy as np
+import numpy as np
 import sys
 import os.path
 import argparse
+import random
+from itertools import takewhile
 from cmd import Cmd
-# from itertools import takewhile
 import pandas as pd
 
-# from draftStrategies import *
 from getPoints import get_points_from_data_frame
 from ruleset import bro_league, phys_league, dude_league
 
@@ -171,6 +171,21 @@ def load_player_list(outname):
         print 'Could not find file {}_picked.csv!'.format(outname)
     return ap, pp
 
+def get_k_partition_boundaries(data, k):
+    if k >= len(data):
+        print 'error: need k less than the size of the data'
+        return None
+    sortdata = np.sort(data)
+    # gaps is an array of size N-1 listing
+    gaps = np.array(sortdata[1:]) - np.array(sortdata[:-1])
+    # part_idsx are the indices of the k largest gaps
+    part_idxs = np.argpartition(gaps, k)[-k:] # [::-1] # don't think we really need to re-order these
+    # define the boundaries as the means
+    part_boundaries = [0.5*(sortdata[i] + sortdata[i+1]) for i in part_idxs]
+    return np.sort(part_boundaries)
+    
+    
+
 def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
     """
     index: index of player to be removed from available
@@ -330,7 +345,7 @@ class MainPrompt(Cmd):
     hide_pos = ['K', 'DST']
     hide_stats = ['volb']
 
-    _known_strategies = ['vols', 'vorp', 'adp', 'ecp']
+    _known_strategies = ['vols', 'volb', 'vorp', 'adp', 'ecp']
     
     # member variables for DRAFT MODE !!!
     draft_mode = False
@@ -526,11 +541,31 @@ class MainPrompt(Cmd):
             except ValueError as e:
                 print 'Could not interpret managers to evaluate.'
                 print e
+        manager_vals = {}
         for i in indices:
             print '{}\'s roster:'.format(self._get_manager_name(i))
-            evaluate_roster(self._get_manager_roster(i),
-                            self.n_roster_per_team,
-                            self.flex_pos)
+            stval, benchval = evaluate_roster(self._get_manager_roster(i),
+                                              self.n_roster_per_team,
+                                              self.flex_pos)
+            manager_vals[i] = stval + benchval
+
+        if len(indices) > 3:
+            k = int(np.ceil(np.sqrt(1 + len(indices))))
+            totvals = np.array(manager_vals.values())        
+            partitions = get_k_partition_boundaries(totvals, k-1)[::-1]
+            tier = 0
+            sorted_manager_vals = sorted(manager_vals.items(), key=lambda tup: tup[1], reverse=True)
+            while len(sorted_manager_vals) > 0:
+                tier = tier + 1
+                print 'Tier {}:'.format(tier)
+                part_bound = partitions[0] if len(partitions) > 0 else -np.inf
+                tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
+                for manager,manval in tiermans:
+                    # print '  {}: \t{}'.format(self._get_manager_name(manager), int(manval))
+                    print '  {}'.format(self._get_manager_name(manager))
+                print
+                sorted_manager_vals = sorted_manager_vals[len(tiermans):]
+                partitions = partitions[1:]
             
     def do_exit(self, args):
         """alias for `quit`"""
@@ -777,14 +812,17 @@ class MainPrompt(Cmd):
         total_roster_spots = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
         if len(roster) >= total_roster_spots:
             manname = self._get_manager_name()
-            print '{}\'s roster has no available spots left'.format(manname)
+            # print '{}\'s roster has no available spots left'.format(manname)
             # return None # don't return, we can still form a recommendation
         
-        # starting_roster_spots = sum([self.n_roster_per_team[pos]
-        #                              for pos in self.n_roster_per_team
-        #                              if pos.upper() is not 'BENCH'])
+        starting_roster_spots = sum([self.n_roster_per_team[pos]
+                                     for pos in self.n_roster_per_team
+                                     if pos.upper() is not 'BENCH'])
         crap_positions = ['K', 'DST'] # add DST when (or if) we bother
         # crap_starting_roster_spots = sum([self.n_roster_per_team[pos] for pos in crap_positions])
+        needed_crap_starter_positions = [pos for pos in crap_positions
+                                         if len(roster[roster.position == pos])
+                                         < self.n_roster_per_team[pos]]
         # key_starting_roster_spots = starting_roster_spots - crap_starting_roster_spots
 
         key_positions = ['QB', 'RB', 'WR', 'TE'] # this concept includes FLEX so don't count it
@@ -803,12 +841,17 @@ class MainPrompt(Cmd):
                                              if len(roster[roster.position == pos])
                                              < self.n_roster_per_team[pos]
                                              + flex_mult*self.n_roster_per_team['FLEX']])
-        ## TODO: if picked for a flex spot, they should be evaluated by a separate VOLS/VORP for FLEX (?) -- otherwise e.g. TEs get recommended for flex too often
+        ## TODO: if picking for a flex spot, they should be evaluated by a separate VOLS/VORP for FLEX (?) -- otherwise e.g. TEs get recommended for flex too often
 
-        # current_roster_size = len(roster)
+        current_roster_size = len(roster)
         acceptable_positions = []
         if needed_key_starter_positions:
+            # if we still need key starters, make sure we grab these first
             acceptable_positions = needed_key_starter_positions
+        elif current_roster_size + len(needed_crap_starter_positions) >= starting_roster_spots:
+            # note: this logic will fail to fill crap positions if we're ever in a situation where more than one of each is needed
+            # we need to get a K/DST to fill the end of the lineup
+            acceptable_positions = needed_crap_starter_positions
         else:
             # once we have our starting lineup of important positions we can pick for bench value and kickers
             # vorp does a decent job of not picking kickers too quickly,
@@ -835,7 +878,8 @@ class MainPrompt(Cmd):
         if strat == 'vona':
             pos = self._get_max_vona_in(acceptable_positions, strat=vona_strat)
             if pos is None:
-                strat = vona_strat
+                # then the user probably has the next pick as well and we should just pick for value
+                strat = 'vols' # vona_strat # this leads to bad recommendations for ADP and ECP
             else:
                 # vona_asc = vona_strat in ['adp', 'ecp']
                 # topvonapos = ap[ap.position == pos].sort_values(vona_strat, vona_asc)
@@ -882,7 +926,9 @@ class MainPrompt(Cmd):
             pick = self.pick_rec(manager, strat)
             player = self.ap.loc[pick]
             print ' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
-        for strat in self._known_strategies:
+        vona_strats = ['vols', 'volb', 'adp', 'ecp']
+        # vona-vorp takes too long
+        for strat in vona_strats:
             pick = self.pick_rec(manager, strat='vona', vona_strat=strat)
             player = self.ap.loc[pick]
             print ' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
@@ -895,6 +941,7 @@ class MainPrompt(Cmd):
         can take a number or series of numbers to print only those manager's
         if "all" is passed then it will output all rosters
         """
+        # this function is pretty redundant with the `evaluate` command, which give more detailed information (e.g. breaking up starters and bench)
         if not self.draft_mode:
             print 'The `roster` command is only available in draft mode.'
             return
@@ -976,8 +1023,8 @@ class MainPrompt(Cmd):
 
     def do_snake(self, args):
         """
-        usage: snake [N]
-        initiate snake draft mode, with the user in draft position N
+        usage: snake [N] [strat]
+        initiate snake draft mode, with the user in draft position N and all other managers automatically draft with "strat" strategy
         """
         # self._update_vorp() # called in precmd() now
         if self.draft_mode:
@@ -988,7 +1035,9 @@ class MainPrompt(Cmd):
             print 'It is recommended that you quit and start fresh. Draft command will be canceled.'
             return
         numprompt = 'Enter your position in the snake draft [1,...,{}]: '.format(self.n_teams)
-        numstr = args if args else raw_input(numprompt)
+        argstr = args.split(' ') if args else raw_input(numprompt)
+        numstr = argstr[0]
+        # TODO: low priority: we could allow for multiple users
         try:
             self.user_manager = int(numstr)
             if self.user_manager not in range(1,self.n_teams+1):
@@ -998,6 +1047,16 @@ class MainPrompt(Cmd):
             print 'Could not cast argument to draft.'
             print 'Use a single number from 1 to {}'.format(self.n_teams)        
             return
+        
+        # set the automatic strategies for non-user managers
+        if argstr[1:]:
+            strats = [s.lower() for s in argstr[1:] if s.lower() in self._known_strategies]
+            for manager in [man for man in range(1,self.n_teams+1)
+                            if man != self.user_manager]:
+                manstrat = random.choice(strats)
+                print 'Setting manager {} to use {} strategy.'.format(manager, manstrat)
+                self.manager_auto_strats[manager] = manstrat
+        
         # perhaps there is a proxy we can use for this to reduce the number of variables
         self.draft_mode = True
         n_rounds = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
@@ -1008,8 +1067,8 @@ class MainPrompt(Cmd):
                 self.manager_picks.extend(range(1,self.n_teams+1))
             else:
                 self.manager_picks.extend(range(self.n_teams,0,-1))
-        self.i_manager_turn = 0
-        self._set_prompt()
+        self.i_manager_turn = -1
+        self._advance_snake()
 
     def do_sort(self, args):
         """
@@ -1123,8 +1182,8 @@ class MainPrompt(Cmd):
             naval = na_ap[na_ap.position == pos]['projection'].max()
             vona = topval - naval
             if vona > max_vona:
-                max_vona_pos = pos
-        
+                max_vona, max_vona_pos = vona, pos
+        return max_vona_pos
 
 def main():
     """main function that runs upon execution"""
