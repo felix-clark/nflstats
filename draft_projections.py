@@ -446,7 +446,10 @@ class MainPrompt(Cmd):
             pp = self.pp
         if len(pp) == 0:
             return pp # there isn't anything in here yet, and we haven't added the "manager" branch
-        return pp[pp.manager == manager].drop('manager', inplace=False, axis=1)
+        if 'manager' in pp:
+            return pp[pp.manager == manager].drop('manager', inplace=False, axis=1)
+        else:
+            return pp
 
     def _get_managers_til_next(self):
         """get list of managers before next turn"""
@@ -472,8 +475,8 @@ class MainPrompt(Cmd):
         a replacement for a 1-st round pick comes from the top of the bench,
         while a replacement for a bottom bench player comes from the waivers.
         """
+        # seems to be called more often than is optimal
         # print 'updating VORP' # for checking that this gets called sufficiently
-        # not the smoothest or safest way to get the positions...
         positions = [pos for pos in self.n_roster_per_team.keys() if pos not in ['FLEX', 'BENCH']]
         
         for pos in positions:
@@ -926,12 +929,13 @@ class MainPrompt(Cmd):
             pick = self.pick_rec(manager, strat)
             player = self.ap.loc[pick]
             print ' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
-        vona_strats = ['vols', 'volb', 'adp', 'ecp']
-        # vona-vorp takes too long
-        for strat in vona_strats:
-            pick = self.pick_rec(manager, strat='vona', vona_strat=strat)
-            player = self.ap.loc[pick]
-            print ' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
+        if self.manager_picks:
+            vona_strats = ['vols', 'volb', 'adp', 'ecp']
+            # vona-vorp takes too long
+            for strat in vona_strats:
+                pick = self.pick_rec(manager, strat='vona', vona_strat=strat)
+                player = self.ap.loc[pick]
+                print ' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
                 
     def do_roster(self, args):
         """
@@ -1314,36 +1318,38 @@ def main():
     #  update in the case of other teams making "mistakes".
     starter_mask = availdf['tier'].notnull()
     starterdf = availdf.loc[starter_mask]
-    for pos in main_positions:
+    # for pos in main_positions:
+    for pos in [pos for pos in main_positions if pos not in flex_pos]:
         worst_starter_value = starterdf[starterdf.position == pos]['projection'].min()
         availdf.loc[availdf.position == pos, 'vols'] = availdf['projection'] - worst_starter_value
+    # without the comparison of RBs and TEs to the worst starting flex (instead of worst starting RB/TE),
+    # they get overvalued. Most flex are WR so there is often a long list of receivers at the bottom of the flex list.
+    worst_flex_value = starterdf[starterdf.position.isin(flex_pos)]['projection'].min()
+    availdf.loc[availdf.position.isin(flex_pos), 'vols'] = availdf['projection'] - worst_flex_value
 
     # define an "absolute" bench by collecting the top projections of all players that can fit on benches (this is probably dumb, but it's a check) -- yeah it's actually too dumb
     total_bench_positions = n_roster_per_league['BENCH']
-    nonsuck_pos = ['QB', 'RB', 'WR', 'TE']
-    total_nonsuck_positions = sum([n_roster_per_team[pos] for pos in nonsuck_pos])
     nonstarter_mask = availdf.tier.isnull()
-    nonstarterdf = availdf.loc[nonstarter_mask]
-    for pos in nonsuck_pos:
-        # a totally-not-rigorous estimate how how many bench spots will be taken up by each position.
-        # assumes K and D/ST will not be drafted multiply (not unreasonable)
-        n_pos_bench = n_roster_per_team[pos] * total_bench_positions / total_nonsuck_positions
-        pos_nsdf = nonstarterdf.loc[nonstarterdf.position == pos].sort_values('projection', ascending=False)
-        ipos = pos_nsdf.index[:n_pos_bench]
-        ibnch_mask = availdf.index.isin(ipos)
-        availdf.loc[ibnch_mask, 'tier'] = 'BU'
+    benchdf = availdf[nonstarter_mask]
+    # bench positions are filled by positional distribution using ADP
+    # the adp-sorted version is only to acquire position distributions -- the actual players are selected by projection
+    benchadp = benchdf.sort_values('adp', ascending=True).head(total_bench_positions)    
+    for pos in main_positions:
+        n_pos_bench = len(benchadp[benchadp.position == pos])
+        i_pos = benchdf.loc[benchdf.position == pos].sort_values('projection', ascending=False).head(n_pos_bench).index
+        availdf.loc[availdf.index.isin(i_pos), 'tier'] = 'BU'
 
     # now we've given the backups a class, the worst projection at each position is the worst bench value.
-    # we will define this as the VOLB (value over replacement player)
-    # this is also a static calculation right now, but in principle it could be dynamically updated like VOLS. this might be a lot of re-computation and/or more complicated code.
-    # doing this here instead of trying to grab the value from the loop above is less-than-optimized, but is more vulnerable to programmer error and edge cases.
-    # TODO: we possibly shouldn't even bother saving VOLB once validate VORP, which is a dynamic version. should be less noisy.
+    # we will define this as the VOLB (value over last backup)
+    # this a static calculation, and the dynamically-computed VORP might do better.
     draftable_mask = availdf.tier.notnull()
     draftable_df = availdf.loc[draftable_mask]
-    for pos in main_positions:
+    for pos in [pos for pos in main_positions if pos not in flex_pos]:
         worst_draftable_value = draftable_df[draftable_df.position == pos]['projection'].min()
         availdf.loc[availdf.position == pos, 'volb'] = availdf['projection'] - worst_draftable_value
-
+    worst_draftable_flex_value = draftable_df[draftable_df.position.isin(flex_pos)]['projection'].min()
+    availdf.loc[availdf.position.isin(flex_pos), 'volb'] = availdf['projection'] - worst_draftable_flex_value
+        
     ## now label remaining players as waiver wire material
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'WAIV'
 
