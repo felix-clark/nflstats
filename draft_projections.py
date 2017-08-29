@@ -282,14 +282,14 @@ def push_to_player_list(index, ap, pp):
 #     #TODO
 #     return
 
-# instead of passing managers_til_next, could pass "forward" or "backward"
-def print_vona(ap, pp, manager, managers_til_next, strat='vorp'):
-    """prints VONA at each position, assuming each manager picks with strat"""
-    # TODO
-    # need a function that walks through and predicts other managers' picks:
-    # predict_next_board(ap, pp, manager, managers_til_next) (or predict_next_available)
+# # instead of passing managers_til_next, could pass "forward" or "backward"
+# def print_vona(ap, pp, manager, managers_til_next, strat='vorp'):
+#     """prints VONA at each position, assuming each manager picks with strat"""
+#     # TODO
+#     # need a function that walks through and predicts other managers' picks:
+#     # predict_next_board(ap, pp, manager, managers_til_next) (or predict_next_available)
     
-    return
+#     return
 
 def save_player_list(outname, ap, pp=None):
     """saves the available and picked player sets with label "outname"."""
@@ -390,10 +390,6 @@ class MainPrompt(Cmd):
             except IndexError as e:
                 print e
                 print 'could not pick player from list.'
-            # self._advance_snake() # in try block
-            
-        ### 
-
 
     def _regress_snake(self):
         """move up one step in the snake draft"""
@@ -436,6 +432,23 @@ class MainPrompt(Cmd):
         if len(pp) == 0:
             return pp # there isn't anything in here yet, and we haven't added the "manager" branch
         return pp[pp.manager == manager].drop('manager', inplace=False, axis=1)
+
+    def _get_managers_til_next(self):
+        """get list of managers before next turn"""
+        # first we get the list of managers the will go before our next turn
+        if not self.manager_picks:
+            print '"managers til next" is only sensible in draft mode.'
+            return None
+        i_man = self.i_manager_turn
+        current_team = self.manager_picks[i_man]
+        comp_mans = []
+        for man in self.manager_picks[i_man:]:
+            if man not in comp_mans:
+                comp_mans.append(man)
+            else:
+                break
+        comp_mans.remove(current_team) # don't include our own roster
+        return comp_mans
 
     def _update_vorp(self):
         """
@@ -665,17 +678,8 @@ class MainPrompt(Cmd):
         if not self.draft_mode:
             print 'this command is only available in draft mode.'
             return
-        # first we get the list of managers the will go before our next turn
-        i_man = self.i_manager_turn
-        current_team = self.manager_picks[i_man]
-        comp_mans = []
-        for man in self.manager_picks[i_man:]:
-            if man not in comp_mans:
-                comp_mans.append(man)
-            else:
-                break
-        comp_mans.remove(current_team) # don't include our own roster
-
+        comp_mans = self._get_managers_til_next()
+        
         # here we loop through the managers and see how many starting spots they have
         starting_pos = [pos for pos,numpos in self.n_roster_per_team.items()
                         if numpos > 0 and pos not in ['FLEX', 'BENCH']]
@@ -760,17 +764,6 @@ class MainPrompt(Cmd):
         else:
             return [name for name in mod_avail_names]
 
-    # define this here for ease and move it later
-    def _step_vona(ap, pp,# manager, # should be able to get current manager
-                  managers_til_next, strat='adp'):
-        if not managers_til_next:
-            return (ap, pp)
-        manager = managers_til_next[0]
-        pickidx = self.pick_rec(, manager, strat=strat, ap=ap, pp=pp)
-        # COME HERE
-
-
-        
     def pick_rec(self, manager, strat='vols', ap=None, pp=None):
         """
         picks the recommended player with the highest strat value 
@@ -842,7 +835,7 @@ class MainPrompt(Cmd):
         if strat == 'vorp':
             self._update_vorp() # just make sure we're using the right value, but probably too conservative
         asc = strat in ['adp', 'ecp']
-        toppicks = self.ap[self.ap.position.isin(acceptable_positions)].sort_values(strat, ascending=asc)
+        toppicks = ap[ap.position.isin(acceptable_positions)].sort_values(strat, ascending=asc)
         if len(toppicks) <= 0:
             print 'error: no available players in any position in {}'.format(acceptable_positions)
         # player = topstart.iloc[0] # this is the player itself
@@ -873,7 +866,7 @@ class MainPrompt(Cmd):
         for strat in self._known_strategies:
             pick = self.pick_rec(manager, strat)
             player = self.ap.loc[pick]
-            print ' {} recommended:\t{}\t{} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
+            print ' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
                 
     def do_roster(self, args):
         """
@@ -940,6 +933,7 @@ class MainPrompt(Cmd):
             print 'Showing all.'
             self.hide_stats = []
             self.hide_pos = []
+            return
         for arg in args.split(' '):
             if arg.lower() in self.hide_stats:
                 print 'Showing {}.'.format(arg.lower())
@@ -1058,18 +1052,61 @@ class MainPrompt(Cmd):
     #     """alias for unpick"""
     #     self.do_unpick(args)
 
-    def do_vona(self, args):
+    # define this here for ease and move it later
+    def _step_vona(self, ap, pp,
+                  managers_til_next, strat='adp'):
+        if not managers_til_next:
+            return (ap, pp)
+        manager = managers_til_next[0]
+        pickidx = self.pick_rec(manager, strat=strat, ap=ap, pp=pp)
+        # print 'manager, pick id = ', manager, pickidx
+        newap = ap.drop(pickidx)
+        # print newap # newap appears to have dropped it
+        newpp = ap.loc[ap.index == pickidx].copy()
+        newpp['manager'] = manager
+        # print newpp
+        newpp = pd.concat([pp, newpp])
+        # newpp = pp.append(newpp).copy()
+        # print newpp # for debuging / validation
+        return self._step_vona(newap, newpp, managers_til_next[1:], strat)    
+
+    def do_print_vona(self, args):
         """
         usage: print_vona strat
         print out VONA for each position, assuming `strat` strategy for others
         """
-        strat = args.strip().lower() if args else None
-        if strat not in self._known_strategies:
-            print 'Strategy not recognized - cannot calculate VONA.'
+        if not self.manager_picks:
+            print 'command only available in snake draft mode.'
+            return
+        # strat = args.strip().lower() if args else None
+        for strat in self._known_strategies:
+            print 'Assuming {} strategy:'.format(strat.upper())
+            positions = [pos for (pos,numpos) in self.n_roster_per_team.items()
+                         if pos not in ['FLEX', 'BENCH'] and numpos > 0]
+            for pos in positions:
+                topval = self.ap[self.ap.position == pos]['projection'].max()
+                # get "next available" assuming other managers use strategy "strat" to pick
+                managers = self._get_managers_til_next()
+                managers.extend(managers[::-1])
+                na_ap, na_pp = self._step_vona(self.ap, self.pp, managers, strat)
+                naval = na_ap[na_ap.position == pos]['projection'].max()
+                print '{}: {}'.format(pos,topval-naval)
+    def _get_max_vona_in(self, positions, strat):
+        # vona_dict = {pos:0 for pos in positions)
+        max_vona = 0
+        max_vona_pos = None
+        for pos in positions:
+            topval = self.ap[self.ap.position == pos]['projection'].max()
+            # get "next available" assuming other managers use strategy "strat" to pick
+            managers = self._get_managers_til_next()
+            managers.extend(managers[::-1])
+            na_ap, _ = self._step_vona(self.ap, self.pp, managers, strat)
+            naval = na_ap[na_ap.position == pos]['projection'].max()
+            vona = topval - naval
+            if vona > max_vona:
+                max_vona_pos = pos
         
-        return
 
-                
 def main():
     """main function that runs upon execution"""
     ## use argument parser
