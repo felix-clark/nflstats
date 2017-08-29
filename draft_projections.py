@@ -764,7 +764,7 @@ class MainPrompt(Cmd):
         else:
             return [name for name in mod_avail_names]
 
-    def pick_rec(self, manager, strat='vols', ap=None, pp=None):
+    def pick_rec(self, manager, strat='vols', ap=None, pp=None, vona_strat='adp'):
         """
         picks the recommended player with the highest strat value 
         returns the index of that player? (should be able to get everything else from self.ap.loc[index])
@@ -832,6 +832,20 @@ class MainPrompt(Cmd):
         # else:
         #     print 'roster is overfull.'
         #     acceptable_positions = key_positions
+        if strat == 'vona':
+            pos = self._get_max_vona_in(acceptable_positions, strat=vona_strat)
+            if pos is None:
+                strat = vona_strat
+            else:
+                # vona_asc = vona_strat in ['adp', 'ecp']
+                # topvonapos = ap[ap.position == pos].sort_values(vona_strat, vona_asc)
+                # take our projection over ADP/ECP. 
+                topvonapos = ap[ap.position == pos].sort_values('projection', ascending=False)
+                if len(topvonapos) <= 0:
+                    print 'error: could not get a list of availble position that maximizes VONA.'
+                    print 'switch to regulat strat?'
+                player_index = topvonapos.index[0]
+                return player_index
         if strat == 'vorp':
             self._update_vorp() # just make sure we're using the right value, but probably too conservative
         asc = strat in ['adp', 'ecp']
@@ -841,6 +855,7 @@ class MainPrompt(Cmd):
         # player = topstart.iloc[0] # this is the player itself
         player_index = toppicks.index[0]
         return player_index
+    
 
     # autocomplete doesn't seem to work this trivially for complete_pop, so let's just disable this alias
     # for now anyway
@@ -867,6 +882,10 @@ class MainPrompt(Cmd):
             pick = self.pick_rec(manager, strat)
             player = self.ap.loc[pick]
             print ' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
+        for strat in self._known_strategies:
+            pick = self.pick_rec(manager, strat='vona', vona_strat=strat)
+            player = self.ap.loc[pick]
+            print ' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
                 
     def do_roster(self, args):
         """
