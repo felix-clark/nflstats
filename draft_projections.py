@@ -477,7 +477,10 @@ class MainPrompt(Cmd):
         """
         # seems to be called more often than is optimal
         # print 'updating VORP' # for checking that this gets called sufficiently
-        positions = [pos for pos in self.n_roster_per_team.keys() if pos not in ['FLEX', 'BENCH']]
+        # positions = [pos for pos in self.n_roster_per_team.keys()
+        #              if pos not in ['FLEX', 'BENCH'] and pos not in self.flex_pos]
+        positions = [pos for pos in self.n_roster_per_team.keys()
+                     if pos not in ['FLEX', 'BENCH']]
         
         for pos in positions:
             # also implement: maximum players on roster
@@ -519,6 +522,41 @@ class MainPrompt(Cmd):
                     index = len(pos_baseline-1)
                 vorp_baseline = pos_baseline['projection'].sort_values( ascending=False ).iloc[index]
             self.ap.loc[self.ap.position == pos, 'vorp'] = self.ap['projection'] - vorp_baseline
+
+        # # do the same for flex, using same baseline for all of them
+        # # this may not be the best option...
+        # # for instance, it doesn't make sense when there are no flex spots on the roster -- why should they be treated together?
+        # flex_picked = self.pp[self.pp.position.isin(self.flex_pos)]
+        # n_flex_picked = len(flex_picked.index)
+        # n_waiv_picked = len(flex_picked[flex_picked.tier == 'WAIV'].index)
+        # flex_draftable = self.ap[(self.ap.position.isin(self.flex_pos)) & (self.ap.tier != 'WAIV')]
+        # n_flex_draftable = len(flex_draftable.index) - n_waiv_picked
+        # vorp_baseline = 0
+        # if n_flex_draftable <= 0:
+        #     # no more "draftable" players -- vorp should be zero for top
+        #     vorp_baseline = self.ap[self.ap.position.isin(self.flex_pos)]['projection'].max()
+        # else:
+        #     frac_through_bench = n_flex_picked * 1.0 / (n_flex_picked + n_flex_draftable)
+        #     backup_mask = flex_draftable['tier'] == 'BU'
+        #     # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
+        #     worst_starters = flex_draftable[flex_draftable['tier'] != 'BU'].sort_values('projection', ascending=True)
+        #     ls_index = None
+        #     if len(worst_starters) > 0:
+        #         ls_index = worst_starters.index[0]
+        #     ls_mask = flex_draftable.index == ls_index
+        #     draftable_mask = backup_mask | ls_mask
+        #     flex_baseline = flex_draftable[draftable_mask]
+        #     n_flex_baseline = len(flex_baseline.index)
+        #     # if n_flex_baseline == 0:
+        #     #     # this can happen, e.g. with kickers who have no "backup" tier players
+        #     #     self.ap.loc[self.ap.position.isin(self.flex_pos), 'vorp'] = self.ap['vols']
+        #     #     continue
+        #     index = int(frac_through_bench * n_flex_baseline)
+        #     if index >= len(flex_baseline):
+        #         print 'warning: check index here later'
+        #         index = len(flex_baseline-1)
+        #     vorp_baseline = flex_baseline['projection'].sort_values( ascending=False ).iloc[index]
+        # self.ap.loc[self.ap.position.isin(self.flex_pos), 'vorp'] = self.ap['projection'] - vorp_baseline
 
     def do_evaluate(self, args):
         """
@@ -1319,13 +1357,15 @@ def main():
     starter_mask = availdf['tier'].notnull()
     starterdf = availdf.loc[starter_mask]
     # for pos in main_positions:
-    for pos in [pos for pos in main_positions if pos not in flex_pos]:
+    worst_flex_value = starterdf[starterdf.position.isin(flex_pos)]['projection'].min()
+    for pos in main_positions:
         worst_starter_value = starterdf[starterdf.position == pos]['projection'].min()
+        if pos in flex_pos and worst_starter_value > worst_flex_value:
+            worst_starter_value = worst_flex_value
         availdf.loc[availdf.position == pos, 'vols'] = availdf['projection'] - worst_starter_value
     # without the comparison of RBs and TEs to the worst starting flex (instead of worst starting RB/TE),
     # they get overvalued. Most flex are WR so there is often a long list of receivers at the bottom of the flex list.
-    worst_flex_value = starterdf[starterdf.position.isin(flex_pos)]['projection'].min()
-    availdf.loc[availdf.position.isin(flex_pos), 'vols'] = availdf['projection'] - worst_flex_value
+    # availdf.loc[availdf.position.isin(flex_pos), 'vols'] = availdf['projection'] - worst_flex_value
 
     # define an "absolute" bench by collecting the top projections of all players that can fit on benches (this is probably dumb, but it's a check) -- yeah it's actually too dumb
     total_bench_positions = n_roster_per_league['BENCH']
