@@ -75,8 +75,8 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
         
     # round values to whole numbers for josh, who doesn't like fractions :)
     print '\nprojected starter points:\t{}'.format(int(round(starterval)))
-    print 'estimated bench value:\t{}'.format(int(round(benchval)))
-    print 'total value:\t{}\n'.format(int(round(benchval + starterval)))
+    print 'estimated bench value:\t\t{}'.format(int(round(benchval)))
+    print 'total value:\t\t\t{}\n'.format(int(round(benchval + starterval)))
     return starterval, benchval
 
 def find_by_team(team, ap, pp):
@@ -291,21 +291,6 @@ def push_to_player_list(index, ap, pp):
     print 'replacing {} ({}) - {}'.format(name, team, pos)
     pp.drop(index, inplace=True)
 
-# maybe not necessary rn
-# could give it to AI managers as alternative strategy
-# def pick_vona(ap, pp, manager, coaches_til_next):
-#     #TODO
-#     return
-
-# # instead of passing managers_til_next, could pass "forward" or "backward"
-# def print_vona(ap, pp, manager, managers_til_next, strat='vorp'):
-#     """prints VONA at each position, assuming each manager picks with strat"""
-#     # TODO
-#     # need a function that walks through and predicts other managers' picks:
-#     # predict_next_board(ap, pp, manager, managers_til_next) (or predict_next_available)
-    
-#     return
-
 def save_player_list(outname, ap, pp=None):
     """saves the available and picked player sets with label "outname"."""
     print 'Saving with label {}.'.format(outname)
@@ -344,6 +329,8 @@ class MainPrompt(Cmd):
 
     hide_pos = ['K', 'DST']
     hide_stats = ['volb']
+
+    disabled_pos = []
 
     _known_strategies = ['vols', 'volb', 'vorp', 'adp', 'ecp']
     
@@ -468,13 +455,17 @@ class MainPrompt(Cmd):
         comp_mans.remove(current_team) # don't include our own roster
         return comp_mans
 
-    def _update_vorp(self):
+    def _update_vorp(self, ap=None, pp=None):
         """
         updates the VORP values in the available players dataframe
         based on how many players in that position have been picked.
         a replacement for a 1-st round pick comes from the top of the bench,
         while a replacement for a bottom bench player comes from the waivers.
         """
+        if ap is None:
+            ap = self.ap
+        if pp is None:
+            pp = self.pp
         # seems to be called more often than is optimal
         # print 'updating VORP' # for checking that this gets called sufficiently
         # positions = [pos for pos in self.n_roster_per_team.keys()
@@ -488,75 +479,85 @@ class MainPrompt(Cmd):
             # maximum probably won't matter for most drafts, so de-prioritize it
             # while your draft is in an hour :E
             
-            pos_picked = self.pp[self.pp.position == pos]
+            pos_picked = pp[pp.position == pos]
             n_pos_picked = len(pos_picked.index)
             n_waiv_picked = len(pos_picked[pos_picked.tier == 'WAIV'].index)
             # if any managers picked waiver-tier players, then we can shed
             #  the next-worst bench player from our calculations
             # we can still shed all WAIV players since this case raises the value of the threshold
-            pos_draftable = self.ap[(self.ap.position == pos) & (self.ap.tier != 'WAIV')]
+            posdf = ap[ap.position == pos]
+            # pos_draftable = self.ap[(self.ap.position == pos) & (self.ap.tier != 'WAIV')]
+            pos_draftable = posdf[posdf.tier != 'WAIV']
             n_pos_draftable = len(pos_draftable.index) - n_waiv_picked
             vorp_baseline = 0
             if n_pos_draftable <= 0:
                 # no more "draftable" players -- vorp should be zero for top
-                vorp_baseline = self.ap[self.ap.position == pos]['projection'].max()
+                vorp_baseline = ap[ap.position == pos]['projection'].max()
             else:
                 frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
                 backup_mask = pos_draftable['tier'] == 'BU'
                 # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
-                worst_starters = pos_draftable[pos_draftable['tier'] != 'BU'].sort_values('projection', ascending=True)
-                ls_index = None
+                worst_starters = pos_draftable[~backup_mask].sort_values('projection', ascending=True)
+                # best_waivers = pos_draftable[backup_mask].sort_values('projection', ascending=False)
+                ls_index = None # index of worst starter in position
+                # fw_index = None # index of best wavier option in position (assuming ADP)
                 if len(worst_starters) > 0:
                     ls_index = worst_starters.index[0]
+                # if len(best_waivers) > 0:
+                #     fw_index = best_waivers.index[0]
                 ls_mask = pos_draftable.index == ls_index
                 draftable_mask = backup_mask | ls_mask
                 pos_baseline = pos_draftable[draftable_mask]
                 n_pos_baseline = len(pos_baseline.index)
                 if n_pos_baseline == 0:
                     # this can happen, e.g. with kickers who have no "backup" tier players
-                    self.ap.loc[self.ap.position == pos, 'vorp'] = self.ap['vols']
+                    ap.loc[ap.position == pos, 'vorp'] = ap['vols']
                     continue
                 index = int(frac_through_bench * n_pos_baseline)
                 if index >= len(pos_baseline):
                     print 'warning: check index here later'
                     index = len(pos_baseline-1)
                 vorp_baseline = pos_baseline['projection'].sort_values( ascending=False ).iloc[index]
-            self.ap.loc[self.ap.position == pos, 'vorp'] = self.ap['projection'] - vorp_baseline
+            ap.loc[ap.position == pos, 'vorp'] = ap['projection'] - vorp_baseline
 
-        # # do the same for flex, using same baseline for all of them
-        # # this may not be the best option...
-        # # for instance, it doesn't make sense when there are no flex spots on the roster -- why should they be treated together?
-        # flex_picked = self.pp[self.pp.position.isin(self.flex_pos)]
-        # n_flex_picked = len(flex_picked.index)
-        # n_waiv_picked = len(flex_picked[flex_picked.tier == 'WAIV'].index)
-        # flex_draftable = self.ap[(self.ap.position.isin(self.flex_pos)) & (self.ap.tier != 'WAIV')]
-        # n_flex_draftable = len(flex_draftable.index) - n_waiv_picked
-        # vorp_baseline = 0
-        # if n_flex_draftable <= 0:
-        #     # no more "draftable" players -- vorp should be zero for top
-        #     vorp_baseline = self.ap[self.ap.position.isin(self.flex_pos)]['projection'].max()
-        # else:
-        #     frac_through_bench = n_flex_picked * 1.0 / (n_flex_picked + n_flex_draftable)
-        #     backup_mask = flex_draftable['tier'] == 'BU'
-        #     # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
-        #     worst_starters = flex_draftable[flex_draftable['tier'] != 'BU'].sort_values('projection', ascending=True)
-        #     ls_index = None
-        #     if len(worst_starters) > 0:
-        #         ls_index = worst_starters.index[0]
-        #     ls_mask = flex_draftable.index == ls_index
-        #     draftable_mask = backup_mask | ls_mask
-        #     flex_baseline = flex_draftable[draftable_mask]
-        #     n_flex_baseline = len(flex_baseline.index)
-        #     # if n_flex_baseline == 0:
-        #     #     # this can happen, e.g. with kickers who have no "backup" tier players
-        #     #     self.ap.loc[self.ap.position.isin(self.flex_pos), 'vorp'] = self.ap['vols']
-        #     #     continue
-        #     index = int(frac_through_bench * n_flex_baseline)
-        #     if index >= len(flex_baseline):
-        #         print 'warning: check index here later'
-        #         index = len(flex_baseline-1)
-        #     vorp_baseline = flex_baseline['projection'].sort_values( ascending=False ).iloc[index]
-        # self.ap.loc[self.ap.position.isin(self.flex_pos), 'vorp'] = self.ap['projection'] - vorp_baseline
+    def do_disable_pos(self, args):
+        """
+        disable positions from recommended picks
+        """
+        for pos in args.split(' '):
+            upos = pos.upper()
+            if upos in self.disabled_pos:
+                print '{} is already disabled.'.format(upos)
+                continue
+            if upos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
+                print 'Disabling {} in recommendations.'.format(upos)
+                self.disabled_pos.append(upos)
+    def complete_disable_pos(self, text, line, begidk, endidx):
+        """implements auto-complete for disable_pos function"""
+        all_pos = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+        avail_disable = [pos for pos in all_pos if pos not in self.disabled_pos]
+        if text:
+            return [name for name in avail_disable
+                    if name.startswith(text.upper())]
+        else:
+            return avail_disable
+
+    def do_enable_pos(self, args):
+        """
+        enable positions from recommended picks
+        """
+        for pos in args.split(' '):
+            upos = pos.upper()
+            if upos in self.disabled_pos:
+                print 'Enabling {} in recommendations.'.format(upos)
+                self.disabled_pos.remove(upos)
+    def complete_enable_pos(self, text, line, begidk, endidx):
+        """implements auto-complete for enable_pos function"""
+        if text:
+            return [name for name in self.disabled_pos
+                    if name.startswith(text.upper())]
+        else:
+            return self.disabled_pos
 
     def do_evaluate(self, args):
         """
@@ -840,7 +841,7 @@ class MainPrompt(Cmd):
         else:
             return [name for name in mod_avail_names]
 
-    def pick_rec(self, manager, strat='vols', ap=None, pp=None, vona_strat='adp'):
+    def pick_rec(self, manager, strat='vols', ap=None, pp=None, disabled_pos=None, vona_strat='adp'):
         """
         picks the recommended player with the highest strat value 
         returns the index of that player? (should be able to get everything else from self.ap.loc[index])
@@ -849,6 +850,8 @@ class MainPrompt(Cmd):
             ap = self.ap
         if pp is None:
             pp = self.pp
+        if disabled_pos is None:
+            disabled_pos = []
         roster = self._get_manager_roster(manager, pp)
         total_roster_spots = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
         if len(roster) >= total_roster_spots:
@@ -891,7 +894,7 @@ class MainPrompt(Cmd):
             acceptable_positions = needed_key_starter_positions
         elif current_roster_size + len(needed_crap_starter_positions) >= starting_roster_spots:
             # note: this logic will fail to fill crap positions if we're ever in a situation where more than one of each is needed
-            # we need to get a K/DST to fill the end of the lineup
+            # need to get a K/DST to fill the end of the lineup
             acceptable_positions = needed_crap_starter_positions
         else:
             # once we have our starting lineup of important positions we can pick for bench value and kickers
@@ -900,7 +903,12 @@ class MainPrompt(Cmd):
             acceptable_crap = [pos for pos in crap_positions
                                if len(roster[roster.position == pos])
                                < self.n_roster_per_team[pos]]
-            acceptable_positions = key_positions + acceptable_crap
+            # we allow backup players, but don't get more than half our bench with any one position
+            acceptable_backup = [pos for pos in key_positions
+                                 if len(roster[roster.position == pos])
+                                 < self.n_roster_per_team[pos]
+                                 + self.n_roster_per_team['BENCH']/2]
+            acceptable_positions = acceptable_backup + acceptable_crap
         ## if it's still too kicker-happy we can get more specific by replacing the above:
         # elif current_roster_size < starting_roster_spots - crap_starting_roster_spots:
         #     ## get no more than 1 backup at each position before
@@ -917,9 +925,10 @@ class MainPrompt(Cmd):
         #     print 'roster is overfull.'
         #     acceptable_positions = key_positions
         if strat == 'vona':
-            pos = self._get_max_vona_in(acceptable_positions, strat=vona_strat)
+            pos = self._get_max_vona_in(acceptable_positions, strat=vona_strat, disabled_pos=disabled_pos)
             if pos is None:
                 # then the user probably has the next pick as well and we should just pick for value
+                print 'do you have the next pick? VONA is not well-defined. will return VOLS.'
                 strat = 'vols' # vona_strat # this leads to bad recommendations for ADP and ECP
             else:
                 # vona_asc = vona_strat in ['adp', 'ecp']
@@ -932,7 +941,12 @@ class MainPrompt(Cmd):
                 player_index = topvonapos.index[0]
                 return player_index
         if strat == 'vorp':
-            self._update_vorp() # just make sure we're using the right value, but probably too conservative
+            self._update_vorp(ap, pp) # just make sure we're using the right value, but probably too conservative
+        # TODO: VONA-VORP is probably not updating VORP correctly for the propagated player lists
+        acceptable_positions = [pos for pos in acceptable_positions if pos not in disabled_pos]
+        if len(acceptable_positions) <= 0:
+            # if we've ruled out everything else, just pick one of the main positions
+            acceptable_positions = key_positions
         asc = strat in ['adp', 'ecp']
         toppicks = ap[ap.position.isin(acceptable_positions)].sort_values(strat, ascending=asc)
         if len(toppicks) <= 0:
@@ -964,14 +978,14 @@ class MainPrompt(Cmd):
         """quick test for pick_vols"""
         manager = self._get_current_manager()
         for strat in self._known_strategies:
-            pick = self.pick_rec(manager, strat)
+            pick = self.pick_rec(manager, strat, disabled_pos=self.disabled_pos)
             player = self.ap.loc[pick]
             print ' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
         if self.manager_picks:
             vona_strats = ['vols', 'volb', 'adp', 'ecp']
             # vona-vorp takes too long
             for strat in vona_strats:
-                pick = self.pick_rec(manager, strat='vona', vona_strat=strat)
+                pick = self.pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
                 player = self.ap.loc[pick]
                 print ' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
                 
@@ -1178,16 +1192,11 @@ class MainPrompt(Cmd):
         if not managers_til_next:
             return (ap, pp)
         manager = managers_til_next[0]
-        pickidx = self.pick_rec(manager, strat=strat, ap=ap, pp=pp)
-        # print 'manager, pick id = ', manager, pickidx
+        pickidx = self.pick_rec(manager, strat=strat, ap=ap, pp=pp, disabled_pos=None)
         newap = ap.drop(pickidx)
-        # print newap # newap appears to have dropped it
         newpp = ap.loc[ap.index == pickidx].copy()
         newpp['manager'] = manager
-        # print newpp
         newpp = pd.concat([pp, newpp])
-        # newpp = pp.append(newpp).copy()
-        # print newpp # for debuging / validation
         return self._step_vona(newap, newpp, managers_til_next[1:], strat)    
 
     def do_print_vona(self, args):
@@ -1211,8 +1220,10 @@ class MainPrompt(Cmd):
                 na_ap, na_pp = self._step_vona(self.ap, self.pp, managers, strat)
                 naval = na_ap[na_ap.position == pos]['projection'].max()
                 print '{}: {}'.format(pos,topval-naval)
-    def _get_max_vona_in(self, positions, strat):
+    def _get_max_vona_in(self, positions, strat, disabled_pos=None):
         # vona_dict = {pos:0 for pos in positions)
+        if disabled_pos is None:
+            disabled_pos = []
         max_vona = 0
         max_vona_pos = None
         for pos in positions:
@@ -1223,7 +1234,7 @@ class MainPrompt(Cmd):
             na_ap, _ = self._step_vona(self.ap, self.pp, managers, strat)
             naval = na_ap[na_ap.position == pos]['projection'].max()
             vona = topval - naval
-            if vona > max_vona:
+            if vona > max_vona and pos not in disabled_pos:
                 max_vona, max_vona_pos = vona, pos
         return max_vona_pos
 
