@@ -1,4 +1,9 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
+from __future__ import division
+from __future__ import print_function
+from builtins import input
+from builtins import range
+from past.utils import old_div
 import numpy as np
 import sys
 import os.path
@@ -11,9 +16,6 @@ import pandas as pd
 from getPoints import get_points_from_data_frame
 from ruleset import bro_league, phys_league, dude_league
 
-## TODO: make this compatible with python 3 :,(
-##   (it's probably 95% print statement parentheses)
-
 def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     """
     applies projection for season points, with an approximation for bench value
@@ -23,9 +25,9 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     numplayers = len(rosdf)
     numroster = sum([n_roster_per_team[pos] for pos in n_roster_per_team])
     if numplayers < numroster:
-        print 'This roster is not full.'
+        print('This roster is not full.')
     if numplayers > numroster:
-        print 'This roster has too many players.'
+        print('This roster has too many players.')
     
     starterval, benchval = 0, 0
     i_st = [] # the indices of the players we have counted so far
@@ -43,14 +45,14 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     starterval = starterval + rosflex[rosflex.index.isin(i_flex)]['projection'].sum()
     i_st.extend(i_flex)
     
-    print '  starting lineup:'
+    print('  starting lineup:')
     startdf = rosdf[rosdf.index.isin(i_st)].drop(['vols', 'volb', 'adp', 'ecp'], axis=1)
-    print startdf
+    print(startdf)
 
     benchdf = rosdf[~rosdf.index.isin(i_st)].drop(['vols', 'volb', 'adp', 'ecp'], axis=1)
     if len(benchdf) > 0:
-        print '  bench:'
-        print benchdf
+        print('  bench:')
+        print(benchdf)
 
     ## we're gonna do a really dumb estimation for bench value
     # and pretend that the chance of a bench player being used
@@ -61,6 +63,7 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     # we'll call this an "index" to avoid commiting to a meaning right now :)
 
     # 13 games in regular FF season. we'll pretend they're independent.
+    # bye_factor = old_div((13.0-1.0),13.0)
     bye_factor = (13.0-1.0)/13.0
 
     # this is the approximate fraction of the time that a player in
@@ -74,9 +77,9 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
         benchval = benchval + (1 - bye_factor*pos_injury_factor[pos])*row.projection
         
     # round values to whole numbers for josh, who doesn't like fractions :)
-    print '\nprojected starter points:\t{}'.format(int(round(starterval)))
-    print 'estimated bench value:\t\t{}'.format(int(round(benchval)))
-    print 'total value:\t\t\t{}\n'.format(int(round(benchval + starterval)))
+    print('\nprojected starter points:\t{}'.format(int(round(starterval))))
+    print('estimated bench value:\t\t{}'.format(int(round(benchval))))
+    print('total value:\t\t\t{}\n'.format(int(round(benchval + starterval))))
     return starterval, benchval
 
 def find_by_team(team, ap, pp):
@@ -85,14 +88,14 @@ def find_by_team(team, ap, pp):
     """
     available = ap[ap.team == team.upper()]
     if len(available) > 0:
-        print 'Available players:'
-        print available
+        print('Available players:')
+        print(available)
     else:
-        print 'No available players found on team {}'.format(team)
+        print('No available players found on team {}'.format(team))
     picked = pp[pp.team == team.upper()]
     if len(picked) > 0:
-        print 'Picked players:'
-        print picked
+        print('Picked players:')
+        print(picked)
     
 def find_handcuff(index, ap, pp):
     """
@@ -103,16 +106,16 @@ def find_handcuff(index, ap, pp):
     player = pd.concat([ap, pp]).loc[index]
     ## the "name" attribute is the index, so need dictionary syntax to grab actual name
     name, pos, team = player['name'], player.position, player.team
-    print 'Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos)
+    print('Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos))
     ah = ap[(ap.position == pos) & (ap.team == team) & (ap.name != name)]
     if len(ah) > 0:
-        print 'The following potential handcuffs are available:'
-        print ah
+        print('The following potential handcuffs are available:')
+        print(ah)
     ph = pp[(pp.position == pos) & (pp.team == team) & (pp.name != name)]
     if len(ph) > 0:
-        print 'The following handcuffs have already been picked:'
-        print ph
-    print # end on a newline
+        print('The following handcuffs have already been picked:')
+        print(ph)
+    print() # end on a newline
 
 # adding features to search by team name/city/abbreviation might be nice,
 #   but probably not worth the time for the additional usefulness.
@@ -131,14 +134,14 @@ def find_player(search_words, ap, pp):
     if len(filtered_pp) > 0:
         # print '  Could not find any picked players.'
     # else:
-        print '\n  Picked players:'
-        print filtered_pp
+        print('\n  Picked players:')
+        print(filtered_pp)
     filtered_ap = ap[ap['name'].map(checkfunc)] # map creates a boolean mask
     if len(filtered_ap) == 0:
-        print '\n  Could not find any available players.'
+        print('\n  Could not find any available players.')
     else:
-        print '\n  Available players:'
-        print filtered_ap
+        print('\n  Available players:')
+        print(filtered_ap)
 
 def get_team_abbrev(full_team_name, team_abbrevs):
     up_name = full_team_name.upper()
@@ -154,26 +157,26 @@ def get_team_abbrev(full_team_name, team_abbrevs):
         if up_name[:3] == ta:
             # print full_team_name, ta
             return ta
-    print 'error: could not find abbreviation for {}'.format(full_team_name)
+    print('error: could not find abbreviation for {}'.format(full_team_name))
     
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
-    print 'Loading with label {}.'.format(outname)
+    print('Loading with label {}.'.format(outname))
     if os.path.isfile(outname+'.csv'):
         # we saved it directly we could use from_csv, but read_csv is encouraged
         ap = pd.DataFrame.from_csv(outname+'.csv')
         # ap = pd.read_csv(outname+'.csv')
     else:
-        print 'Could not find file {}.csv!'.format(outname)
+        print('Could not find file {}.csv!'.format(outname))
     if os.path.isfile(outname+'_picked.csv'):
         pp = pd.DataFrame.from_csv(outname+'_picked.csv')
     else:
-        print 'Could not find file {}_picked.csv!'.format(outname)
+        print('Could not find file {}_picked.csv!'.format(outname))
     return ap, pp
 
 def get_k_partition_boundaries(data, k):
     if k >= len(data):
-        print 'error: need k less than the size of the data'
+        print('error: need k less than the size of the data')
         return None
     sortdata = np.sort(data)
     # gaps is an array of size N-1 listing
@@ -196,10 +199,10 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
     # were using iloc, but the data may get re-organized so this should be safer
     if pp is not None:
         if len(pp[pp.index == index]) > 0:
-            print 'It seems like the index of the player is already in the picked player list.'
-            print 'Someone needs to clean up the logic...'
-            print 'DEBUG: picked players w/index:', pp.loc[index]
-            print 'DEBUG: available players w/index:', ap.loc[index]
+            print('It seems like the index of the player is already in the picked player list.')
+            print('Someone needs to clean up the logic...')
+            print('DEBUG: picked players w/index:', pp.loc[index])
+            print('DEBUG: available players w/index:', ap.loc[index])
         pp.loc[index] = player
         if manager is not None:
             pp.loc[index, 'manager'] = manager
@@ -212,18 +215,18 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
     name = player['name']
     pos = player['position']
     team = player['team']
-    print 'selecting {} ({}) - {}'.format(name, team, pos)
+    print('selecting {} ({}) - {}'.format(name, team, pos))
     ap.drop(index, inplace=True)
 
 def print_picked_players(df):
     """prints the players in dataframe df as if they have been selected"""
     if df.shape[0] == 0:
-        print 'No players have been picked yet.'
+        print('No players have been picked yet.')
     else:
         with pd.option_context('display.max_rows', None):
             ## TODO: we can probably still stand to improve this output:'
-            print df.drop([col for col in ['manager', 'pick'] if col in df], axis=1)
-        print '\nPlayers picked by position:'
+            print(df.drop([col for col in ['manager', 'pick'] if col in df], axis=1))
+        print('\nPlayers picked by position:')
         # to_string() suppresses the last line w/ "name" and "dtype" output
         print (df.position.value_counts().to_string())
 
@@ -233,27 +236,27 @@ def print_teams(ap, pp):
     """
     teams = pd.concat([ap, pp])['team']
     # unique() does not sort, but assumes a sorted list
-    print teams.sort_values().unique()
+    print(teams.sort_values().unique())
 
 # this method will be our main output
 def print_top_choices(df, ntop=10, npos=3, sort_key='vols', sort_asc=False, drop_stats=None, hide_pos=None):
     if sort_key is None:
-        print 'sorting by index'
+        print('sorting by index')
         df.sort_index(ascending=sort_asc, inplace=True)
     else:
         df.sort_values(sort_key, ascending=sort_asc, inplace=True)
-    print '   DRAFT BOARD   '.center( pd.options.display.width, '*')
+    print('   DRAFT BOARD   '.center( pd.options.display.width, '*'))
     if drop_stats is None:
         drop_stats = []
     if hide_pos is None:
         hide_pos = []
     with pd.option_context('display.max_rows', None):
-        print df[~df.position.isin(hide_pos)].drop(drop_stats, inplace=False, axis=1).head(ntop)
+        print(df[~df.position.isin(hide_pos)].drop(drop_stats, inplace=False, axis=1).head(ntop))
     if npos > 0:
         positions = [pos for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST'] if pos not in hide_pos]
         # print df[df.position.isin(positions)].groupby('position')# .agg({'projection':sum}).nlargest(npos) # can't figure out groupby right now -- might tidy up the output
         for pos in positions:
-            print df[df.position == pos].drop(drop_stats, inplace=False, axis=1).head(npos)
+            print(df[df.position == pos].drop(drop_stats, inplace=False, axis=1).head(npos))
 
 def print_top_position(df, pos, ntop=24, sort_key='vols', sort_asc=False):
     """prints the top `ntop` players in the position in dataframe df"""
@@ -263,10 +266,10 @@ def print_top_position(df, pos, ntop=24, sort_key='vols', sort_asc=False):
         df.sort_values( sort_key, ascending=sort_asc, inplace=True)
     if pos.upper() == 'FLEX':
         with pd.option_context('display.max_rows', None):
-            print df.loc[df['position'].isin(['RB', 'WR', 'TE'])].drop('volb', inplace=False, axis=1).head(ntop)
+            print(df.loc[df['position'].isin(['RB', 'WR', 'TE'])].drop('volb', inplace=False, axis=1).head(ntop))
     else:
         with pd.option_context('display.max_rows', None):
-            print df[df.position == pos.upper()].drop('volb', inplace=False, axis=1).head(ntop)
+            print(df[df.position == pos.upper()].drop('volb', inplace=False, axis=1).head(ntop))
 
 def push_to_player_list(index, ap, pp):
     """
@@ -278,35 +281,35 @@ def push_to_player_list(index, ap, pp):
         raise IndexError('The index ({}) does not indicate a picked player!'.format(index))
     player = pp.loc[index]
     if len(ap[ap.index == index]) > 0:
-        print 'The index of the picked player is already in the available player list.'
-        print 'Someone needs to clean up the logic...'
-        print 'DEBUG: picked players w/index:', pp.loc[index]
-        print 'DEBUG: available players w/index:', ap.loc[index]
+        print('The index of the picked player is already in the available player list.')
+        print('Someone needs to clean up the logic...')
+        print('DEBUG: picked players w/index:', pp.loc[index])
+        print('DEBUG: available players w/index:', ap.loc[index])
     # must use loc, not iloc, since positions may move
     ap.loc[index] = player
     # ap.sort_values('vols', ascending=False, inplace=True) # don't re-sort here
     name = player['name']
     pos = player['position']
     team = player['team']
-    print 'replacing {} ({}) - {}'.format(name, team, pos)
+    print('replacing {} ({}) - {}'.format(name, team, pos))
     pp.drop(index, inplace=True)
 
 def save_player_list(outname, ap, pp=None):
     """saves the available and picked player sets with label "outname"."""
-    print 'Saving with label {}.'.format(outname)
+    print('Saving with label {}.'.format(outname))
     ap.to_csv(outname+'.csv')
     if pp is not None:
         pp.to_csv(outname+'_picked.csv')
 
 def verify_and_quit():
-    user_verify = raw_input('Are you sure you want to quit and lose all progress [y/N]? ')
+    user_verify = input('Are you sure you want to quit and lose all progress [y/N]? ')
     if user_verify.strip() == 'y':
-        print 'Make sure you beat Russell.'
+        print('Make sure you beat Russell.')
         exit(0)
     elif user_verify.lower().strip() == 'n':
-        print 'OK then, will not quit after all.'
+        print('OK then, will not quit after all.')
     else:
-        print 'Did not recognize confirmation. Will not quit.'
+        print('Did not recognize confirmation. Will not quit.')
 
 # note that this class can be used with tab-autocompletion...
 # can we give it more words in its dictionary? (e.g. player names)
@@ -365,17 +368,17 @@ class MainPrompt(Cmd):
         """move up one step in the snake draft"""
         self.i_manager_turn = self.i_manager_turn + 1
         if self.i_manager_turn >= len(self.manager_picks):
-            print 'Draft is over!'
-            conf = raw_input('Are you done [y/N]? ')
+            print('Draft is over!')
+            conf = input('Are you done [y/N]? ')
             if conf != 'y':
-                print 'Undoing last pick'
+                print('Undoing last pick')
                 push_to_player_list(self.pp.index[-1], self.ap, self.pp)
                 # self._update_vorp()
                 return self._regress_snake()
             # self.draft_mode = False # if we do this then we can't call "evaluate all". turning this off might cause other bugs
             i_manager_turn = None
             manager_picks = []
-            print 'You\'re done! Type `evaluate all` to see a summary for each team.'
+            print('You\'re done! Type `evaluate all` to see a summary for each team.')
             self._set_prompt()
             return
         self._set_prompt()
@@ -390,8 +393,8 @@ class MainPrompt(Cmd):
                                      manager=manager, pickno=pickno)
                 self._advance_snake()
             except IndexError as e:
-                print e
-                print 'could not pick player from list.'
+                print(e)
+                print('could not pick player from list.')
 
     def _regress_snake(self):
         """move up one step in the snake draft"""
@@ -442,7 +445,7 @@ class MainPrompt(Cmd):
         """get list of managers before next turn"""
         # first we get the list of managers the will go before our next turn
         if not self.manager_picks:
-            print '"managers til next" is only sensible in draft mode.'
+            print('"managers til next" is only sensible in draft mode.')
             return None
         i_man = self.i_manager_turn
         current_team = self.manager_picks[i_man]
@@ -470,7 +473,7 @@ class MainPrompt(Cmd):
         # print 'updating VORP' # for checking that this gets called sufficiently
         # positions = [pos for pos in self.n_roster_per_team.keys()
         #              if pos not in ['FLEX', 'BENCH'] and pos not in self.flex_pos]
-        positions = [pos for pos in self.n_roster_per_team.keys()
+        positions = [pos for pos in list(self.n_roster_per_team.keys())
                      if pos not in ['FLEX', 'BENCH']]
         
         for pos in positions:
@@ -515,7 +518,7 @@ class MainPrompt(Cmd):
                     continue
                 index = int(frac_through_bench * n_pos_baseline)
                 if index >= len(pos_baseline):
-                    print 'warning: check index here later'
+                    print('warning: check index here later')
                     index = len(pos_baseline-1)
                 vorp_baseline = pos_baseline['projection'].sort_values( ascending=False ).iloc[index]
             ap.loc[ap.position == pos, 'vorp'] = ap['projection'] - vorp_baseline
@@ -527,10 +530,10 @@ class MainPrompt(Cmd):
         for pos in args.split(' '):
             upos = pos.upper()
             if upos in self.disabled_pos:
-                print '{} is already disabled.'.format(upos)
+                print('{} is already disabled.'.format(upos))
                 continue
             if upos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
-                print 'Disabling {} in recommendations.'.format(upos)
+                print('Disabling {} in recommendations.'.format(upos))
                 self.disabled_pos.append(upos)
     def complete_disable_pos(self, text, line, begidk, endidx):
         """implements auto-complete for disable_pos function"""
@@ -549,7 +552,7 @@ class MainPrompt(Cmd):
         for pos in args.split(' '):
             upos = pos.upper()
             if upos in self.disabled_pos:
-                print 'Enabling {} in recommendations.'.format(upos)
+                print('Enabling {} in recommendations.'.format(upos))
                 self.disabled_pos.remove(upos)
     def complete_enable_pos(self, text, line, begidk, endidx):
         """implements auto-complete for enable_pos function"""
@@ -567,7 +570,7 @@ class MainPrompt(Cmd):
         type `evaluate all` to evaluate rosters of all managers
         """
         if 'manager' not in self.pp:
-            print 'roster from selected players:'
+            print('roster from selected players:')
             evaluate_roster(self.pp,
                             self.n_roster_per_team,
                             self.flex_pos)
@@ -576,16 +579,16 @@ class MainPrompt(Cmd):
         if not args:
             indices = [self._get_current_manager()]
         elif args.lower() == 'all':
-            indices = range(1,self.n_teams+1)
+            indices = list(range(1,self.n_teams+1))
         else:
             try:
                 indices = [int(a) for a in args.split(' ')]
             except ValueError as e:
-                print 'Could not interpret managers to evaluate.'
-                print e
+                print('Could not interpret managers to evaluate.')
+                print(e)
         manager_vals = {}
         for i in indices:
-            print '{}\'s roster:'.format(self._get_manager_name(i))
+            print('{}\'s roster:'.format(self._get_manager_name(i)))
             stval, benchval = evaluate_roster(self._get_manager_roster(i),
                                               self.n_roster_per_team,
                                               self.flex_pos)
@@ -593,19 +596,19 @@ class MainPrompt(Cmd):
 
         if len(indices) > 3:
             k = int(np.ceil(np.sqrt(1 + len(indices))))
-            totvals = np.array(manager_vals.values())        
+            totvals = np.array(list(manager_vals.values()))        
             partitions = get_k_partition_boundaries(totvals, k-1)[::-1]
             tier = 0
-            sorted_manager_vals = sorted(manager_vals.items(), key=lambda tup: tup[1], reverse=True)
+            sorted_manager_vals = sorted(list(manager_vals.items()), key=lambda tup: tup[1], reverse=True)
             while len(sorted_manager_vals) > 0:
                 tier = tier + 1
-                print 'Tier {}:'.format(tier)
+                print('Tier {}:'.format(tier))
                 part_bound = partitions[0] if len(partitions) > 0 else -np.inf
                 tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
                 for manager,manval in tiermans:
                     # print '  {}: \t{}'.format(self._get_manager_name(manager), int(manval))
-                    print '  {}'.format(self._get_manager_name(manager))
-                print
+                    print('  {}'.format(self._get_manager_name(manager)))
+                print()
                 sorted_manager_vals = sorted_manager_vals[len(tiermans):]
                 partitions = partitions[1:]
             
@@ -630,8 +633,8 @@ class MainPrompt(Cmd):
         try:
             indices = [int(i) for i in args.split(' ') if i]
         except ValueError as e:
-            print '`handcuff` requires integer indices.'
-            print e
+            print('`handcuff` requires integer indices.')
+            print(e)
         for i in indices:
             find_handcuff(i, self.ap, self.pp)
 
@@ -643,18 +646,18 @@ class MainPrompt(Cmd):
         for arg in args.split(' '):
             if arg.lower() in self.ap:
                 if arg.lower() not in self.hide_stats:
-                    print 'Hiding {}.'.format(arg.lower())
+                    print('Hiding {}.'.format(arg.lower()))
                     self.hide_stats.append(arg.lower())
                 else:
-                    print '{} is already hidden.'.format(arg)
+                    print('{} is already hidden.'.format(arg))
             elif arg.upper() in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
-                print 'Hiding {}s.'.format(arg.upper())
+                print('Hiding {}s.'.format(arg.upper()))
                 self.hide_pos.append(arg.upper())
             else:
-                print 'Could not interpret command to hide {}.'.format(arg)
-                print 'Available options are in:'
-                print 'QB, RB, WR, TE, K, DST'
-                print self.ap.columns
+                print('Could not interpret command to hide {}.'.format(arg))
+                print('Available options are in:')
+                print('QB, RB, WR, TE, K, DST')
+                print(self.ap.columns)
     def complete_hide(self, text, line, begidk, endidx):
         """implements auto-complete for hide function"""
         all_pos = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
@@ -676,9 +679,9 @@ class MainPrompt(Cmd):
         usage load [OUTPUT]
         loads player lists from OUTPUT.csv (default OUTPUT is draft_players)
         """
-        print 'if you quit from draft mode, then that state will not be saved.'
-        print 'in principle this can be extracted from the manager of the picked players,'
-        print 'but that is not yet implemented.'
+        print('if you quit from draft mode, then that state will not be saved.')
+        print('in principle this can be extracted from the manager of the picked players,')
+        print('but that is not yet implemented.')
         outname = args if args else 'draft_players'
         self.ap, self.pp = load_player_list(outname)
 
@@ -695,8 +698,8 @@ class MainPrompt(Cmd):
             if spl_args[1:]:
                 npos = int(spl_args[1])
         except ValueError as e:
-            print '`ls` requires integer arguments.'
-            print e
+            print('`ls` requires integer arguments.')
+            print(e)
         print_top_choices(self.ap, ntop, npos, self._sort_key, self._sort_asc, self.hide_stats, self.hide_pos)
 
     def do_lspick(self, args):
@@ -712,7 +715,7 @@ class MainPrompt(Cmd):
         """
         spl_args = [w for w in args.split(' ') if w]
         if not spl_args:
-            print 'Provide a position (qb|rb|wr|te|flex|k) to the `lspos` command.'
+            print('Provide a position (qb|rb|wr|te|flex|k) to the `lspos` command.')
             return
         pos = spl_args[0]
         ntop = 16
@@ -720,7 +723,7 @@ class MainPrompt(Cmd):
             try:
                 ntop = int(spl_args[1])
             except ValueError:
-                print '`lspos` requires an integer second argument.'
+                print('`lspos` requires an integer second argument.')
         print_top_position(self.ap, pos, ntop, self._sort_key, self._sort_asc)
 
     def do_name(self, args):
@@ -729,7 +732,7 @@ class MainPrompt(Cmd):
         names the current manager if first argument is not an integer
         """
         if not args:
-            print 'need to pass more than that to `name`'
+            print('need to pass more than that to `name`')
             return
         mannum = self._get_current_manager()
         splitargs = args.split(' ')
@@ -740,9 +743,9 @@ class MainPrompt(Cmd):
             manname = ' '.join(splitargs[1:])
         except ValueError as e:
             if mannum is None:
-                print e
-                print 'Could not figure out a valid manager to assign name to.'
-                print 'If not in draft mode, enter a number manually.'
+                print(e)
+                print('Could not figure out a valid manager to assign name to.')
+                print('If not in draft mode, enter a number manually.')
         self.manager_names[mannum] = manname
         self._set_prompt()
 
@@ -753,35 +756,35 @@ class MainPrompt(Cmd):
         that will have (two) picks before this one's next turn.
         """
         if not self.draft_mode:
-            print 'this command is only available in draft mode.'
+            print('this command is only available in draft mode.')
             return
         comp_mans = self._get_managers_til_next()
         
         # here we loop through the managers and see how many starting spots they have
-        starting_pos = [pos for pos,numpos in self.n_roster_per_team.items()
+        starting_pos = [pos for pos,numpos in list(self.n_roster_per_team.items())
                         if numpos > 0 and pos not in ['FLEX', 'BENCH']]
         pos_totals = {key:0 for key in starting_pos}
         pos_totals['FLEX'] = 0
         for man in comp_mans:
-            print '{} needs starters at:'.format(self._get_manager_name(man))
+            print('{} needs starters at:'.format(self._get_manager_name(man)))
             roster = self._get_manager_roster(man)
             for pos in starting_pos:
                 hasleft = self.n_roster_per_team[pos] - len(roster[roster.position == pos])
                 if hasleft > 0:
-                    print '{}: {}'.format(pos, hasleft)
+                    print('{}: {}'.format(pos, hasleft))
                     pos_totals[pos] = pos_totals[pos] + hasleft
             flexused = sum([max(0, len(roster[roster.position == pos])
                             - self.n_roster_per_team[pos])
                             for pos in self.flex_pos])
             flexleft = self.n_roster_per_team['FLEX'] - flexused
             if flexleft > 0:
-                print 'FLEX: {}'.format(flexleft)
+                print('FLEX: {}'.format(flexleft))
                 pos_totals['FLEX'] = pos_totals['FLEX'] + flexleft
         if sum(pos_totals.values()) > 0:
-            print '\ntotal open starting roster spots ({} picks):'.format(2*len(comp_mans))
-            for pos,n in pos_totals.items():
+            print('\ntotal open starting roster spots ({} picks):'.format(2*len(comp_mans)))
+            for pos,n in list(pos_totals.items()):
                 if n > 0:
-                    print '{}: {}'.format(pos, n)
+                    print('{}: {}'.format(pos, n))
                 
 
     def do_pick(self, args):
@@ -802,7 +805,7 @@ class MainPrompt(Cmd):
             if len(argl) > 1 and argl[1] == 'auto':
                 self.manager_auto_strats[manager] = argl[0]
         elif args.lower().split(' ')[0] in self._known_strategies:
-            print 'Must be in draft mode to set an automatic strategy.'
+            print('Must be in draft mode to set an automatic strategy.')
         try:
             if index is None:
                 index = int(args) 
@@ -810,11 +813,11 @@ class MainPrompt(Cmd):
             criterion = self.ap['name'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
             filtered = self.ap[criterion]
             if len(filtered) <= 0:
-                print 'Could not find available player with name {}.'.format(args)
+                print('Could not find available player with name {}.'.format(args))
                 return
             if len(filtered) > 1:
-                print 'Found multiple players:'
-                print filtered.drop(self.hide_stats, axis=1)
+                print('Found multiple players:')
+                print(filtered.drop(self.hide_stats, axis=1))
                 return
             assert(len(filtered) == 1)
             index = filtered.index[0]
@@ -825,8 +828,8 @@ class MainPrompt(Cmd):
             if self.draft_mode:
                 self._advance_snake()
         except IndexError as e:
-            print e
-            print 'could not pick player from list.'
+            print(e)
+            print('could not pick player from list.')
     def complete_pick(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
         avail_names = self.ap['name']
@@ -907,7 +910,8 @@ class MainPrompt(Cmd):
             acceptable_backup = [pos for pos in key_positions
                                  if len(roster[roster.position == pos])
                                  < self.n_roster_per_team[pos]
-                                 + self.n_roster_per_team['BENCH']/2]
+                                 # + old_div(self.n_roster_per_team['BENCH'],2)]
+                                 + self.n_roster_per_team['BENCH']//2]
             acceptable_positions = acceptable_backup + acceptable_crap
         ## if it's still too kicker-happy we can get more specific by replacing the above:
         # elif current_roster_size < starting_roster_spots - crap_starting_roster_spots:
@@ -928,7 +932,7 @@ class MainPrompt(Cmd):
             pos = self._get_max_vona_in(acceptable_positions, strat=vona_strat, disabled_pos=disabled_pos)
             if pos is None:
                 # then the user probably has the next pick as well and we should just pick for value
-                print 'do you have the next pick? VONA is not well-defined. will return VOLS.'
+                print('do you have the next pick? VONA is not well-defined. will return VOLS.')
                 strat = 'vols' # vona_strat # this leads to bad recommendations for ADP and ECP
             else:
                 # vona_asc = vona_strat in ['adp', 'ecp']
@@ -936,8 +940,8 @@ class MainPrompt(Cmd):
                 # take our projection over ADP/ECP. 
                 topvonapos = ap[ap.position == pos].sort_values('projection', ascending=False)
                 if len(topvonapos) <= 0:
-                    print 'error: could not get a list of availble position that maximizes VONA.'
-                    print 'switch to regulat strat?'
+                    print('error: could not get a list of availble position that maximizes VONA.')
+                    print('switch to regulat strat?')
                 player_index = topvonapos.index[0]
                 return player_index
         if strat == 'vorp':
@@ -950,7 +954,7 @@ class MainPrompt(Cmd):
         asc = strat in ['adp', 'ecp']
         toppicks = ap[ap.position.isin(acceptable_positions)].sort_values(strat, ascending=asc)
         if len(toppicks) <= 0:
-            print 'error: no available players in any position in {}'.format(acceptable_positions)
+            print('error: no available players in any position in {}'.format(acceptable_positions))
         # player = topstart.iloc[0] # this is the player itself
         player_index = toppicks.index[0]
         return player_index
@@ -980,14 +984,14 @@ class MainPrompt(Cmd):
         for strat in self._known_strategies:
             pick = self.pick_rec(manager, strat, disabled_pos=self.disabled_pos)
             player = self.ap.loc[pick]
-            print ' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
+            print(' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position))
         if self.manager_picks:
             vona_strats = ['vols', 'volb', 'adp', 'ecp']
             # vona-vorp takes too long
             for strat in vona_strats:
                 pick = self.pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
                 player = self.ap.loc[pick]
-                print ' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position)
+                print(' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position))
                 
     def do_roster(self, args):
         """
@@ -999,44 +1003,44 @@ class MainPrompt(Cmd):
         """
         # this function is pretty redundant with the `evaluate` command, which give more detailed information (e.g. breaking up starters and bench)
         if not self.draft_mode:
-            print 'The `roster` command is only available in draft mode.'
+            print('The `roster` command is only available in draft mode.')
             return
         if args.lower() == 'all':
             for i_man in range(1, 1+self.n_teams):
                 manname = self._get_manager_name(i_man)
-                print '\n {}:'.format(manname)
+                print('\n {}:'.format(manname))
                 theroster = self._get_manager_roster(i_man)
                 if len(theroster) > 0:
-                    print theroster.drop(self.hide_stats, axis=1)
+                    print(theroster.drop(self.hide_stats, axis=1))
                 else:
-                    print 'No players on this team yet.\n'
-            print
+                    print('No players on this team yet.\n')
+            print()
             return
         if not args:
-            print '\n {}:'.format( self._get_manager_name() )
+            print('\n {}:'.format( self._get_manager_name() ))
             theroster = self._get_manager_roster(self._get_current_manager())
             if len(theroster) > 0:
-                print theroster.drop(self.hide_stats, axis=1)
-                print
+                print(theroster.drop(self.hide_stats, axis=1))
+                print()
             else:
-                print 'No players on this team yet.\n'
+                print('No players on this team yet.\n')
             return
         indices = []
         try:
             indices = [int(i) for i in args.split(' ')]
         except ValueError as e:
-            print '`roster` requires integer arguments'
-            print e
+            print('`roster` requires integer arguments')
+            print(e)
             return
         for i in indices:
             manname = self._get_manager_name(i)
-            print '\n {}:'.format(manname)
+            print('\n {}:'.format(manname))
             theroster = self._get_manager_roster(i)
             if len(theroster) > 0:
-                print theroster
+                print(theroster)
             else:
-                print 'No players on this team yet.'
-        print # newline
+                print('No players on this team yet.')
+        print() # newline
 
     def do_save(self, args):
         """
@@ -1052,22 +1056,22 @@ class MainPrompt(Cmd):
         show a position or statistic that has been hidden
         """
         if args.strip().lower() == 'all':
-            print 'Showing all.'
+            print('Showing all.')
             self.hide_stats = []
             self.hide_pos = []
             return
         for arg in args.split(' '):
             if arg.lower() in self.hide_stats:
-                print 'Showing {}.'.format(arg.lower())
+                print('Showing {}.'.format(arg.lower()))
                 self.hide_stats.remove(arg.lower())
             elif arg.upper() in self.hide_pos:
-                print 'Showing {}.'.format(arg.upper())
+                print('Showing {}.'.format(arg.upper()))
                 self.hide_pos.remove(arg.upper())
             else:
-                print 'Could not interpret command to show {}.'.format(arg)
-                print 'Available options are in:'
-                print self.hide_stats
-                print self.hide_pos
+                print('Could not interpret command to show {}.'.format(arg))
+                print('Available options are in:')
+                print(self.hide_stats)
+                print(self.hide_pos)
     def complete_show(self, text, line, begidk, endidx):
         """implements auto-complete for show function"""
         avail_shows = [name.lower() for name in self.hide_pos + self.hide_stats]
@@ -1084,24 +1088,24 @@ class MainPrompt(Cmd):
         """
         # self._update_vorp() # called in precmd() now
         if self.draft_mode:
-            print 'You are already in draft mode!'
+            print('You are already in draft mode!')
             return
         if len(self.pp) > 0:
-            print 'There are already picked players. This is not starting a draft from scratch.'
-            print 'It is recommended that you quit and start fresh. Draft command will be canceled.'
+            print('There are already picked players. This is not starting a draft from scratch.')
+            print('It is recommended that you quit and start fresh. Draft command will be canceled.')
             return
         numprompt = 'Enter your position in the snake draft [1,...,{}]: '.format(self.n_teams)
-        argstr = args.split(' ') if args else raw_input(numprompt)
+        argstr = args.split(' ') if args else input(numprompt)
         numstr = argstr[0]
         # TODO: low priority: we could allow for multiple users
         try:
             self.user_manager = int(numstr)
-            if self.user_manager not in range(1,self.n_teams+1):
+            if self.user_manager not in list(range(1,self.n_teams+1)):
                 raise ValueError('Argument not in range.')
         except ValueError as e:
-            print e
-            print 'Could not cast argument to draft.'
-            print 'Use a single number from 1 to {}'.format(self.n_teams)        
+            print(e)
+            print('Could not cast argument to draft.')
+            print('Use a single number from 1 to {}'.format(self.n_teams))        
             return
         
         # set the automatic strategies for non-user managers
@@ -1110,19 +1114,19 @@ class MainPrompt(Cmd):
             for manager in [man for man in range(1,self.n_teams+1)
                             if man != self.user_manager]:
                 manstrat = random.choice(strats)
-                print 'Setting manager {} to use {} strategy.'.format(manager, manstrat)
+                print('Setting manager {} to use {} strategy.'.format(manager, manstrat))
                 self.manager_auto_strats[manager] = manstrat
         
         # perhaps there is a proxy we can use for this to reduce the number of variables
         self.draft_mode = True
         n_rounds = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
-        print '{} rounds of drafting commencing.'.format(n_rounds)
+        print('{} rounds of drafting commencing.'.format(n_rounds))
         self.manager_picks = []
         for i in range(n_rounds):
             if i % 2 == 0:
-                self.manager_picks.extend(range(1,self.n_teams+1))
+                self.manager_picks.extend(list(range(1,self.n_teams+1)))
             else:
-                self.manager_picks.extend(range(self.n_teams,0,-1))
+                self.manager_picks.extend(list(range(self.n_teams,0,-1)))
         self.i_manager_turn = -1
         self._advance_snake()
 
@@ -1136,7 +1140,7 @@ class MainPrompt(Cmd):
         if not argl:
             argl = None
         if argl is not None and argl not in self.ap:
-            print 'argl is not a valid sortable quantity.'
+            print('argl is not a valid sortable quantity.')
             return
         self._sort_key = argl
         self._sort_asc = argl in [None, 'adp', 'ecp']
@@ -1176,10 +1180,10 @@ class MainPrompt(Cmd):
                 if self.draft_mode:
                     self._regress_snake()
             except IndexError as e:
-                print e
-                print 'could not put player ({}) back in available list.'.format(lasti)
+                print(e)
+                print('could not put player ({}) back in available list.'.format(lasti))
         else:
-            print 'No players have been picked.'
+            print('No players have been picked.')
 
     # anticipating non-trivialities in the autocomplete here as well, we will simply disable this alias.
     # def do_unpop(self, args):
@@ -1205,12 +1209,12 @@ class MainPrompt(Cmd):
         print out VONA for each position, assuming `strat` strategy for others
         """
         if not self.manager_picks:
-            print 'command only available in snake draft mode.'
+            print('command only available in snake draft mode.')
             return
         # strat = args.strip().lower() if args else None
         for strat in self._known_strategies:
-            print 'Assuming {} strategy:'.format(strat.upper())
-            positions = [pos for (pos,numpos) in self.n_roster_per_team.items()
+            print('Assuming {} strategy:'.format(strat.upper()))
+            positions = [pos for (pos,numpos) in list(self.n_roster_per_team.items())
                          if pos not in ['FLEX', 'BENCH'] and numpos > 0]
             for pos in positions:
                 topval = self.ap[self.ap.position == pos]['projection'].max()
@@ -1219,7 +1223,7 @@ class MainPrompt(Cmd):
                 managers.extend(managers[::-1])
                 na_ap, na_pp = self._step_vona(self.ap, self.pp, managers, strat)
                 naval = na_ap[na_ap.position == pos]['projection'].max()
-                print '{}: {}'.format(pos,topval-naval)
+                print('{}: {}'.format(pos,topval-naval))
     def _get_max_vona_in(self, positions, strat, disabled_pos=None):
         # vona_dict = {pos:0 for pos in positions)
         if disabled_pos is None:
@@ -1267,7 +1271,7 @@ def main():
         'BENCH':args.n_bench
     }
     n_roster_per_league = {}
-    for pos, nper in n_roster_per_team.items():
+    for pos, nper in list(n_roster_per_team.items()):
         n_roster_per_league[pos] = nper * n_teams
 
     # in principle FLEX can be defined in a different way,
@@ -1281,17 +1285,17 @@ def main():
     if args.ruleset == 'bro':
         rules = bro_league
 
-    print 'Initializing with ruleset:'
+    print('Initializing with ruleset:')
     # print some output to verify the ruleset we are working with
     rulestr = '  {} team, {} PPR'.format(n_teams, rules.ppREC)
     if rules.ppPC != 0 or rules.ppINC != 0:
         rulestr += ', {}/{} PPC/I'.format(rules.ppPC, rules.ppINC)
-    print rulestr
+    print(rulestr)
     rosterstr = ' '
     for pos in ['QB', 'RB', 'WR', 'TE', 'FLEX']: # there's always just 1 DST and K, right?
         nper = n_roster_per_team[pos]
         rosterstr += ' {}{} /'.format(nper, pos)
-    print rosterstr[:-2]
+    print(rosterstr[:-2])
     
     main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
 
@@ -1334,7 +1338,7 @@ def main():
         if st not in availdf:
             availdf[st] = 0
         else:
-            print '{} already in data frame!'.format(st)
+            print('{} already in data frame!'.format(st))
 
     # decorate the dataframe with projections for our ruleset
     availdf.loc[availdf.position != 'DST', 'projection'] = get_points_from_data_frame(rules, availdf)
@@ -1426,11 +1430,11 @@ def main():
     except (SystemExit, KeyboardInterrupt, EOFError):
         # a system exit, Ctrl-C, or Ctrl-D can be treated as a clean exit.
         #  will not create an emergency backup.
-        print 'Goodbye!'
+        print('Goodbye!')
     except:
         backup_fname = 'draft_backup'
-        print 'Error: {}'.format(sys.exc_info())
-        print 'Backup save with label \"{}\".'.format(backup_fname)
+        print('Error: {}'.format(sys.exc_info()))
+        print('Backup save with label \"{}\".'.format(backup_fname))
         save_player_list(backup_fname, prompt.ap, prompt.pp)
         raise
         
