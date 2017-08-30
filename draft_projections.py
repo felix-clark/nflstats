@@ -4,6 +4,7 @@ from __future__ import print_function
 from builtins import input
 from builtins import range
 import numpy as np
+import scipy.stats
 import sys
 import os.path
 import argparse
@@ -11,6 +12,8 @@ import random
 from itertools import takewhile
 from cmd import Cmd
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 from getPoints import get_points_from_data_frame
 from ruleset import bro_league, phys_league, dude_league
@@ -386,7 +389,7 @@ class MainPrompt(Cmd):
             try:
                 pickno = self.i_manager_turn + 1
                 self._update_vorp()
-                player_index = self.pick_rec(manager, self.manager_auto_strats[manager])
+                player_index = self._pick_rec(manager, self.manager_auto_strats[manager])
                 pop_from_player_list(player_index, self.ap, self.pp,
                                      manager=manager, pickno=pickno)
                 self._advance_snake()
@@ -456,6 +459,120 @@ class MainPrompt(Cmd):
         comp_mans.remove(current_team) # don't include our own roster
         return comp_mans
 
+    def __pick_rec(self, manager, strat='vols', ap=None, pp=None, disabled_pos=None, vona_strat='adp'):
+        """
+        picks the recommended player with the highest strat value 
+        returns the index of that player? (should be able to get everything else from self.ap.loc[index])
+        """
+        if ap is None:
+            ap = self.ap
+        if pp is None:
+            pp = self.pp
+        if disabled_pos is None:
+            disabled_pos = []
+        roster = self._get_manager_roster(manager, pp)
+        total_roster_spots = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
+        if len(roster) >= total_roster_spots:
+            manname = self._get_manager_name()
+            # print '{}\'s roster has no available spots left'.format(manname)
+            # return None # don't return, we can still form a recommendation
+        
+        starting_roster_spots = sum([self.n_roster_per_team[pos]
+                                     for pos in self.n_roster_per_team
+                                     if pos.upper() is not 'BENCH'])
+        crap_positions = ['K', 'DST'] # add DST when (or if) we bother
+        # crap_starting_roster_spots = sum([self.n_roster_per_team[pos] for pos in crap_positions])
+        needed_crap_starter_positions = [pos for pos in crap_positions
+                                         if len(roster[roster.position == pos])
+                                         < self.n_roster_per_team[pos]]
+        # key_starting_roster_spots = starting_roster_spots - crap_starting_roster_spots
+
+        key_positions = ['QB', 'RB', 'WR', 'TE'] # this concept includes FLEX so don't count it
+        # realistically "nonflex" will just be QBs but let's keep it flexible
+        key_nonflex_positions = [pos for pos in key_positions if pos not in self.flex_pos]
+        needed_key_starter_positions = []
+        needed_key_starter_positions.extend([pos for pos in key_nonflex_positions
+                                             if len(roster[roster.position == pos])
+                                             < self.n_roster_per_team[pos]])
+        # print [len(roster[roster.position == pos])
+        #        > self.n_roster_per_team[pos] for pos in self.flex_pos]
+        used_flex_spot = any([len(roster[roster.position == pos]) > self.n_roster_per_team[pos]
+                                      for pos in self.flex_pos])
+        flex_mult = 0 if used_flex_spot else 1
+        needed_key_starter_positions.extend([pos for pos in self.flex_pos
+                                             if len(roster[roster.position == pos])
+                                             < self.n_roster_per_team[pos]
+                                             + flex_mult*self.n_roster_per_team['FLEX']])
+        ## TODO: if picking for a flex spot, they should be evaluated by a separate VOLS/VORP for FLEX (?) -- otherwise e.g. TEs get recommended for flex too often
+
+        current_roster_size = len(roster)
+        acceptable_positions = []
+        if needed_key_starter_positions:
+            # if we still need key starters, make sure we grab these first
+            acceptable_positions = needed_key_starter_positions
+        elif current_roster_size + len(needed_crap_starter_positions) >= starting_roster_spots:
+            # note: this logic will fail to fill crap positions if we're ever in a situation where more than one of each is needed
+            # need to get a K/DST to fill the end of the lineup
+            acceptable_positions = needed_crap_starter_positions
+        else:
+            # once we have our starting lineup of important positions we can pick for bench value and kickers
+            # vorp does a decent job of not picking kickers too quickly,
+            # but we do need to keep it from taking more than one.
+            acceptable_crap = [pos for pos in crap_positions
+                               if len(roster[roster.position == pos])
+                               < self.n_roster_per_team[pos]]
+            # we allow backup players, but don't get more than half our bench with any one position
+            acceptable_backup = [pos for pos in key_positions
+                                 if len(roster[roster.position == pos])
+                                 < self.n_roster_per_team[pos]
+                                 + self.n_roster_per_team['BENCH']//2]
+            acceptable_positions = acceptable_backup + acceptable_crap
+        ## if it's still too kicker-happy we can get more specific by replacing the above:
+        # elif current_roster_size < starting_roster_spots - crap_starting_roster_spots:
+        #     ## get no more than 1 backup at each position before
+        #     needed_backup_positions = [pos for pos in key_positions
+        #                                if len(roster[roster.position == pos])
+        #                                < self.n_roster_per_team[pos] + 1]
+        #     acceptable_positions = needed_backup_positions if needed_backup_positions else key_positions
+        # elif current_roster_size >= starting_roster_spots - crap_starting_roster_spots\
+        #      and current_roster_size < starting_roster_spots:
+        #     acceptable_positions = [pos for pos in crap_positions
+        #                             if len(roster[roster.position == pos])
+        #                             < self.n_roster_per_team[pos]]
+        # else:
+        #     print 'roster is overfull.'
+        #     acceptable_positions = key_positions
+        if strat == 'vona':
+            pos = self._get_max_vona_in(acceptable_positions, strat=vona_strat, disabled_pos=disabled_pos)
+            if pos is None:
+                # then the user probably has the next pick as well and we should just pick for value
+                print('do you have the next pick? VONA is not well-defined. will return VOLS.')
+                strat = 'vols' # vona_strat # this leads to bad recommendations for ADP and ECP
+            else:
+                # vona_asc = vona_strat in ['adp', 'ecp']
+                # topvonapos = ap[ap.position == pos].sort_values(vona_strat, vona_asc)
+                # take our projection over ADP/ECP. 
+                topvonapos = ap[ap.position == pos].sort_values('projection', ascending=False)
+                if len(topvonapos) <= 0:
+                    print('error: could not get a list of availble position that maximizes VONA.')
+                    print('switch to regulat strat?')
+                player_index = topvonapos.index[0]
+                return player_index
+        if strat == 'vorp':
+            self._update_vorp(ap, pp) # just make sure we're using the right value, but probably too conservative
+        # TODO: VONA-VORP is probably not updating VORP correctly for the propagated player lists
+        acceptable_positions = [pos for pos in acceptable_positions if pos not in disabled_pos]
+        if len(acceptable_positions) <= 0:
+            # if we've ruled out everything else, just pick one of the main positions
+            acceptable_positions = key_positions
+        asc = strat in ['adp', 'ecp']
+        toppicks = ap[ap.position.isin(acceptable_positions)].sort_values(strat, ascending=asc)
+        if len(toppicks) <= 0:
+            print('error: no available players in any position in {}'.format(acceptable_positions))
+        # player = topstart.iloc[0] # this is the player itself
+        player_index = toppicks.index[0]
+        return player_index
+    
     def _update_vorp(self, ap=None, pp=None):
         """
         updates the VORP values in the available players dataframe
@@ -783,7 +900,6 @@ class MainPrompt(Cmd):
             for pos,n in list(pos_totals.items()):
                 if n > 0:
                     print('{}: {}'.format(pos, n))
-                
 
     def do_pick(self, args):
         """
@@ -799,7 +915,7 @@ class MainPrompt(Cmd):
         if manager is not None:
             argl = args.lower().split(' ')
             if argl and argl[0] in self._known_strategies:
-                index = self.pick_rec(manager, argl[0])
+                index = self._pick_rec(manager, argl[0])
             if len(argl) > 1 and argl[1] == 'auto':
                 self.manager_auto_strats[manager] = argl[0]
         elif args.lower().split(' ')[0] in self._known_strategies:
@@ -841,130 +957,21 @@ class MainPrompt(Cmd):
                     if name.startswith(text.lower())]
         else:
             return [name for name in mod_avail_names]
-
-    def pick_rec(self, manager, strat='vols', ap=None, pp=None, disabled_pos=None, vona_strat='adp'):
-        """
-        picks the recommended player with the highest strat value 
-        returns the index of that player? (should be able to get everything else from self.ap.loc[index])
-        """
-        if ap is None:
-            ap = self.ap
-        if pp is None:
-            pp = self.pp
-        if disabled_pos is None:
-            disabled_pos = []
-        roster = self._get_manager_roster(manager, pp)
-        total_roster_spots = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
-        if len(roster) >= total_roster_spots:
-            manname = self._get_manager_name()
-            # print '{}\'s roster has no available spots left'.format(manname)
-            # return None # don't return, we can still form a recommendation
-        
-        starting_roster_spots = sum([self.n_roster_per_team[pos]
-                                     for pos in self.n_roster_per_team
-                                     if pos.upper() is not 'BENCH'])
-        crap_positions = ['K', 'DST'] # add DST when (or if) we bother
-        # crap_starting_roster_spots = sum([self.n_roster_per_team[pos] for pos in crap_positions])
-        needed_crap_starter_positions = [pos for pos in crap_positions
-                                         if len(roster[roster.position == pos])
-                                         < self.n_roster_per_team[pos]]
-        # key_starting_roster_spots = starting_roster_spots - crap_starting_roster_spots
-
-        key_positions = ['QB', 'RB', 'WR', 'TE'] # this concept includes FLEX so don't count it
-        # realistically "nonflex" will just be QBs but let's keep it flexible
-        key_nonflex_positions = [pos for pos in key_positions if pos not in self.flex_pos]
-        needed_key_starter_positions = []
-        needed_key_starter_positions.extend([pos for pos in key_nonflex_positions
-                                             if len(roster[roster.position == pos])
-                                             < self.n_roster_per_team[pos]])
-        # print [len(roster[roster.position == pos])
-        #        > self.n_roster_per_team[pos] for pos in self.flex_pos]
-        used_flex_spot = any([len(roster[roster.position == pos]) > self.n_roster_per_team[pos]
-                                      for pos in self.flex_pos])
-        flex_mult = 0 if used_flex_spot else 1
-        needed_key_starter_positions.extend([pos for pos in self.flex_pos
-                                             if len(roster[roster.position == pos])
-                                             < self.n_roster_per_team[pos]
-                                             + flex_mult*self.n_roster_per_team['FLEX']])
-        ## TODO: if picking for a flex spot, they should be evaluated by a separate VOLS/VORP for FLEX (?) -- otherwise e.g. TEs get recommended for flex too often
-
-        current_roster_size = len(roster)
-        acceptable_positions = []
-        if needed_key_starter_positions:
-            # if we still need key starters, make sure we grab these first
-            acceptable_positions = needed_key_starter_positions
-        elif current_roster_size + len(needed_crap_starter_positions) >= starting_roster_spots:
-            # note: this logic will fail to fill crap positions if we're ever in a situation where more than one of each is needed
-            # need to get a K/DST to fill the end of the lineup
-            acceptable_positions = needed_crap_starter_positions
-        else:
-            # once we have our starting lineup of important positions we can pick for bench value and kickers
-            # vorp does a decent job of not picking kickers too quickly,
-            # but we do need to keep it from taking more than one.
-            acceptable_crap = [pos for pos in crap_positions
-                               if len(roster[roster.position == pos])
-                               < self.n_roster_per_team[pos]]
-            # we allow backup players, but don't get more than half our bench with any one position
-            acceptable_backup = [pos for pos in key_positions
-                                 if len(roster[roster.position == pos])
-                                 < self.n_roster_per_team[pos]
-                                 + self.n_roster_per_team['BENCH']//2]
-            acceptable_positions = acceptable_backup + acceptable_crap
-        ## if it's still too kicker-happy we can get more specific by replacing the above:
-        # elif current_roster_size < starting_roster_spots - crap_starting_roster_spots:
-        #     ## get no more than 1 backup at each position before
-        #     needed_backup_positions = [pos for pos in key_positions
-        #                                if len(roster[roster.position == pos])
-        #                                < self.n_roster_per_team[pos] + 1]
-        #     acceptable_positions = needed_backup_positions if needed_backup_positions else key_positions
-        # elif current_roster_size >= starting_roster_spots - crap_starting_roster_spots\
-        #      and current_roster_size < starting_roster_spots:
-        #     acceptable_positions = [pos for pos in crap_positions
-        #                             if len(roster[roster.position == pos])
-        #                             < self.n_roster_per_team[pos]]
-        # else:
-        #     print 'roster is overfull.'
-        #     acceptable_positions = key_positions
-        if strat == 'vona':
-            pos = self._get_max_vona_in(acceptable_positions, strat=vona_strat, disabled_pos=disabled_pos)
-            if pos is None:
-                # then the user probably has the next pick as well and we should just pick for value
-                print('do you have the next pick? VONA is not well-defined. will return VOLS.')
-                strat = 'vols' # vona_strat # this leads to bad recommendations for ADP and ECP
-            else:
-                # vona_asc = vona_strat in ['adp', 'ecp']
-                # topvonapos = ap[ap.position == pos].sort_values(vona_strat, vona_asc)
-                # take our projection over ADP/ECP. 
-                topvonapos = ap[ap.position == pos].sort_values('projection', ascending=False)
-                if len(topvonapos) <= 0:
-                    print('error: could not get a list of availble position that maximizes VONA.')
-                    print('switch to regulat strat?')
-                player_index = topvonapos.index[0]
-                return player_index
-        if strat == 'vorp':
-            self._update_vorp(ap, pp) # just make sure we're using the right value, but probably too conservative
-        # TODO: VONA-VORP is probably not updating VORP correctly for the propagated player lists
-        acceptable_positions = [pos for pos in acceptable_positions if pos not in disabled_pos]
-        if len(acceptable_positions) <= 0:
-            # if we've ruled out everything else, just pick one of the main positions
-            acceptable_positions = key_positions
-        asc = strat in ['adp', 'ecp']
-        toppicks = ap[ap.position.isin(acceptable_positions)].sort_values(strat, ascending=asc)
-        if len(toppicks) <= 0:
-            print('error: no available players in any position in {}'.format(acceptable_positions))
-        # player = topstart.iloc[0] # this is the player itself
-        player_index = toppicks.index[0]
-        return player_index
     
-
-    # autocomplete doesn't seem to work this trivially for complete_pop, so let's just disable this alias
-    # for now anyway
-    # def do_pop(self, args):
-    #     """alias for `pick`"""
-    #     self.do_pick(args)
-    # def complete_pop(self, text, line, begidk, endidk):
-    #     return self.complete_pick(text, line, begidk, endidx)
-
+    def do_plot(self, args):
+        """plot dropoff by position"""
+        plotdf = self.ap[self.ap.tier != 'WAIV'][['position', 'vols']] # ?
+        for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
+            # posplotdf = plotdf[plotdf.position == 'pos']
+            # posplotdf.loc[:,'posrank'] = scipy.stats.rankdata(posplotdf['vols'])
+            # print (plotdf[plotdf.position == pos].sort_values('vols', ascending=False) )
+            pos_idxs = plotdf[plotdf.position == pos].sort_values('vols', ascending=False).index
+            for rank,idx in enumerate(pos_idxs):
+                plotdf.loc[idx,'posrank'] = rank
+            
+        g = sns.factorplot(x='posrank', y='vols', hue='position', data=plotdf)
+        plt.show()
+        
     def do_q(self, args):
         """alias for `quit`"""
         self.do_quit(args)
@@ -979,14 +986,14 @@ class MainPrompt(Cmd):
         """quick test for pick_vols"""
         manager = self._get_current_manager()
         for strat in self._known_strategies:
-            pick = self.pick_rec(manager, strat, disabled_pos=self.disabled_pos)
+            pick = self._pick_rec(manager, strat, disabled_pos=self.disabled_pos)
             player = self.ap.loc[pick]
             print(' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position))
         if self.manager_picks:
             vona_strats = ['vols', 'volb', 'adp', 'ecp']
             # vona-vorp takes too long
             for strat in vona_strats:
-                pick = self.pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
+                pick = self._pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
                 player = self.ap.loc[pick]
                 print(' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position))
                 
@@ -1193,7 +1200,7 @@ class MainPrompt(Cmd):
         if not managers_til_next:
             return (ap, pp)
         manager = managers_til_next[0]
-        pickidx = self.pick_rec(manager, strat=strat, ap=ap, pp=pp, disabled_pos=None)
+        pickidx = self._pick_rec(manager, strat=strat, ap=ap, pp=pp, disabled_pos=None)
         newap = ap.drop(pickidx)
         newpp = ap.loc[ap.index == pickidx].copy()
         newpp['manager'] = manager
@@ -1416,7 +1423,10 @@ def main():
     # set some pandas display options
     pd.options.display.precision = 4 # default is 6
     pd.options.display.width = 96 # default is 80
-    
+
+    # set seaborn style to nice default
+    sns.set()
+
     prompt = MainPrompt()
     prompt.ap = availdf
     prompt.pp = pickdf
