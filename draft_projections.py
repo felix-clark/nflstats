@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 from builtins import input
 from builtins import range
-from past.utils import old_div
 import numpy as np
 import sys
 import os.path
@@ -63,8 +62,7 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     # we'll call this an "index" to avoid commiting to a meaning right now :)
 
     # 13 games in regular FF season. we'll pretend they're independent.
-    # bye_factor = old_div((13.0-1.0),13.0)
-    bye_factor = (13.0-1.0)/13.0
+    bye_factor = (13-1)/13.0
 
     # this is the approximate fraction of the time that a player in
     #  each position spends on the field uninjured.
@@ -910,7 +908,6 @@ class MainPrompt(Cmd):
             acceptable_backup = [pos for pos in key_positions
                                  if len(roster[roster.position == pos])
                                  < self.n_roster_per_team[pos]
-                                 # + old_div(self.n_roster_per_team['BENCH'],2)]
                                  + self.n_roster_per_team['BENCH']//2]
             acceptable_positions = acceptable_backup + acceptable_crap
         ## if it's still too kicker-happy we can get more specific by replacing the above:
