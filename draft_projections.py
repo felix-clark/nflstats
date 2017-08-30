@@ -1356,8 +1356,7 @@ def main():
     #  update in the case of other teams making "mistakes".
     starter_mask = availdf['tier'].notnull()
     starterdf = availdf.loc[starter_mask]
-    # for pos in main_positions:
-    worst_flex_value = starterdf[starterdf.position.isin(flex_pos)]['projection'].min()
+    worst_flex_value = starterdf[starterdf['tier'].str.contains('FLEX')]['projection'].min()
     for pos in main_positions:
         worst_starter_value = starterdf[starterdf.position == pos]['projection'].min()
         if pos in flex_pos and worst_starter_value > worst_flex_value:
