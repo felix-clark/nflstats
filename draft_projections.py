@@ -219,17 +219,23 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
     print('selecting {} ({}) - {}'.format(name, team, pos))
     ap.drop(index, inplace=True)
 
-def print_picked_players(df):
+def print_picked_players(pp, ap=None):
     """prints the players in dataframe df as if they have been selected"""
-    if df.shape[0] == 0:
+    npicked = pp.shape[0]
+    if npicked == 0:
         print('No players have been picked yet.')
     else:
         with pd.option_context('display.max_rows', None):
             ## TODO: we can probably still stand to improve this output:'
-            print(df.drop([col for col in ['manager', 'pick'] if col in df], axis=1))
+            print(pp.drop([col for col in ['manager', 'pick'] if col in pp], axis=1))
+        if ap is not None:
+            print('\nTypically picked at this point (by ADP):')
+            adpsort = pd.concat([pp, ap]).sort_values('adp', ascending=True).head(npicked)
+            for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
+                print ('{}:\t{}'.format(pos, len(adpsort[adpsort.position == pos])))
         print('\nPlayers picked by position:')
         # to_string() suppresses the last line w/ "name" and "dtype" output
-        print (df.position.value_counts().to_string())
+        print (pp.position.value_counts().to_string())
 
 def print_teams(ap, pp):
     """
@@ -336,7 +342,7 @@ class MainPrompt(Cmd):
 
     disabled_pos = []
 
-    _known_strategies = ['vols', 'volb', 'vorp', 'adp', 'ecp']
+    _known_strategies = ['vols', 'volb', 'vomb', 'vorp', 'adp', 'ecp']
     
     # member variables for DRAFT MODE !!!
     draft_mode = False
@@ -462,8 +468,10 @@ class MainPrompt(Cmd):
     def _pick_rec(self, manager, strat='vols', ap=None, pp=None, disabled_pos=None, vona_strat='adp'):
         """
         picks the recommended player with the highest strat value 
-        returns the index of that player? (should be able to get everything else from self.ap.loc[index])
+        returns the index of that player
         """
+        # TODO: multiply by "need factor", based on how many of that position you have.
+        # e.g. 0.8 once starters are full, 0.6 when already have 1 backup, 0.4 for 2, ...
         if ap is None:
             ap = self.ap
         if pp is None:
@@ -721,8 +729,8 @@ class MainPrompt(Cmd):
                 part_bound = partitions[0] if len(partitions) > 0 else -np.inf
                 tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
                 for manager,manval in tiermans:
-                    # print '  {}: \t{}'.format(self._get_manager_name(manager), int(manval))
-                    print('  {}'.format(self._get_manager_name(manager)))
+                    print '  {}: \t{}'.format(self._get_manager_name(manager), int(manval))
+                    # print('  {}'.format(self._get_manager_name(manager)))
                 print()
                 sorted_manager_vals = sorted_manager_vals[len(tiermans):]
                 partitions = partitions[1:]
@@ -821,7 +829,7 @@ class MainPrompt(Cmd):
         """prints summary of players that have already been picked"""
         # we already have the `roster` command to look at a roster of a manager;
         # TODO: let optional argument select by e.g. position?
-        print_picked_players(self.pp)
+        print_picked_players(self.pp, self.ap)
 
     def do_lspos(self, args):
         """
@@ -960,21 +968,25 @@ class MainPrompt(Cmd):
     
     def do_plot(self, args):
         """plot dropoff by position"""
-        plotdf = self.ap[self.ap.tier != 'WAIV'][['position', 'vols']] # ?
+        yquant = args.strip().lower() if args else 'vols'
+        if yquant not in self.ap:
+            print('{} is not a quantity that can be plotted.'.format(yquant))
+            return
+        plotdf = self.ap[self.ap.tier != 'WAIV'][['position', yquant]] # ?
         for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
             # posplotdf = plotdf[plotdf.position == 'pos']
             # posplotdf.loc[:,'posrank'] = scipy.stats.rankdata(posplotdf['vols'])
             # print (plotdf[plotdf.position == pos].sort_values('vols', ascending=False) )
-            pos_idxs = plotdf[plotdf.position == pos].sort_values('vols', ascending=False).index
+            pos_idxs = plotdf[plotdf.position == pos].sort_values(yquant, ascending=False).index
             for rank,idx in enumerate(pos_idxs):
                 plotdf.loc[idx,'posrank'] = rank
-        g = sns.factorplot(data=plotdf, x='posrank', y='vols',
+        g = sns.factorplot(data=plotdf, x='posrank', y=yquant,
                            hue='position',
                            aspect=2.0 # make the plot wider by factor of 2
                            # , kind='strip' # this style looks decent, but I prefer lines connecting these points because they're sorted
         )
         # g.set_xticklabels(tick_labels.astype(int))
-        g.set_axis_labels('Position rank', 'Value over last starter')
+        g.set_axis_labels('Position rank', yquant)
         g.set_xticklabels([]) # by default the tick labels are drawn as floats, making them hard to read
         plt.show()
         
@@ -1238,7 +1250,7 @@ class MainPrompt(Cmd):
         # vona_dict = {pos:0 for pos in positions)
         if disabled_pos is None:
             disabled_pos = []
-        max_vona = 0
+        max_vona = -1
         max_vona_pos = None
         for pos in positions:
             topval = self.ap[self.ap.position == pos]['projection'].max()
@@ -1403,6 +1415,25 @@ def main():
         i_pos = benchdf.loc[benchdf.position == pos].sort_values('projection', ascending=False).head(n_pos_bench).index
         availdf.loc[availdf.index.isin(i_pos), 'tier'] = 'BU'
 
+    # TODO: make a baseline that compares to the worst player at a level where ~2 bench spots are full,
+    # with the positional distributions governed by ADP.
+    # some more sophisticated methods of picking the baseline
+    # (e.g. http://www.rotoworld.com/articles/nfl/41100/71/draft-analysis)
+    # put the threshold near about 2 bench spots for each team deep.
+    # the above method uses something better than ADP but more difficult to compute on our own.
+    # maybe this is redundant with our dynamic VORP, since we fill bench according to ADP.
+    # This does lead to recommending RBs seemingly too early in PPR, since people often reach for RBs.
+    n_players_for_adp_baseline = sum([n_roster_per_league[pos]
+                                      for pos in n_roster_per_league
+                                      if pos not in ['K', 'DST', 'BENCH']]) + n_roster_per_league['BENCH']//2# 2*n_teams
+    adpsorteddf = availdf.sort_values('adp', ascending=True).head(n_players_for_adp_baseline)
+    for pos in main_positions:
+        posadpdf = adpsorteddf[adpsorteddf.position == pos]
+        n_pos_adp = len(posadpdf)
+        print (pos, n_pos_adp)
+        pos_thresh = posadpdf['projection'].min() if n_pos_adp > 0 else availdf[availdf.position == pos]['projection'].max()        
+        availdf.loc[availdf.position == pos, 'vomb'] = availdf['projection'] - pos_thresh
+    
     # now we've given the backups a class, the worst projection at each position is the worst bench value.
     # we will define this as the VOLB (value over last backup)
     # this a static calculation, and the dynamically-computed VORP might do better.
@@ -1411,6 +1442,7 @@ def main():
     for pos in [pos for pos in main_positions if pos not in flex_pos]:
         worst_draftable_value = draftable_df[draftable_df.position == pos]['projection'].min()
         availdf.loc[availdf.position == pos, 'volb'] = availdf['projection'] - worst_draftable_value
+    # TODO: possibly shouldn't compare all flex positions together for VOLB...
     worst_draftable_flex_value = draftable_df[draftable_df.position.isin(flex_pos)]['projection'].min()
     availdf.loc[availdf.position.isin(flex_pos), 'volb'] = availdf['projection'] - worst_draftable_flex_value
         
