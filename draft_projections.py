@@ -342,7 +342,7 @@ class MainPrompt(Cmd):
 
     disabled_pos = []
 
-    _known_strategies = ['vols', 'volb', 'vomb', 'vorp', 'adp', 'ecp']
+    _known_strategies = ['vols', 'volb', 'vorp', 'adp', 'ecp']
     
     # member variables for DRAFT MODE !!!
     draft_mode = False
@@ -729,7 +729,7 @@ class MainPrompt(Cmd):
                 part_bound = partitions[0] if len(partitions) > 0 else -np.inf
                 tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
                 for manager,manval in tiermans:
-                    print '  {}: \t{}'.format(self._get_manager_name(manager), int(manval))
+                    print('  {}: \t{}'.format(self._get_manager_name(manager), int(manval)))
                     # print('  {}'.format(self._get_manager_name(manager)))
                 print()
                 sorted_manager_vals = sorted_manager_vals[len(tiermans):]
@@ -1423,16 +1423,17 @@ def main():
     # the above method uses something better than ADP but more difficult to compute on our own.
     # maybe this is redundant with our dynamic VORP, since we fill bench according to ADP.
     # This does lead to recommending RBs seemingly too early in PPR, since people often reach for RBs.
-    n_players_for_adp_baseline = sum([n_roster_per_league[pos]
-                                      for pos in n_roster_per_league
-                                      if pos not in ['K', 'DST', 'BENCH']]) + n_roster_per_league['BENCH']//2# 2*n_teams
-    adpsorteddf = availdf.sort_values('adp', ascending=True).head(n_players_for_adp_baseline)
-    for pos in main_positions:
-        posadpdf = adpsorteddf[adpsorteddf.position == pos]
-        n_pos_adp = len(posadpdf)
-        print (pos, n_pos_adp)
-        pos_thresh = posadpdf['projection'].min() if n_pos_adp > 0 else availdf[availdf.position == pos]['projection'].max()        
-        availdf.loc[availdf.position == pos, 'vomb'] = availdf['projection'] - pos_thresh
+    # perhaps the problem is that the ADP we are using was taken from standard?
+    # n_players_for_adp_baseline = sum([n_roster_per_league[pos]
+    #                                   for pos in n_roster_per_league
+    #                                   if pos not in ['K', 'DST', 'BENCH']]) + n_roster_per_league['BENCH']//2# 2*n_teams
+    # adpsorteddf = availdf.sort_values('adp', ascending=True).head(n_players_for_adp_baseline)
+    # for pos in main_positions:
+    #     posadpdf = adpsorteddf[adpsorteddf.position == pos]
+    #     n_pos_adp = len(posadpdf)
+    #     print (pos, n_pos_adp)
+    #     pos_thresh = posadpdf['projection'].min() if n_pos_adp > 0 else availdf[availdf.position == pos]['projection'].max()        
+    #     availdf.loc[availdf.position == pos, 'vomb'] = availdf['projection'] - pos_thresh
     
     # now we've given the backups a class, the worst projection at each position is the worst bench value.
     # we will define this as the VOLB (value over last backup)
