@@ -459,7 +459,7 @@ class MainPrompt(Cmd):
         comp_mans.remove(current_team) # don't include our own roster
         return comp_mans
 
-    def __pick_rec(self, manager, strat='vols', ap=None, pp=None, disabled_pos=None, vona_strat='adp'):
+    def _pick_rec(self, manager, strat='vols', ap=None, pp=None, disabled_pos=None, vona_strat='adp'):
         """
         picks the recommended player with the highest strat value 
         returns the index of that player? (should be able to get everything else from self.ap.loc[index])
@@ -968,8 +968,14 @@ class MainPrompt(Cmd):
             pos_idxs = plotdf[plotdf.position == pos].sort_values('vols', ascending=False).index
             for rank,idx in enumerate(pos_idxs):
                 plotdf.loc[idx,'posrank'] = rank
-            
-        g = sns.factorplot(x='posrank', y='vols', hue='position', data=plotdf)
+        g = sns.factorplot(data=plotdf, x='posrank', y='vols',
+                           hue='position',
+                           aspect=2.0 # make the plot wider by factor of 2
+                           # , kind='strip' # this style looks decent, but I prefer lines connecting these points because they're sorted
+        )
+        # g.set_xticklabels(tick_labels.astype(int))
+        g.set_axis_labels('Position rank', 'Value over last starter')
+        g.set_xticklabels([]) # by default the tick labels are drawn as floats, making them hard to read
         plt.show()
         
     def do_q(self, args):

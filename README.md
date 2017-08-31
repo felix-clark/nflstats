@@ -8,6 +8,10 @@ no instructions right now because if you're in my league and reading this I don'
 Requirements:
 
 nflgame (by BurntSushi)
+
 seaborn (and its associated requirements: numpy, scipy, pandas, etc.)
-  future:
+
+tk
+
+future (?):
 Beautiful Soup (for scraping ESPN for the latest projections)
