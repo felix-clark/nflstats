@@ -59,10 +59,10 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     i_st.extend(i_flex)
     
     print('  starting lineup:')
-    startdf = rosdf[rosdf.index.isin(i_st)].drop(['vols', 'volb', 'adp', 'ecp'], axis=1)
+    startdf = rosdf[rosdf.index.isin(i_st)].drop(['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier'], axis=1)
     print(startdf)
 
-    benchdf = rosdf[~rosdf.index.isin(i_st)].drop(['vols', 'volb', 'adp', 'ecp'], axis=1)
+    benchdf = rosdf[~rosdf.index.isin(i_st)].drop(['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier'], axis=1)
     if len(benchdf) > 0:
         print('  bench:')
         print(benchdf)
@@ -78,12 +78,16 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     for _,row in benchdf.iterrows():
         pos = row.position
         start_to_bench_ratio = len(startdf[startdf.position == pos]) * 1.0 / len(benchdf[benchdf.position == pos])
+        # TODO: evaluate bench players (and other players) with the same method used for VBSD / auction price.
         benchval = benchval + (1 - bye_factor*pos_injury_factor[pos])*row.projection
         
+    auctionval = rosdf['auction'].sum()
+
     # round values to whole numbers for josh, who doesn't like fractions :)
     print('\nprojected starter points:\t{}'.format(int(round(starterval))))
     print('estimated bench value:\t\t{}'.format(int(round(benchval))))
-    print('total value:\t\t\t{}\n'.format(int(round(benchval + starterval))))
+    print('total points:\t\t\t{}'.format(int(round(benchval + starterval))))
+    print('approximate auction value:\t${:.2f}\n'.format(auctionval))
     return starterval, benchval
 
 def find_by_team(team, ap, pp):
@@ -230,7 +234,7 @@ def print_picked_players(pp, ap=None):
     else:
         with pd.option_context('display.max_rows', None):
             ## TODO: we can probably still stand to improve this output:'
-            print(pp.drop([col for col in ['manager', 'pick'] if col in pp], axis=1))
+            print(pp.drop([col for col in ['manager', 'pick', 'volb', 'tier'] if col in pp], axis=1))
         if ap is not None:
             print('\nTypically picked at this point (by ADP):')
             adpsort = pd.concat([pp, ap]).sort_values('adp', ascending=True).head(npicked)
@@ -274,12 +278,13 @@ def print_top_position(df, pos, ntop=24, sort_key='vols', sort_asc=False):
         df.sort_index( ascending=sort_asc, inplace=True)
     else:
         df.sort_values( sort_key, ascending=sort_asc, inplace=True)
+    drop_cols = ['volb', 'tier']
     if pos.upper() == 'FLEX':
         with pd.option_context('display.max_rows', None):
-            print(df.loc[df['position'].isin(['RB', 'WR', 'TE'])].drop('volb', inplace=False, axis=1).head(ntop))
+            print(df.loc[df['position'].isin(['RB', 'WR', 'TE'])].drop(drop_cols, inplace=False, axis=1).head(ntop))
     else:
         with pd.option_context('display.max_rows', None):
-            print(df[df.position == pos.upper()].drop('volb', inplace=False, axis=1).head(ntop))
+            print(df[df.position == pos.upper()].drop(drop_cols, inplace=False, axis=1).head(ntop))
 
 def push_to_player_list(index, ap, pp):
     """
@@ -341,11 +346,11 @@ class MainPrompt(Cmd):
     flex_pos = ['RB', 'WR', 'TE']
 
     hide_pos = ['K', 'DST']
-    hide_stats = ['volb']
+    hide_stats = ['tier', 'volb']
 
-    disabled_pos = []
+    disabled_pos = ['K', 'DST']
 
-    _known_strategies = ['vols', 'volb', 'vorp', 'adp', 'ecp']
+    _known_strategies = ['vols', 'vbsd', 'volb', 'adp', 'ecp']
     
     # member variables for DRAFT MODE !!!
     draft_mode = False
@@ -591,6 +596,8 @@ class MainPrompt(Cmd):
         a replacement for a 1-st round pick comes from the top of the bench,
         while a replacement for a bottom bench player comes from the waivers.
         """
+        return
+        ## should maybe cancel this.. it takes time to compute and we have lots of thresholds now
         if ap is None:
             ap = self.ap
         if pp is None:
@@ -747,8 +754,18 @@ class MainPrompt(Cmd):
         usage: find NAME...
         finds and prints players with the string(s) NAME in their name.
         """
-        search_words = [word for word in args.split(' ') if word]
+        search_words = [word for word in args.replace('_', ' ').split(' ') if word]
         find_player(search_words, self.ap, self.pp)
+    def complete_find(self, text, line, begidk, endidx):
+        """implements auto-complete for player names"""
+        avail_names = pd.concat([self.ap, self.pp])['name']
+        mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
+                           for name in avail_names]
+        if text:
+            return [name for name in mod_avail_names
+                    if name.startswith(text.lower())]
+        else:
+            return mod_avail_names
 
     def do_handcuff(self, args):
         """
@@ -1253,7 +1270,7 @@ class MainPrompt(Cmd):
         # vona_dict = {pos:0 for pos in positions)
         if disabled_pos is None:
             disabled_pos = []
-        max_vona = -1
+        max_vona = -1000.0
         max_vona_pos = None
         for pos in positions:
             topval = self.ap[self.ap.position == pos]['projection'].max()
@@ -1419,19 +1436,58 @@ def main():
         i_pos = benchdf.loc[benchdf.position == pos].sort_values('projection', ascending=False).head(n_pos_bench).index
         availdf.loc[availdf.index.isin(i_pos), 'tier'] = 'BU'
 
+    draftable_mask = availdf.tier.notnull()
+    draftable_df = availdf.loc[draftable_mask]
     ## find a baseline based on supply/demand by positions
     # http://www.rotoworld.com/articles/nfl/41100/71/draft-analysis
     ## we will just use average injury by position, instead of accounting for dropoff by rank
     # not dependent on bench size
     for pos in main_positions:
+        # now we've given the backups a class, the worst projection at each position is the worst bench value.
+        # we will define this as the VOLB (value over last backup)
+        # this a static calculation, and the dynamically-computed VORP might do better.
+        worst_draftable_value = draftable_df[draftable_df.position == pos]['projection'].min()
+        availdf.loc[availdf.position == pos, 'volb'] = availdf['projection'] - worst_draftable_value
+
         posdf = availdf[(availdf.position == pos)].sort_values('projection', ascending=False)
-        pos_games_required = len(posdf[(posdf.tier != 'BU') & (~posdf.tier.isnull())]) # number of man-games needed in this position
-        games_per_pos = bye_factor * pos_injury_factor[pos] if pos not in ['K', 'DST'] else 1.0
-        pos_rank_benchmark = int(np.ceil(pos_games_required/games_per_pos))
+        pos_required = len(posdf[(posdf.tier != 'BU') & (~posdf.tier.isnull())]) # number of man-games needed in this position
+        pos_prob_play = bye_factor * pos_injury_factor[pos] if pos not in ['K', 'DST'] else 1.0
+        pos_rank_benchmark = int(np.ceil(pos_required/pos_prob_play))
+        # kickers and defenses don't get this bonus for the benchmark since people don't bench them,
+        # but they should get penalized for it in auction
+        if pos in ['K', 'DST']: pos_prob_play = pos_prob_play * bye_factor * pos_injury_factor[pos]
         pos_benchmark = posdf.head(pos_rank_benchmark)['projection'].min()
         # print( pos, pos_rank_benchmark, pos_benchmark )
-        availdf.loc[availdf.position == pos, 'vbsd'] = availdf['projection'] - pos_benchmark
-        
+        # projections account for bye weeks but not for positional injuries
+        availdf.loc[availdf.position == pos, 'vbsd'] = (availdf['projection'] - pos_benchmark) * pos_injury_factor[pos]
+        # this auction factor is 1 for starters and decreases geometrically. is probably too harsh of a bend and should be smeared, since a QB10 at draft may easily not end up in the top-10.
+        # this factor should represent the fraction of games a player at that position and rank should play, outside of injuries which are already accounted for in the vbsd.
+        # could linearize it from top to bottom drafted analytically? would introduce dependence on ADP
+        # smearing this function out would be nice... maybe just a box average of 5-10?
+        # replace_chance = lambda x: 1 if x <= pos_required else (1 - pos_prob_play**pos_required)**(x - pos_required)
+        # we'll say players at the baseline have about a 50% chance of starting, and the decrease is linear:
+        # using VOLB baseline actually seems to give a reasonable result: steeper than FB, less steep than beersheets
+        # still pretty arbitrary - we'll care more when we actually do an auction draft.
+        auction_multiplier = lambda x: max(1.0 - x*0.5*pos_prob_play/pos_rank_benchmark, 0.0)
+        if pos in ['K', 'DST']: auction_multiplier = lambda x: 0.5 #these are random and have lots of variance, so lets keep the envelop flat
+        # grab this again because now it has vbsd
+        posdf = availdf[(availdf.position == pos)].sort_values('projection', ascending=False)
+        for idx in range(len(posdf)):
+            label = posdf.index[idx]
+            # vols = posdf.iloc[idx]['vols']*pos_prob_play
+            vbsd = posdf.iloc[idx]['vbsd'] # this was already multiplied by the injury factor
+            volb = posdf.iloc[idx]['volb']*pos_prob_play
+            availdf.loc[label,'rank'] = '{}{}'.format(pos, idx+1)
+            availdf.loc[label,'auction'] = auction_multiplier(idx)*max(0,np.mean([volb]))
+
+    total_auction_points = availdf['auction'].sum()
+    cap = 20 # typical is $200; we'll scale to our buy-in
+    min = 0 # 0.1 # typical is $1; we are scaling down. however there is no minimum, we just want to see value.
+    league_cap = n_teams * (cap - min*sum([n_roster_per_team[pos] for pos in n_roster_per_team]))
+    # print( availdf['auction'] )
+    availdf.loc[:,'auction'] *= league_cap / total_auction_points
+    availdf.loc[(availdf.auction > 0),'auction'] = round(availdf['auction'] + min, 1)
+
     # TODO: make a baseline that compares to the worst player at a level where ~2 bench spots are full,
     # with the positional distributions governed by ADP.
     # some more sophisticated methods of picking the baseline
@@ -1452,25 +1508,13 @@ def main():
     #     pos_thresh = posadpdf['projection'].min() if n_pos_adp > 0 else availdf[availdf.position == pos]['projection'].max()        
     #     availdf.loc[availdf.position == pos, 'vomb'] = availdf['projection'] - pos_thresh
     
-    # now we've given the backups a class, the worst projection at each position is the worst bench value.
-    # we will define this as the VOLB (value over last backup)
-    # this a static calculation, and the dynamically-computed VORP might do better.
-    draftable_mask = availdf.tier.notnull()
-    draftable_df = availdf.loc[draftable_mask]
-    for pos in [pos for pos in main_positions if pos not in flex_pos]:
-        worst_draftable_value = draftable_df[draftable_df.position == pos]['projection'].min()
-        availdf.loc[availdf.position == pos, 'volb'] = availdf['projection'] - worst_draftable_value
-    # TODO: possibly shouldn't compare all flex positions together for VOLB...
-    worst_draftable_flex_value = draftable_df[draftable_df.position.isin(flex_pos)]['projection'].min()
-    availdf.loc[availdf.position.isin(flex_pos), 'volb'] = availdf['projection'] - worst_draftable_flex_value
-
     
     ## now label remaining players as waiver wire material
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'WAIV'
 
     ## finally sort by our stat of choice for display
     sort_stat = 'vbsd'
-    availdf = availdf.sort_values('vols', ascending=False)
+    availdf = availdf.sort_values(sort_stat, ascending=False)
     availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by our stat
     
     # make an empty dataframe with these reduces columns to store the picked players
@@ -1479,8 +1523,8 @@ def main():
     pickdf = pd.DataFrame(columns=availdf.columns)
 
     # set some pandas display options
-    pd.options.display.precision = 4 # default is 6
-    pd.options.display.width = 96 # default is 80
+    pd.options.display.precision = 2 # default is 6
+    pd.options.display.width = 108 # default is 80
 
     # set seaborn style to nice default
     sns.set()
