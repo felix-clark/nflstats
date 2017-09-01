@@ -18,6 +18,17 @@ import matplotlib.pyplot as plt
 from getPoints import get_points_from_data_frame
 from ruleset import bro_league, phys_league, dude_league
 
+
+## slap these bye/injury factors up here for now
+# 13 games in regular FF season, but we're going to playoffs. we'll pretend they're independent.
+bye_factor = (17-1)/17
+# this is the approximate fraction of the time that a player in
+#  each position spends on the field uninjured.
+# from sportinjurypredictor.net, based on average games missed assuming a 17 game season
+# obviously rough, but captures trend and follows intuition
+pos_injury_factor = {'QB':0.94, 'RB':0.85, 'WR':0.89, 'TE':0.89, 'DST':1.0, 'K':1.0}
+
+
 def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     """
     applies projection for season points, with an approximation for bench value
@@ -64,14 +75,6 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     # ignoring all complicated combinatorics and pretending the probabilities are small.
     # we'll call this an "index" to avoid commiting to a meaning right now :)
 
-    # 13 games in regular FF season. we'll pretend they're independent.
-    bye_factor = (13-1)/13.0
-
-    # this is the approximate fraction of the time that a player in
-    #  each position spends on the field uninjured.
-    # from sportinjurypredictor.net, based on average games missed assuming a 17 game season
-    # obviously rough, but captures trend and follows intuition
-    pos_injury_factor = {'QB':0.94, 'RB':0.85, 'WR':0.89, 'TE':0.89, 'DST':1.0, 'K':1.0}
     for _,row in benchdf.iterrows():
         pos = row.position
         start_to_bench_ratio = len(startdf[startdf.position == pos]) * 1.0 / len(benchdf[benchdf.position == pos])
@@ -1403,6 +1406,7 @@ def main():
     # they get overvalued. Most flex are WR so there is often a long list of receivers at the bottom of the flex list.
     # availdf.loc[availdf.position.isin(flex_pos), 'vols'] = availdf['projection'] - worst_flex_value
 
+    
     # define an "absolute" bench by collecting the top projections of all players that can fit on benches (this is probably dumb, but it's a check) -- yeah it's actually too dumb
     total_bench_positions = n_roster_per_league['BENCH']
     nonstarter_mask = availdf.tier.isnull()
@@ -1415,6 +1419,19 @@ def main():
         i_pos = benchdf.loc[benchdf.position == pos].sort_values('projection', ascending=False).head(n_pos_bench).index
         availdf.loc[availdf.index.isin(i_pos), 'tier'] = 'BU'
 
+    ## find a baseline based on supply/demand by positions
+    # http://www.rotoworld.com/articles/nfl/41100/71/draft-analysis
+    ## we will just use average injury by position, instead of accounting for dropoff by rank
+    # not dependent on bench size
+    for pos in main_positions:
+        posdf = availdf[(availdf.position == pos)].sort_values('projection', ascending=False)
+        pos_games_required = len(posdf[(posdf.tier != 'BU') & (~posdf.tier.isnull())]) # number of man-games needed in this position
+        games_per_pos = bye_factor * pos_injury_factor[pos] if pos not in ['K', 'DST'] else 1.0
+        pos_rank_benchmark = int(np.ceil(pos_games_required/games_per_pos))
+        pos_benchmark = posdf.head(pos_rank_benchmark)['projection'].min()
+        # print( pos, pos_rank_benchmark, pos_benchmark )
+        availdf.loc[availdf.position == pos, 'vbsd'] = availdf['projection'] - pos_benchmark
+        
     # TODO: make a baseline that compares to the worst player at a level where ~2 bench spots are full,
     # with the positional distributions governed by ADP.
     # some more sophisticated methods of picking the baseline
@@ -1446,13 +1463,15 @@ def main():
     # TODO: possibly shouldn't compare all flex positions together for VOLB...
     worst_draftable_flex_value = draftable_df[draftable_df.position.isin(flex_pos)]['projection'].min()
     availdf.loc[availdf.position.isin(flex_pos), 'volb'] = availdf['projection'] - worst_draftable_flex_value
-        
+
+    
     ## now label remaining players as waiver wire material
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'WAIV'
 
     ## finally sort by our stat of choice for display
+    sort_stat = 'vbsd'
     availdf = availdf.sort_values('vols', ascending=False)
-    availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by vols
+    availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by our stat
     
     # make an empty dataframe with these reduces columns to store the picked players
     # this might be better as another level of index in the dataframe, or simply as an additional variable in the dataframe.
@@ -1487,3 +1506,10 @@ def main():
         
 if __name__ == '__main__':
     main()
+
+## vols: value over last starter
+## volb: value over last bench (last drafted), assuming ADP
+## vomb: value over middle of bench, assuming ADP (removed?)
+## vorp: right now, this is a dynamic scale with the baseline moving linearly through player positions as players are drafted in that position. the baseline moves from worst starter to worst bench.
+## vbsd: value-based supply/demand : extends starter threshold to further in the bench by a factor accounting for bye weeks and position-dependent injury factors. independent of ADP.
+## todo: value over 1.5x starters?
