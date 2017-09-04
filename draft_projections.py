@@ -29,18 +29,17 @@ bye_factor = (17-1)/17
 pos_injury_factor = {'QB':0.94, 'RB':0.85, 'WR':0.89, 'TE':0.89, 'DST':1.0, 'K':1.0}
 
 
-def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
+def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None):
     """
     applies projection for season points, with an approximation for bench value
     returns tuple of starter, bench value
     """
-
     numplayers = len(rosdf)
     numroster = sum([n_roster_per_team[pos] for pos in n_roster_per_team])
     if numplayers < numroster:
-        print('This roster is not full.')
+        print('This roster is not full.', file=outfile)
     if numplayers > numroster:
-        print('This roster has too many players.')
+        print('This roster has too many players.', file=outfile)
     
     starterval, benchval = 0, 0
     i_st = [] # the indices of the players we have counted so far
@@ -58,14 +57,14 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     starterval = starterval + rosflex[rosflex.index.isin(i_flex)]['projection'].sum()
     i_st.extend(i_flex)
     
-    print('  starting lineup:')
+    print('  starting lineup:', file=outfile)
     startdf = rosdf[rosdf.index.isin(i_st)].drop(['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier'], axis=1)
-    print(startdf)
+    print(startdf, file=outfile)
 
     benchdf = rosdf[~rosdf.index.isin(i_st)].drop(['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier'], axis=1)
     if len(benchdf) > 0:
-        print('  bench:')
-        print(benchdf)
+        print('  bench:', file=outfile)
+        print(benchdf, file=outfile)
 
     ## we're gonna do a really dumb estimation for bench value
     # and pretend that the chance of a bench player being used
@@ -84,10 +83,10 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos):
     auctionval = rosdf['auction'].sum()
 
     # round values to whole numbers for josh, who doesn't like fractions :)
-    print('\nprojected starter points:\t{}'.format(int(round(starterval))))
-    print('estimated bench value:\t\t{}'.format(int(round(benchval))))
-    print('total points:\t\t\t{}'.format(int(round(benchval + starterval))))
-    print('approximate auction value:\t${:.2f}\n'.format(auctionval))
+    print('\nprojected starter points:\t{}'.format(int(round(starterval))), file=outfile)
+    print('estimated bench value:\t\t{}'.format(int(round(benchval))), file=outfile)
+    print('total points:\t\t\t{}'.format(int(round(benchval + starterval))), file=outfile)
+    print('approximate auction value:\t${:.2f}\n'.format(auctionval), file=outfile)
     return starterval, benchval
 
 def find_by_team(team, ap, pp):
@@ -340,7 +339,7 @@ class MainPrompt(Cmd):
     ap = pd.DataFrame()
     pp = pd.DataFrame()
 
-    _sort_key = 'vols'
+    _sort_key = 'vbsd' #'vols'
     _sort_asc = False
     
     flex_pos = ['RB', 'WR', 'TE']
@@ -702,11 +701,13 @@ class MainPrompt(Cmd):
         if no argument is provided, the current manager's roster is shown
         type `evaluate all` to evaluate rosters of all managers
         """
+        outfile = open('draft_evaluation.txt', 'w')
         if 'manager' not in self.pp:
-            print('roster from selected players:')
+            print('roster from selected players:', file=outfile)
             evaluate_roster(self.pp,
                             self.n_roster_per_team,
-                            self.flex_pos)
+                            self.flex_pos,
+                            outfile=outfile)
             return
         indices = []
         if not args:
@@ -721,10 +722,10 @@ class MainPrompt(Cmd):
                 print(e)
         manager_vals = {}
         for i in indices:
-            print('{}\'s roster:'.format(self._get_manager_name(i)))
+            print('{}\'s roster:'.format(self._get_manager_name(i)), file=outfile)
             stval, benchval = evaluate_roster(self._get_manager_roster(i),
                                               self.n_roster_per_team,
-                                              self.flex_pos)
+                                              self.flex_pos, outfile=outfile)
             manager_vals[i] = stval + benchval
 
         if len(indices) > 3:
@@ -735,15 +736,18 @@ class MainPrompt(Cmd):
             sorted_manager_vals = sorted(list(manager_vals.items()), key=lambda tup: tup[1], reverse=True)
             while len(sorted_manager_vals) > 0:
                 tier = tier + 1
-                print('Tier {}:'.format(tier))
+                print('Tier {}:'.format(tier), file=outfile)
                 part_bound = partitions[0] if len(partitions) > 0 else -np.inf
                 tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
                 for manager,manval in tiermans:
-                    print('  {}: \t{}'.format(self._get_manager_name(manager), int(manval)))
-                    # print('  {}'.format(self._get_manager_name(manager)))
-                print()
+                    print('  {}: \t{}'.format(self._get_manager_name(manager), int(manval)), file=outfile)
+                    # print('  {}'.format(self._get_manager_name(manager)), file=outfile)
+                print('\n', file=outfile)
                 sorted_manager_vals = sorted_manager_vals[len(tiermans):]
                 partitions = partitions[1:]
+        if outfile is not None:
+            print('evaltuation saved to {}.'.format(outfile.name))
+            outfile.close()
             
     def do_exit(self, args):
         """alias for `quit`"""
@@ -1046,7 +1050,7 @@ class MainPrompt(Cmd):
             player = self.ap.loc[pick]
             print(' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position))
         if self.manager_picks:
-            vona_strats = ['vols', 'volb', 'adp', 'ecp']
+            vona_strats = ['vols', 'volb', 'vbsd', 'adp', 'ecp']
             # vona-vorp takes too long
             for strat in vona_strats:
                 pick = self._pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)

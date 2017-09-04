@@ -34,6 +34,7 @@ def replaceTitleLine(line):
     line = line.replace('"Bye"', 'bye')
     line = line.replace('"Pos"', 'position')
     line = line.replace('"Best","Worst","Avg","Std Dev","ADP","vs. ADP"', 'best,worst,ecp,ecp_std_dev,adp,ecp_vs_adp')
+    line = line.replace('"Overall (Team)"', 'name,team')
 
     return line
     
