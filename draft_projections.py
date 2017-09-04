@@ -118,11 +118,11 @@ def find_handcuff(index, ap, pp):
     ah = ap[(ap.position == pos) & (ap.team == team) & (ap.name != name)]
     if len(ah) > 0:
         print('The following potential handcuffs are available:')
-        print(ah)
+        print(ah.drop(['volb'], axis=1))
     ph = pp[(pp.position == pos) & (pp.team == team) & (pp.name != name)]
     if len(ph) > 0:
         print('The following handcuffs have already been picked:')
-        print(ph)
+        print(ph.drop(['volb'], axis=1))
     print() # end on a newline
 
 # adding features to search by team name/city/abbreviation might be nice,
@@ -728,7 +728,7 @@ class MainPrompt(Cmd):
             manager_vals[i] = stval + benchval
 
         if len(indices) > 3:
-            k = int(np.ceil(np.sqrt(1 + len(indices))))
+            k = int(np.ceil(np.sqrt(1 + len(indices)))) + 2
             totvals = np.array(list(manager_vals.values()))        
             partitions = get_k_partition_boundaries(totvals, k-1)[::-1]
             tier = 0
@@ -772,14 +772,32 @@ class MainPrompt(Cmd):
         usage: handcuff I...
         find potential handcuffs for player with index(ces) I
         """
-        indices = []
+        index = None
         try:
-            indices = [int(i) for i in args.split(' ') if i]
+            index = int(args)
         except ValueError as e:
-            print('`handcuff` requires integer indices.')
-            print(e)
-        for i in indices:
-            find_handcuff(i, self.ap, self.pp)
+            criterion = self.ap['name'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
+            filtered = self.ap[criterion]
+            if len(filtered) <= 0:
+                print('Could not find available player with name {}.'.format(args))
+                return
+            if len(filtered) > 1:
+                print('Found multiple players:')
+                print(filtered.drop(self.hide_stats, axis=1))
+                return
+            assert(len(filtered) == 1)
+            index = filtered.index[0]
+        find_handcuff(index, self.ap, self.pp)
+    def complete_handcuff(self, text, line, begidk, endidx):
+        """implements auto-complete for player names"""
+        avail_names = pd.concat([self.ap, self.pp])['name']
+        mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
+                           for name in avail_names]
+        if text:
+            return [name for name in mod_avail_names
+                    if name.startswith(text.lower())]
+        else:
+            return mod_avail_names
 
     def do_hide(self, args):
         """
