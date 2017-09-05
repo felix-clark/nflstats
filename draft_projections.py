@@ -1312,17 +1312,17 @@ def main():
     """main function that runs upon execution"""
     ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro'], default='phys',
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro'], default='dude',
                         help='which ruleset to use of the leagues I am in')
-    parser.add_argument('--n-teams', type=int, default=10, help='number of teams in the league')
+    parser.add_argument('--n-teams', type=int, default=8, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of QB per team')
     parser.add_argument('--n-rb', type=int, default=2, help='number of RB per team')
-    parser.add_argument('--n-wr', type=int, default=2, help='number of WR per team')
+    parser.add_argument('--n-wr', type=int, default=3, help='number of WR per team')
     parser.add_argument('--n-te', type=int, default=1, help='number of TE per team')
-    parser.add_argument('--n-flex', type=int, default=1, help='number of FLEX per team')
+    parser.add_argument('--n-flex', type=int, default=2, help='number of FLEX per team')
     parser.add_argument('--n-dst', type=int, default=1, help='number of D/ST per team')
     parser.add_argument('--n-k', type=int, default=1, help='number of K per team')
-    parser.add_argument('--n-bench', type=int, default=5, help='number of bench slots per team')
+    parser.add_argument('--n-bench', type=int, default=4, help='number of bench slots per team')
 
     args = parser.parse_args()
     n_teams = args.n_teams
