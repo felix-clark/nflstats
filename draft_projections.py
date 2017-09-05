@@ -780,8 +780,9 @@ class MainPrompt(Cmd):
         try:
             index = int(args)
         except ValueError as e:
-            criterion = self.ap['name'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
-            filtered = self.ap[criterion]
+            all_players = pd.concat([self.ap, self.pp])
+            criterion = all_players['name'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
+            filtered = all_players[criterion]
             if len(filtered) <= 0:
                 print('Could not find available player with name {}.'.format(args))
                 return
@@ -794,7 +795,8 @@ class MainPrompt(Cmd):
         find_handcuff(index, self.ap, self.pp)
     def complete_handcuff(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        avail_names = pd.concat([self.ap, self.pp])['name']
+        # avail_names = pd.concat([self.ap, self.pp])['name']
+        avail_names = pd.concat([self.ap['name'], self.pp['name']])
         mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
                            for name in avail_names]
         if text:
