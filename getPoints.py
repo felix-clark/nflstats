@@ -92,3 +92,4 @@ def get_points_from_data_frame( rs, df, name='fantasy_points' ):
     + rs.ppFGM * (df['kicking_fga'] - df['kicking_fgm']) \
     + rs.ppFG0 * df['kicking_fgm']
     return df
+# TODO: missing: missed PATs (ppPATM)

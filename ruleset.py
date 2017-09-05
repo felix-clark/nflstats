@@ -11,6 +11,7 @@ points_per = [
     'ppPTD50',  # points per 50+ yard TD pass
     'ppINT',  # points per interception
     'pp2PC', # points per 2pt passing conversion
+    'ppP300', # bonus for 300-399 yard passing game
     'ppP400', # bonus for 400+ yard passing game
     'ppRY', # points per rushing yard
     'ppRY10', # points per 10 rushing yards
@@ -31,6 +32,7 @@ points_per = [
     'ppREY200', # bonus for 200+ yard receiving game
     'ppFUML', # points per fumble lost
     'ppPAT', # points per PAT made
+    'ppPATM', # points per PAT missed
     'ppFGM', # points per missed FG
     'ppFG0', # points for 0-39 yard FG
     'ppFG40', # points for 40-49 yard FG
@@ -116,3 +118,35 @@ dude_league = Ruleset(
     ppFG40=4,
     ppFG50=5
 )
+
+nyc_league = Ruleset(
+    ppPY=0.04,
+    ppPC=0.2,
+    ppINC=-0.2,
+    ppPTD=4,
+    ppPTD50=1,
+    ppINT=-2,
+    pp2PC=2,
+    ppP300=1,
+    ppP400=2,
+    ppRY=0.1,
+    ppRTD=6,
+    ppRTD50=1,
+    pp2PR=2,
+    ppRY100=1,
+    ppRY200=2,
+    ppREY=0.1,
+    ppREC=0.5,
+    ppRETD=6,
+    ppRETD50=1,
+    pp2PRE=2,
+    ppREY100=1,
+    ppREY200=2,
+    ppFUML=-2,
+    ppPAT=1,
+    ppPATM=-1,
+    ppFGM=-1,
+    ppFG0=3,
+    ppFG40=4,
+    ppFG50=5
+    )
