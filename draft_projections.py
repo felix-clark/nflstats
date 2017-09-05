@@ -856,7 +856,7 @@ class MainPrompt(Cmd):
         prints N top available players and M top players at each position
         """
         spl_args = [w for w in args.split(' ') if w]
-        ntop, npos = 12, 3
+        ntop, npos = 16, 3
         try:
             if spl_args:
                 ntop = int(spl_args[0])
