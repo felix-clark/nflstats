@@ -207,25 +207,25 @@ total points:			1984
 approximate auction value:	$14.10
 
 Tier 1:
-  felix: 	2318
+  felix: 	2318 - $26.90
 
 
 Tier 2:
-  nate: 	2239
+  nate: 	2239 - $21.30
 
 
 Tier 3:
-  joey: 	2170
-  ryne: 	2158
-  rees: 	2147
-  zach: 	2143
+  joey: 	2170 - $20.90
+  ryne: 	2158 - $20.40
+  rees: 	2147 - $17.90
+  zach: 	2143 - $18.90
 
 
 Tier 4:
-  heather: 	2113
+  heather: 	2113 - $16.30
 
 
 Tier 5:
-  tianyu: 	1983
+  tianyu: 	1983 - $14.10
 
 
