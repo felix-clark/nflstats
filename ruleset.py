@@ -119,7 +119,7 @@ dude_league = Ruleset(
     ppFG50=5
 )
 
-nyc_league = Ruleset(
+nycfc_league = Ruleset(
     ppPY=0.04,
     ppPC=0.2,
     ppINC=-0.2,

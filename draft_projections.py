@@ -16,7 +16,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 from getPoints import get_points_from_data_frame
-from ruleset import bro_league, phys_league, dude_league, nyc_league
+from ruleset import bro_league, phys_league, dude_league, nycfc_league
 
 
 ## slap these bye/injury factors up here for now
@@ -1312,7 +1312,7 @@ def main():
     """main function that runs upon execution"""
     ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nyc'], default='nyc',
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc'], default='dude',
                         help='which ruleset to use of the leagues I am in')
     parser.add_argument('--n-teams', type=int, default=8, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of QB per team')
@@ -1350,8 +1350,8 @@ def main():
         rules = dude_league
     if args.ruleset == 'bro':
         rules = bro_league
-    if args.ruleset == 'nyc':
-        rules = nyc_league
+    if args.ruleset == 'nycfc':
+        rules = nycfc_league
 
     print('Initializing with ruleset:')
     # print some output to verify the ruleset we are working with
