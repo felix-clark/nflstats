@@ -1314,8 +1314,8 @@ def main():
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
     parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nyc'], default='nyc',
                         help='which ruleset to use of the leagues I am in')
-    parser.add_argument('--n-teams', type=int, default=6, help='number of teams in the league')
-    parser.add_argument('--n-qb', type=int, default=2, help='number of QB per team')
+    parser.add_argument('--n-teams', type=int, default=8, help='number of teams in the league')
+    parser.add_argument('--n-qb', type=int, default=1, help='number of QB per team')
     parser.add_argument('--n-rb', type=int, default=2, help='number of RB per team')
     parser.add_argument('--n-wr', type=int, default=3, help='number of WR per team')
     parser.add_argument('--n-te', type=int, default=1, help='number of TE per team')

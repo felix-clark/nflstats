@@ -1,0 +1,231 @@
+felix's roster:
+  starting lineup:
+                   name team position  projection   rank  auction  pick
+0         David Johnson  ARI       RB      319.59    RB1      7.9     1
+16          Todd Gurley  LAR       RB      203.61    RB9      3.0    16
+8            Mike Evans   TB       WR      228.65    WR4      3.6    17
+22           Drew Brees   NO       QB      352.42    QB3      2.5    32
+23         Amari Cooper  OAK       WR      198.72   WR10      2.2    33
+31       Isaiah Crowell  CLE       RB      180.10   RB13      2.1    48
+40     Larry Fitzgerald  ARI       WR      178.36   WR17      1.3    49
+33          Dalvin Cook  MIN       RB      177.27   RB14      1.9    64
+66         Kyle Rudolph  MIN       TE      147.44    TE6      0.7    65
+58   Stephen Gostkowski   NE        K      138.00     K1      0.4    80
+135    Los Angeles Rams  LAR      DST      103.90  DST18      0.0   112
+  bench:
+                name team position  projection  rank  auction  pick
+73    Devante Parker  MIA       WR      151.57  WR33      0.3    81
+61    Ameer Abdullah  DET       RB      153.59  RB24      1.0    96
+117  Tyrell Williams  LAC       WR      138.99  WR41      0.0    97
+263      Cooper Kupp  LAR       WR       76.42  WR81      0.0   113
+
+projected starter points:	2228
+estimated bench value:		90
+total points:			2318
+approximate auction value:	$26.90
+
+rees's roster:
+  starting lineup:
+                  name team position  projection  rank  auction  pick
+1         Le'Veon Bell  PIT       RB      299.78   RB2      7.1     2
+29    Demaryius Thomas  DEN       WR      187.07  WR13      1.7    15
+36      Marshawn Lynch  OAK       RB      174.08  RB15      1.8    18
+56         Jordan Reed  WAS       TE      158.21   TE4      1.1    31
+30     DeAndre Hopkins  HOU       WR      186.95  WR14      1.7    34
+28           Matt Ryan  ATL       QB      341.73   QB4      2.0    47
+51    Emmanuel Sanders  DEN       WR      169.49  WR22      1.0    50
+78    Brandon Marshall  NYG       WR      150.04  WR35      0.3    63
+71       C.J. Anderson  DEN       RB      143.88  RB26      0.7    66
+88  Kansas City Chiefs   KC      DST      114.40  DST4      0.1    95
+98      Adam Vinatieri  IND        K      120.70    K7      0.0    98
+  bench:
+                   name team position  projection  rank  auction  pick
+95        Jeremy Maclin  BAL       WR      143.80  WR37      0.1    79
+97         Mike Wallace  BAL       WR      143.59  WR38      0.1    82
+114  Ben Roethlisberger  PIT       QB      296.30  QB12      0.2   111
+140        Hunter Henry  LAC       TE      124.50  TE12      0.0   114
+
+projected starter points:	2046
+estimated bench value:		101
+total points:			2147
+approximate auction value:	$17.90
+
+nate's roster:
+  starting lineup:
+                name team position  projection  rank  auction  pick
+2      Antonio Brown  PIT       WR      259.47   WR1      5.0     3
+11     Jordan Howard  CHI       RB      221.60   RB6      3.8    14
+10     Aaron Rodgers   GB       QB      379.60   QB1      3.9    19
+19       T.Y. Hilton  IND       WR      203.38   WR8      2.5    30
+21      Lamar Miller  HOU       RB      193.21  RB10      2.6    35
+35  Michael Crabtree  OAK       WR      181.83  WR16      1.5    46
+57   Kelvin Benjamin  CAR       WR      166.28  WR27      0.8    51
+91  Seattle Seahawks  SEA      DST      113.60  DST6      0.1    67
+79     Justin Tucker  BAL        K      126.60    K3      0.1    83
+74      Randall Cobb   GB       WR      151.53  WR34      0.3    94
+75         Zach Ertz  PHI       TE      142.23   TE7      0.5    99
+  bench:
+                  name team position  projection  rank  auction  pick
+162    Adrian Peterson   NO       RB      119.21  RB38      0.0    62
+101  Martellus Bennett   GB       TE      133.97  TE10      0.2    78
+184  LeGarrette Blount  PHI       RB      107.64  RB42      0.0   110
+144        Andrew Luck  IND       QB      289.13  QB15      0.0   115
+
+projected starter points:	2139
+estimated bench value:		100
+total points:			2240
+approximate auction value:	$21.30
+
+zach's roster:
+  starting lineup:
+                  name team position  projection  rank  auction  pick
+3          Julio Jones  ATL       WR      255.63   WR2      4.8     4
+17      Rob Gronkowski   NE       TE      197.76   TE1      2.9    13
+27     Ezekiel Elliott  DAL       RB      181.63  RB12      2.2    20
+18           Tom Brady   NE       QB      357.96   QB2      2.8    29
+42        Bilal Powell  NYJ       RB      170.04  RB18      1.6    36
+41         Golden Tate  DET       WR      177.26  WR18      1.3    45
+43         Mark Ingram   NO       RB      169.99  RB19      1.6    52
+63        Jimmy Graham  SEA       TE      151.61   TE5      0.8    61
+102        Eric Decker  TEN       WR      143.06  WR39      0.1    68
+68         Matt Bryant  ATL        K      131.90    K2      0.3    84
+76   Arizona Cardinals  ARI      DST      118.70  DST2      0.2   109
+  bench:
+                 name team position  projection  rank  auction  pick
+107    DeSean Jackson   TB       WR      142.22  WR40      0.1    77
+133  Rishard Matthews  TEN       WR      135.11  WR45      0.0    93
+222      Thomas Rawls  SEA       RB       88.56  RB49      0.0   100
+136       Doug Martin   TB       RB      125.41  RB35      0.2   116
+
+projected starter points:	2056
+estimated bench value:		88
+total points:			2143
+approximate auction value:	$18.90
+
+heather's roster:
+  starting lineup:
+               name team position  projection  rank  auction  pick
+50   Russell Wilson  SEA       QB      324.79   QB5      1.3     5
+14   DeMarco Murray  TEN       RB      212.40   RB8      3.4    12
+20     Doug Baldwin  SEA       WR      200.75   WR9      2.3    21
+38    Ty Montgomery   GB       RB      173.82  RB17      1.7    28
+54    Davante Adams   GB       WR      168.60  WR25      0.9    37
+32     Travis Kelce   KC       TE      176.01   TE2      1.9    44
+53    Jarvis Landry  MIA       WR      168.97  WR24      0.9    53
+69   Denver Broncos  DEN      DST      120.00  DST1      0.2    60
+34   Allen Robinson  JAC       WR      181.92  WR15      1.5    69
+52      Tyreek Hill   KC       WR      169.38  WR23      1.0    76
+122     Matt Prater  DET        K      116.10   K12      0.0   101
+  bench:
+               name team position  projection  rank  auction  pick
+72    Terrance West  BAL       RB      143.54  RB27      0.7    85
+126  Donte Moncrief  IND       WR      137.74  WR44      0.0    92
+121    Adam Thielen  MIN       WR      138.55  WR42      0.0   108
+85     Paul Perkins  NYG       RB      138.24  RB30      0.5   117
+
+projected starter points:	2013
+estimated bench value:		101
+total points:			2114
+approximate auction value:	$16.30
+
+ryne's roster:
+  starting lineup:
+                  name team position  projection  rank  auction  pick
+4         LeSean McCoy  BUF       RB      241.28   RB3      4.7     6
+6      Devonta Freeman  ATL       RB      232.93   RB4      4.4    11
+15      Michael Thomas   NO       WR      215.53   WR7      2.9    22
+24          Dez Bryant  DAL       WR      195.04  WR11      2.1    27
+47      Terrelle Pryor  WAS       WR      170.54  WR20      1.0    38
+49         Carlos Hyde   SF       RB      162.47  RB22      1.3    43
+45         Kareem Hunt   KC       RB      164.67  RB20      1.4    54
+110     Marcus Mariota  TEN       QB      296.66  QB11      0.2    75
+83        Tyler Eifert  CIN       TE      138.52   TE8      0.3    86
+84        Mason Crosby   GB        K      124.40    K4      0.1   107
+87   Minnesota Vikings  MIN      DST      114.40  DST3      0.1   118
+  bench:
+                name team position  projection  rank  auction  pick
+70   Martavis Bryant  PIT       WR      152.51  WR32      0.4    59
+67     Pierre Garcon   SF       WR      156.31  WR31      0.5    70
+169      Chris Hogan   NE       WR      126.71  WR50      0.0    91
+59     Tevin Coleman  ATL       RB      154.71  RB23      1.0   102
+
+projected starter points:	2056
+estimated bench value:		102
+total points:			2158
+approximate auction value:	$20.40
+
+joey's roster:
+  starting lineup:
+                    name team position  projection  rank  auction  pick
+5      Odell Beckham Jr.  NYG       WR      239.35   WR3      4.0     7
+9           Jordy Nelson   GB       WR      228.37   WR5      3.5    10
+12             Jay Ajayi  MIA       RB      218.42   RB7      3.7    23
+26     Leonard Fournette  JAC       RB      187.63  RB11      2.4    26
+44        Alshon Jeffery  PHI       WR      176.64  WR19      1.3    39
+37   Christian McCaffrey  CAR       RB      173.94  RB16      1.8    42
+55          Stefon Diggs  MIN       WR      168.08  WR26      0.9    74
+89        Delanie Walker  TEN       TE      137.34   TE9      0.3    87
+100         Dak Prescott  DAL       QB      299.43  QB10      0.3    90
+103  Philadelphia Eagles  PHI      DST      111.40  DST8      0.0   106
+113       Dustin Hopkins  WAS        K      117.60   K10      0.0   119
+  bench:
+                name team position  projection  rank  auction  pick
+81    Danny Woodhead  BAL       RB      140.65  RB28      0.6    55
+64   Jamison Crowder  WAS       WR      157.84  WR30      0.5    58
+46         Joe Mixon  CIN       RB      163.13  RB21      1.3    71
+118       Eddie Lacy  SEA       RB      129.79  RB34      0.3   103
+
+projected starter points:	2058
+estimated bench value:		112
+total points:			2171
+approximate auction value:	$20.90
+
+tianyu's roster:
+  starting lineup:
+                name team position  projection  rank  auction  pick
+13        A.J. Green  CIN       WR      218.12   WR6      3.1     8
+7      Melvin Gordon  LAC       RB      227.05   RB5      4.1     9
+48      Keenan Allen  LAC       WR      170.40  WR21      1.0    24
+25     Brandin Cooks   NE       WR      194.99  WR12      2.0    25
+39        Greg Olsen  CAR       TE      171.02   TE3      1.6    40
+99        Cam Newton  CAR       QB      299.53   QB9      0.3    41
+62     Sammy Watkins  LAR       WR      160.93  WR29      0.6    57
+65        Frank Gore  IND       RB      148.74  RB25      0.8    72
+90    Houston Texans  HOU      DST      113.80  DST5      0.1    73
+92       Kenny Britt  CLE       WR      144.95  WR36      0.2    88
+266  Harrison Butker  CAR        K       60.00   K36      0.0    89
+  bench:
+                 name team position  projection  rank  auction  pick
+115     Robert Kelley  WAS       RB      130.37  RB33      0.3    56
+346         Dion Sims  CHI       TE       34.98  TE51      0.0   104
+166  Jonathan Stewart  CAR       RB      117.76  RB39      0.0   105
+183       Kevin White  CHI       WR      117.79  WR55      0.0   120
+
+projected starter points:	1910
+estimated bench value:		74
+total points:			1984
+approximate auction value:	$14.10
+
+Tier 1:
+  felix: 	2318
+
+
+Tier 2:
+  nate: 	2239
+
+
+Tier 3:
+  joey: 	2170
+  ryne: 	2158
+  rees: 	2147
+  zach: 	2143
+
+
+Tier 4:
+  heather: 	2113
+
+
+Tier 5:
+  tianyu: 	1983
+
+
