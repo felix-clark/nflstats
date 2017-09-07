@@ -1012,7 +1012,7 @@ class MainPrompt(Cmd):
     
     def do_plot(self, args):
         """plot dropoff by position"""
-        yquant = args.strip().lower() if args else 'vols'
+        yquant = args.strip().lower() if args else self._sort_key
         if yquant not in self.ap:
             print('{} is not a quantity that can be plotted.'.format(yquant))
             return
