@@ -11,7 +11,7 @@ import pandas as pd
 # wait 1 second between retries w/ exponential increase of wait times up to 8 seconds
 @retry(wait_exponential_multiplier=1000, wait_exponential_max=8001)
 def get_passing_df_pfr(year=2017):
-    sleep(1) # let's be conservative to not spam the site
+    sleep(0.5) # let's be conservative to not spam the site
     # pfr requires more cleaning but it automatically includes all players
     url = 'https://www.pro-football-reference.com/years/{}/passing.htm'.format(year)
     tables = pd.read_html(url) # returns a list
@@ -36,10 +36,10 @@ def get_passing_df_pfr(year=2017):
     return df
 
 
-# @retry(wait_exponential_multiplier=1000, wait_exponential_max=8001)
+@retry(wait_exponential_multiplier=1000, wait_exponential_max=8001)
 def get_fantasy_df_pfr(year):
     # retrieves a summary table of fantasy stats for all players
-    sleep(1) # make sure we're not spamming the site
+    sleep(0.5) # make sure we're not spamming the site
     url = 'https://www.pro-football-reference.com/years/{}/fantasy.htm'.format(year)
     # header = 1 causes the top line to be ignored
     # this seems simpler to deal w/ than the multi-level, which doesn't get parsed well.
