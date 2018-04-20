@@ -10,16 +10,16 @@ def getElems(line):
     return number_commas_removed
 
 def replaceTitleLine(line):
-    """change names from those used online to those used in our code (e.g. 'INTS' to 'passing_ints')"""
+    """change names from those used online to those used in our code (e.g. 'INTS' to 'passing_int')"""
     # check https://github.com/BurntSushi/nfldb/wiki/The-data-model for list of full possible stats
     line = line.replace('"Player"', 'name')
     line = line.replace('"Team"', 'team')
     # the QB pattern is unambiguous, with CMP and INTS
-    line = line.replace('"ATT","CMP","YDS","TDS","INTS"', 'passing_att,passing_cmp,passing_yds,passing_tds,passing_ints')
+    line = line.replace('"ATT","CMP","YDS","TDS","INTS"', 'passing_att,passing_cmp,passing_yds,passing_td,passing_int')
     # then check the receiver one since it has REC
-    line = line.replace('"REC","YDS","TDS"', 'receiving_rec,receiving_yds,receiving_tds')
+    line = line.replace('"REC","YDS","TDS"', 'receiving_rec,receiving_yds,receiving_td')
     # the rushing one is ambiguous on its own, so we have to fix it last
-    line = line.replace('"ATT","YDS","TDS"', 'rushing_att,rushing_yds,rushing_tds')
+    line = line.replace('"ATT","YDS","TDS"', 'rushing_att,rushing_yds,rushing_td')
     # then kickers
     line = line.replace('"FG","FGA","XPT"', 'kicking_fgm,kicking_fga,kicking_xpmade')
     line = line.replace('"FL"', 'fumbles_lost')
@@ -32,7 +32,7 @@ def replaceTitleLine(line):
     # add options for ECP files (which include ADP). We'll use the half-PPR rankings.
     line = line.replace('"Rank"', 'rank')
     line = line.replace('"Bye"', 'bye')
-    line = line.replace('"Pos"', 'position')
+    line = line.replace('"Pos"', 'pos')
     line = line.replace('"Best","Worst","Avg","Std Dev","ADP","vs. ADP"', 'best,worst,ecp,ecp_std_dev,adp,ecp_vs_adp')
     line = line.replace('"Overall (Team)"', 'name,team')
 

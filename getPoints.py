@@ -16,7 +16,7 @@ def getBasePoints( rs, plyr ):
     + rs.ppPC * plyr.passing_cmp \
     + rs.ppINC * (plyr.passing_att - plyr.passing_cmp) \
     + rs.ppPTD * plyr.passing_tds \
-    + rs.ppINT * plyr.passing_ints \
+    + rs.ppINT * plyr.passing_int \
     + rs.pp2PC * plyr.passing_twoptm \
     + rs.ppRY * plyr.rushing_yds \
     + rs.ppRY10 * (plyr.rushing_yds / 10) \
@@ -46,7 +46,7 @@ def getBasePoints( rs, plyr ):
 #     + rs.ppPC * df['passing_cmp'] \
 #     + rs.ppINC * (df['passing_att'] - df['passing_cmp']) \
 #     + rs.ppPTD * df['passing_tds'] \
-#     + rs.ppINT * df['passing_ints'] \
+#     + rs.ppINT * df['passing_int'] \
 #     + rs.pp2PC * df['passing_twoptm'] \
 #     + rs.ppRY * df['rushing_yds'] \
 #     + rs.ppRY10 * (df['rushing_yds'] / 10) \
@@ -76,7 +76,7 @@ def get_points_from_data_frame( rs, df, name='fantasy_points' ):
     + rs.ppPC * df['passing_cmp'] \
     + rs.ppINC * (df['passing_att'] - df['passing_cmp']) \
     + rs.ppPTD * df['passing_tds'] \
-    + rs.ppINT * df['passing_ints'] \
+    + rs.ppINT * df['passing_int'] \
     + rs.pp2PC * df['passing_twoptm'] \
     + rs.ppRY * df['rushing_yds'] \
     + rs.ppRY10 * (df['rushing_yds'] / 10) \

@@ -50,7 +50,7 @@ def generatePlayerDataFile( player_name='tom brady', years=range(2009, 2017) ):
                                  'pass_attempts':pstat.passing_att,
                                  'completions':pstat.passing_cmp,
                                  'pass_yards':pstat.passing_yds,
-                                 'pass_tds':pstat.passing_tds,
+                                 'pass_tds':pstat.passing_td,
                                  'interceptions':pstat.passing_ints,
                                  'passer_rating':pstat.passer_rating(),
                                  'rushing_yds':pstat.rushing_yds,

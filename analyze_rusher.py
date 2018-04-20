@@ -15,7 +15,7 @@ def playerFilename( pname ):
     return pname.lower().replace(' ', '_')
 
 # this will create a data file with summary data for all positions
-def generatePlayerDataFile( player_name='todd gurley', years=range(2009, 2017) ):
+def generatePlayerDataFile( player_name='todd gurley', years=range(2009, 2018) ):
 
     poss_players = [p for p in nflgame.find( player_name ) if p.position == 'RB']
     if not poss_players:
