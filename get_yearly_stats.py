@@ -103,7 +103,7 @@ if __name__ == '__main__':
         logging.info('creating directory yearly_stats')
         os.mkdir('yearly_stats')
         
-    for year in range(2017,1989,-1):
+    for year in range(2017,1979,-1):
         fantCsvName = 'yearly_stats/fantasy_{}.csv'.format(year)
         if not os.path.exists(fantCsvName):
             logging.info('scraping for {} season'.format(year))
