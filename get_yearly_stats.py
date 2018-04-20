@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import os.path
+from time import sleep
 from retrying import retry
 import pandas as pd
 
@@ -10,6 +11,7 @@ import pandas as pd
 # wait 1 second between retries w/ exponential increase of wait times up to 8 seconds
 @retry(wait_exponential_multiplier=1000, wait_exponential_max=8001)
 def get_passing_df_pfr(year=2017):
+    sleep(1) # let's be conservative to not spam the site
     # pfr requires more cleaning but it automatically includes all players
     url = 'https://www.pro-football-reference.com/years/{}/passing.htm'.format(year)
     tables = pd.read_html(url) # returns a list
@@ -37,6 +39,7 @@ def get_passing_df_pfr(year=2017):
 # @retry(wait_exponential_multiplier=1000, wait_exponential_max=8001)
 def get_fantasy_df_pfr(year):
     # retrieves a summary table of fantasy stats for all players
+    sleep(1) # make sure we're not spamming the site
     url = 'https://www.pro-football-reference.com/years/{}/fantasy.htm'.format(year)
     # header = 1 causes the top line to be ignored
     # this seems simpler to deal w/ than the multi-level, which doesn't get parsed well.
@@ -103,7 +106,13 @@ if __name__ == '__main__':
     for year in range(2017,1989,-1):
         fantCsvName = 'yearly_stats/fantasy_{}.csv'.format(year)
         if not os.path.exists(fantCsvName):
+            logging.info('scraping for {} season'.format(year))
             df = get_fantasy_df_pfr(year)
+            # there are several players w/ the same name, so we must differentiate by age as well
+            dupes = df.duplicated(['name','age'], keep=False)
+            if dupes.any():
+                logging.warning('{}{}'.format('possible duplicate entries:\n',
+                                              df[dupes][['name', 'team', 'pos', 'age', 'games_played', 'games_started']].sort_values('name')))
             df.to_csv(fantCsvName)
         else:
             logging.debug('{} already exists. skipping.'.format(fantCsvName))
