@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import os.path
+from sys import argv
 from time import sleep
 from retrying import retry
 import pandas as pd
@@ -91,6 +92,7 @@ def get_fantasy_df_pfr(year):
     df = df.drop(columns='Rk')
     # re-index to rank based on our list
     df.reset_index(drop=True, inplace=True)
+    # df['year'] = year # we can do this when we combine
     return df
 
 
@@ -102,8 +104,11 @@ if __name__ == '__main__':
     if not os.path.isdir('yearly_stats'):
         logging.info('creating directory yearly_stats')
         os.mkdir('yearly_stats')
+
+    first_year = argv[1] if len(argv) > 1 else 1980
+    logging.info('scanning back to {}'.format(first_year))
         
-    for year in range(2017,1979,-1):
+    for year in range(2017,first_year-1,-1):
         fantCsvName = 'yearly_stats/fantasy_{}.csv'.format(year)
         if not os.path.exists(fantCsvName):
             logging.info('scraping for {} season'.format(year))

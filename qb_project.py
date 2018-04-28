@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from prediction_models import *
 import logging
 import pandas as pd
 
@@ -20,7 +21,22 @@ def get_qb_list(years=None, datadir='./yearly_stats/'):
     qbnames.sort_values(inplace=True)
     qbnames.reset_index(drop=True,inplace=True)
     return qbnames
-    
+
+# get a dataframe of the relevant QBs
+def get_qb_df(years, datadir='./yearly_stats/'):
+    ls_qbdfs = []
+    for year in years:
+        csvName = '{}/fantasy_{}.csv'.format(datadir,year)
+        df = pd.read_csv(csvName)
+        validqbs = df.loc[df['pos'] == 'QB']
+        # we might want more filters, but for now use all in the dataset
+        # to be a fantasy factor, a qb should start in *at least* some number of games in at least *one* season
+        validqbs = validqbs.loc[validqbs['games_started'].astype(int) >= 4]
+        validqbs['year'] = year
+        ls_qbdfs.append(validqbs)
+    allqbs = pd.concat(ls_qbdfs, ignore_index=True, verify_integrity=True).drop_duplicates()
+    return allqbs
+
 
 if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
@@ -29,5 +45,11 @@ if __name__ == '__main__':
     # but we don't want to go all the way to the edge; we
     # want to how well active QBs from a given range did before that range.
     years = range(1990, 2018)
-    qbnames = get_qb_list(years)
-    logging.info(qbnames)
+    # qbnames = get_qb_list(years)
+    # logging.info(qbnames)
+    qbdf = get_qb_df(years)
+    logging.info(qbdf)
+    
+    testdata = pd.Series([3,4,5,6])
+    logging.info( testdata )
+    logging.info( naive(testdata) )
