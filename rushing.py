@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import dist_fit
 
 rush_att = []
-# rush_tds = []
-all_tds = []
+# rush_td = []
+all_td = []
 rush_yds = []
 all_yds = []
 rec_rec = []
@@ -46,22 +46,22 @@ for year in range(2016, 2017):
         for pstat in weekly_player_stats.rushing().filter( playerid=lambda x: x in top_playerids ):
             # msg = '{} ({}): {} carries for {} yards and {} TDs'.format( pstat, pstat.player.full_name,
             #                                                             pstat.rushing_att, pstat.rushing_yds,
-            #                                                             pstat.rushing_tds )
+            #                                                             pstat.rushing_td )
             # print msg
             # print dir(pstat) # to check methods
             rshyd = pstat.rushing_yds
-            rshtd = pstat.rushing_tds
+            rshtd = pstat.rushing_td
             rec = pstat.receiving_rec
             recyd = pstat.receiving_yds
-            rectd = pstat.receiving_tds
+            rectd = pstat.receiving_td
             tds = pstat.tds
             # print rshtd,rectd,tds
             rush_att.append( pstat.rushing_att )
-            # rush_tds.append( rshtd )
+            # rush_td.append( rshtd )
             # rush_yds.append( rshyd )
             all_yds.append( rshyd + recyd )
             rec_rec.append( rec )
-            all_tds.append( tds )
+            all_td.append( tds )
 
 
 # print 'rushing attempts:'
@@ -75,7 +75,7 @@ for year in range(2016, 2017):
 # # negative binomial is redundant w/ poisson here. TDs are rare, and relatively independent.
 # # geometric does OK, but is clearly inferior w/ high stats
 # # poisson does quite well even when all years are combined : -logL/N ~ 1
-# dist_fit.plot_counts( all_tds, label='touchdowns', fits=['poisson'] )
+# dist_fit.plot_counts( all_td, label='touchdowns', fits=['poisson'] )
 
 # print 'receptions:'
 # # poisson is too narrow, geometric has too heavy of tail

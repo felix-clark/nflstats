@@ -25,7 +25,7 @@ def replaceTitleLine(line):
     line = line.replace('"FL"', 'fumbles_lost')
     # defense stats
     line = line.replace('"SACK","INT","FR","FF","TD","ASSIST","SAFETY","PA","YDS_AGN",',
-                        'defense_sk,defense_int,defense_frec,defense_ffum,defense_tds,defense_ast,defense_safe,defense_pa,defense_lost_yds,')
+                        'defense_sk,defense_int,defense_frec,defense_ffum,defense_td,defense_ast,defense_safe,defense_pa,defense_lost_yds,')
     # more of a stylistic choice to replace this
     line = line.replace('"FPTS"', 'fp_projection')
 

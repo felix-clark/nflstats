@@ -50,11 +50,11 @@ def generatePlayerDataFile( player_name='tom brady', years=range(2009, 2017) ):
                                  'pass_attempts':pstat.passing_att,
                                  'completions':pstat.passing_cmp,
                                  'pass_yards':pstat.passing_yds,
-                                 'pass_tds':pstat.passing_td,
+                                 'pass_td':pstat.passing_td,
                                  'interceptions':pstat.passing_ints,
                                  'passer_rating':pstat.passer_rating(),
                                  'rushing_yds':pstat.rushing_yds,
-                                 'rushing_tds':pstat.rushing_tds,
+                                 'rushing_td':pstat.rushing_td,
                                  # '2pc':pstat.passing_twoptm+pstat.rushing_twoptm+pstat.receiving_twoptm
                                  # 'playerid':pstat.playerid
                 })
@@ -78,7 +78,7 @@ sns.set()
 # can edit 'vars' to only show some stats
 plot_vars = ['week', 'fantasy_points',
              # 'pass_attempts',
-             'completions', 'pass_yards', 'pass_tds', 'interceptions', 'passer_rating']
+             'completions', 'pass_yards', 'pass_td', 'interceptions', 'passer_rating']
 g = sns.pairplot(data=df, hue='year', vars=plot_vars)
 plt.show()
 g.savefig( playerFilename( player_name ) + '.png')

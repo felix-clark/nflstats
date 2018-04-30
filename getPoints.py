@@ -15,17 +15,17 @@ def getBasePoints( rs, plyr ):
     + rs.ppPY25 * (plyr.passing_yds / 25) \
     + rs.ppPC * plyr.passing_cmp \
     + rs.ppINC * (plyr.passing_att - plyr.passing_cmp) \
-    + rs.ppPTD * plyr.passing_tds \
+    + rs.ppPTD * plyr.passing_td \
     + rs.ppINT * plyr.passing_int \
     + rs.pp2PC * plyr.passing_twoptm \
     + rs.ppRY * plyr.rushing_yds \
     + rs.ppRY10 * (plyr.rushing_yds / 10) \
-    + rs.ppRTD * plyr.rushing_tds \
+    + rs.ppRTD * plyr.rushing_td \
     + rs.pp2PR * plyr.rushing_twoptm \
     + rs.ppREY * plyr.receiving_yds \
     + rs.ppREY10 * (plyr.receiving_yds / 10) \
     + rs.ppREC * plyr.receiving_rec \
-    + rs.ppRETD * plyr.receiving_tds \
+    + rs.ppRETD * plyr.receiving_td \
     + rs.pp2PRE * plyr.receiving_twoptm \
     + rs.ppFUML * plyr.fumbles_lost \
     + rs.ppPAT * plyr.kicking_xpmade \
@@ -45,17 +45,17 @@ def getBasePoints( rs, plyr ):
 #     + rs.ppPY25 * (df['passing_yds'] / 25) \
 #     + rs.ppPC * df['passing_cmp'] \
 #     + rs.ppINC * (df['passing_att'] - df['passing_cmp']) \
-#     + rs.ppPTD * df['passing_tds'] \
+#     + rs.ppPTD * df['passing_td'] \
 #     + rs.ppINT * df['passing_int'] \
 #     + rs.pp2PC * df['passing_twoptm'] \
 #     + rs.ppRY * df['rushing_yds'] \
 #     + rs.ppRY10 * (df['rushing_yds'] / 10) \
-#     + rs.ppRTD * df['rushing_tds'] \
+#     + rs.ppRTD * df['rushing_td'] \
 #     + rs.pp2PR * df['rushing_twoptm'] \
 #     + rs.ppREY * df['receiving_yds'] \
 #     + rs.ppREY10 * (df['receiving_yds'] / 10) \
 #     + rs.ppREC * df['receiving_rec'] \
-#     + rs.ppRETD * df['receiving_tds'] \
+#     + rs.ppRETD * df['receiving_td'] \
 #     + rs.pp2PRE * df['receiving_twoptm'] \
 #     + rs.ppFUML * df['fumbles_lost'] \
 #     + rs.ppPAT * df['kicking_xpmade'] \
@@ -75,17 +75,17 @@ def get_points_from_data_frame( rs, df, name='fantasy_points' ):
     + rs.ppPY25 * (df['passing_yds'] / 25) \
     + rs.ppPC * df['passing_cmp'] \
     + rs.ppINC * (df['passing_att'] - df['passing_cmp']) \
-    + rs.ppPTD * df['passing_tds'] \
+    + rs.ppPTD * df['passing_td'] \
     + rs.ppINT * df['passing_int'] \
     + rs.pp2PC * df['passing_twoptm'] \
     + rs.ppRY * df['rushing_yds'] \
     + rs.ppRY10 * (df['rushing_yds'] / 10) \
-    + rs.ppRTD * df['rushing_tds'] \
+    + rs.ppRTD * df['rushing_td'] \
     + rs.pp2PR * df['rushing_twoptm'] \
     + rs.ppREY * df['receiving_yds'] \
     + rs.ppREY10 * (df['receiving_yds'] / 10) \
     + rs.ppREC * df['receiving_rec'] \
-    + rs.ppRETD * df['receiving_tds'] \
+    + rs.ppRETD * df['receiving_td'] \
     + rs.pp2PRE * df['receiving_twoptm'] \
     + rs.ppFUML * df['fumbles_lost'] \
     + rs.ppPAT * df['kicking_xpmade'] \

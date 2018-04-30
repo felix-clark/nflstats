@@ -1,4 +1,4 @@
-,name,team,position,passing_cmp,passing_att,passing_yds,passing_tds,passing_int,rushing_att,rushing_yds,rushing_tds,receiving_rec,receiving_yds,receiving_tds,fantasy_points_bro
+,name,team,position,passing_cmp,passing_att,passing_yds,passing_td,passing_int,rushing_att,rushing_yds,rushing_td,receiving_rec,receiving_yds,receiving_td,fantasy_points_bro
 1,David Johnson,Ari,RB,0,0,0,0,0,307.1,1229.7,11.7,77.8,783,4.1,370
 2,Le'Veon Bell,Pit,RB,0,0,0,0,0,303.6,1398.6,9.9,81.3,669.4,3.8,369.4
 3,LeSean McCoy,Buf,RB,0,0,0,0,0,240.8,1191.6,7.4,51.7,417.2,1.7,265.1

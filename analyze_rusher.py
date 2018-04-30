@@ -50,7 +50,7 @@ def generatePlayerDataFile( player_name='todd gurley', years=range(2009, 2018) )
                                  'rushing_attempts':pstat.rushing_att,
                                  'receptions':pstat.receiving_rec,
                                  'yards':pstat.rushing_yds+pstat.receiving_yds,
-                                 'tds':pstat.rushing_tds+pstat.receiving_tds,
+                                 'tds':pstat.rushing_td+pstat.receiving_td,
                                  '2pc':pstat.rushing_twoptm+pstat.receiving_twoptm
                                  # 'playerid':pstat.playerid
                 })

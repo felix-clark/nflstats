@@ -1,4 +1,4 @@
-,name,team,position,passing_cmp,passing_att,passing_yds,passing_tds,passing_ints,rushing_att,rushing_yds,rushing_tds,receiving_rec,receiving_yds,receiving_tds,fantasy_points_bro
+,name,team,position,passing_cmp,passing_att,passing_yds,passing_td,passing_ints,rushing_att,rushing_yds,rushing_td,receiving_rec,receiving_yds,receiving_td,fantasy_points_bro
 1,Greg Olsen,Car,TE,0,0,0,0,0,0,0,0,80.1,1063.9,6.4,225.5
 2,Rob Gronkowski,NE,TE,0,0,0,0,0,0,0,0,67.1,1023.5,9.1,224.2
 3,Travis Kelce,KC,TE,0,0,0,0,0,0,0,0,83.6,1038.4,4.7,215.4

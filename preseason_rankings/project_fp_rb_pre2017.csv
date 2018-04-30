@@ -1,4 +1,4 @@
-name,team,rushing_att,rushing_yds,rushing_tds,receiving_rec,receiving_yds,receiving_tds,fumbles_lost,fp_projection
+name,team,rushing_att,rushing_yds,rushing_td,receiving_rec,receiving_yds,receiving_td,fumbles_lost,fp_projection
 
 David Johnson,ARI,281.5,1172.9,11.5,75.5,741.9,3.9,3.1,315.6
 Le'Veon Bell,PIT,293.4,1343.1,9.4,76.8,627.4,2.4,2.2,301.8

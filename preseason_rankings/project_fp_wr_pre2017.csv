@@ -1,4 +1,4 @@
-name,team,rushing_att,rushing_yds,rushing_tds,receiving_rec,receiving_yds,receiving_tds,fumbles_lost,fp_projection
+name,team,rushing_att,rushing_yds,rushing_td,receiving_rec,receiving_yds,receiving_td,fumbles_lost,fp_projection
 
 Antonio Brown,PIT,3.2,17.8,0.0,111.7,1433.7,10.1,0.8,260.0
 Julio Jones,ATL,0.0,0.3,0.0,100.1,1523.1,9.3,0.4,257.1

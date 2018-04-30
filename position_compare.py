@@ -76,11 +76,11 @@ def generateSummaryDataFile( fname, years ):
                 #     for pstat in weekly_player_stats.passing().filter( playerid=lambda x: x in top_playerids ):
                 #         # msg = '{} ({}): {} carries for {} yards and {} TDs'.format( pstat, pstat.player.full_name,
                 #         #                                                             pstat.rushing_att, pstat.rushing_yds,
-                #         #                                                             pstat.rushing_tds )
+                #         #                                                             pstat.rushing_td )
                 #         # print msg
                 #         # print dir(pstat) # to check methods
                 #         rshyd = pstat.rushing_yds
-                #         rshtd = pstat.rushing_tds
+                #         rshtd = pstat.rushing_td
 
 
 datafilename = 'playerdata.csv'
