@@ -105,7 +105,7 @@ if __name__ == '__main__':
         logging.info('creating directory yearly_stats')
         os.mkdir('yearly_stats')
 
-    first_year = argv[1] if len(argv) > 1 else 1980
+    first_year = int(argv[1]) if len(argv) > 1 else 1980
     logging.info('scanning back to {}'.format(first_year))
         
     for year in range(2017,first_year-1,-1):
