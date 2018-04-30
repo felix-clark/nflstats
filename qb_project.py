@@ -5,6 +5,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from pandas.plotting import autocorrelation_plot
+from numpy import sqrt
 
 def get_qb_list(years, datadir='./yearly_stats/'):
     qbnames = pd.Series()
@@ -52,9 +53,9 @@ if __name__ == '__main__':
     qbdf = qbdf.drop(columns=['pos', 'Unnamed: 0'])
 
     qbdf['pass_att_pg'] = qbdf['passing_att'] / qbdf['games_played']
-    avg_pa_pg = qbdf['pass_att_pg'].mean()
-    logging.info('{} average pass attempts per game'.format(avg_pa_pg))
     qbdf['cmp_pct'] = qbdf['passing_cmp'] / qbdf['passing_att']
+    qbdf['pass_td_pg'] = qbdf['passing_td'] / qbdf['games_played']
+    qbdf['int_pct'] = qbdf['passing_int'] / qbdf['passing_att']
     
     # logging.info(qbdf.columns)
     
@@ -70,27 +71,20 @@ if __name__ == '__main__':
     # ac = autocorrelation_plot()
 
     n_data = 0
-    stats_to_predict = ['pass_att_pg', 'cmp_pct', 'passing_td']
+    stats_to_predict = ['pass_att_pg', 'cmp_pct', 'pass_td_pg', 'int_pct']
+    avg_st = {st:qbdf[st].mean() for st in stats_to_predict}
+    std_st = {st:qbdf[st].std() for st in stats_to_predict}
     naive_sse = {key:0 for key in stats_to_predict}
-    md_naive = lambda data: pm.naive(data, default=avg_pa_pg)
+    md_naive = lambda data: pm.naive(data)
     mean_sse = {key:0 for key in stats_to_predict}
-    md_mean = lambda data: pm.mean(data, default=avg_pa_pg)
-    alphas = [0.4, 0.5, 0.55, 0.6, 0.7, 0.75, 0.8, 0.9]
+    md_mean = lambda data: pm.mean(data)
+    alphas = [0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9]
     exp_sse = {a:{key:0 for key in stats_to_predict} for a in alphas}
     md_exp = {}
     for a in alphas:
-        md_exp[a] = lambda data: pm.exp_window(data, alpha=a, default=avg_pa_pg)
-    # exp_0p4_sse = {key:0 for key in stats_to_predict}
-    # md_exp_0p4 = lambda data: pm.exp_window(data, alpha=0.4, default=avg_pa_pg)
-    # # an exponential factor of 1/2 seems to do very well
-    # exp_0p5_sse = {key:0 for key in stats_to_predict}
-    # md_exp_0p5 = lambda data: pm.exp_window(data, alpha=0.5, default=avg_pa_pg)
-    # exp_0p55_sse = {key:0 for key in stats_to_predict}
-    # md_exp_0p55 = lambda data: pm.exp_window(data, alpha=0.55, default=avg_pa_pg)
-    # exp_0p6_sse = {key:0 for key in stats_to_predict}
-    # md_exp_0p6 = lambda data: pm.exp_window(data, alpha=0.6, default=avg_pa_pg)
-    # exp_0p75_sse = {key:0 for key in stats_to_predict}
-    # md_exp_0p75 = lambda data: pm.exp_window(data, alpha=0.75, default=avg_pa_pg)
+        # we won't count rookie years in the squared error calculation.
+        # thus we won't provide a default value, since they're dependent on the statistic anyway.
+        md_exp[a] = lambda data: pm.exp_window(data, alpha=a)
     
     # for name in ['Peyton Manning', 'Tom Brady']:
     for name in qbnames:
@@ -104,16 +98,13 @@ if __name__ == '__main__':
             mean_sse[st] += pm.sse_subseries(pdf[st], md_mean)
             for a in alphas:
                 exp_sse[a][st] += pm.sse_subseries(pdf[st], md_exp[a])
-            # exp_0p5_sse[st] += pm.sse_subseries(pdf[st], md_exp_0p5)
-            # exp_0p55_sse[st] += pm.sse_subseries(pdf[st], md_exp_0p55)
-            # exp_0p6_sse[st] += pm.sse_subseries(pdf[st], md_exp_0p6)
-            # exp_0p75_sse[st] += pm.sse_subseries(pdf[st], md_exp_0p75)
 
     for st in stats_to_predict:
         logging.info('\n  model performance for {}:'.format(st))
-        logging.info('naive MSE: {}'.format(naive_sse[st]/n_data))
-        logging.info('mean MSE: {}'.format(mean_sse[st]/n_data))
+        logging.info('{:.4g} \pm {:.4g}'.format(avg_st[st], std_st[st]))
+        logging.info('naive RMSE: {:.4g}'.format(sqrt(naive_sse[st]/n_data)))
+        logging.info('mean RMSE: {:.4g}'.format(sqrt(mean_sse[st]/n_data)))
         for a in alphas:
-            logging.info('exp[{}] MSE: {}'.format(a, exp_sse[a][st]/(n_data-1)))
+            logging.info('exp[{}] RMSE: {:.5g}'.format(a, sqrt(exp_sse[a][st]/(n_data-1))))
 
     
