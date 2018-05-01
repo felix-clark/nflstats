@@ -162,3 +162,13 @@ def dumb_te_predictions(df):
     predictions['receiving_td'] = pred_rectd_pc * predictions['receiving_rec']
     
     return predictions
+
+def dumb_pos_predictions(pos, df):
+    if pos.lower() == 'qb':
+        return dumb_qb_predictions(df)
+    if pos.lower() == 'rb':
+        return dumb_rb_predictions(df)
+    if pos.lower() == 'wr':
+        return dumb_wr_predictions(df)
+    if pos.lower() == 'te':
+        return dumb_te_predictions(df)
