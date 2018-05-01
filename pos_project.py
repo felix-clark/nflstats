@@ -18,7 +18,7 @@ def get_pos_df(pos, years, datadir='./yearly_stats/'):
         csvName = '{}/fantasy_{}.csv'.format(datadir,year)
         df = pd.read_csv(csvName)
         valids = df.loc[df['pos'] == pos.upper()]
-        valids = valids.loc[valids['games_played'].astype(int) >= 4]
+        valids = valids.loc[valids['games_played'].astype(int) >= 1]
         if pos.lower() == 'qb':
             valids = valids.loc[valids['passing_att'].astype(int) >= 8]
         if pos.lower() == 'rb':
@@ -66,9 +66,15 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
 
     if len(argv) < 2:
-        logging.error('usage: {} <position>'.format(argv[0]))
+        logging.error('usage: {} <position> <rules>'.format(argv[0]))
         
     pos = argv[1].lower()
+    rules = phys_league
+    rulestr = argv[2] if len(argv) > 2 else 'phys'
+    if rulestr == 'phys': rules = phys_league
+    if rulestr == 'bro': rules = bro_league
+    if rulestr == 'dude': rules = dude_league
+    if rulestr in ['nyc', 'nycfc']: rules = nycfc_league
     
     years = range(1998, 2018)
     posnames = get_pos_list(pos, years)
@@ -102,13 +108,16 @@ if __name__ == '__main__':
     
         n_data = 0
         stats_to_predict = []
-        if pos == 'qb': stats_to_predict = ['pass_att_pg', 'cmp_pct', 'pass_yds_pc', 'pass_td_pc', 'int_pct'
+        if pos == 'qb': stats_to_predict = ['games_played', 'pass_att_pg', 'cmp_pct', 'pass_yds_pc', 'pass_td_pc', 'int_pct'
                                             ,'rush_att_pg', 'rush_yds_pa', 'rush_td_pa']
-        if pos == 'rb': stats_to_predict = ['rush_att_pg', 'rush_yds_pa', 'rush_td_pa',
+        if pos == 'rb': stats_to_predict = ['games_played', 'rush_att_pg', 'rush_yds_pa', 'rush_td_pa',
                                             'rec_tgt_pg', 'rec_rec_pt', 'rec_yds_pc', 'rec_td_pc']
-        if pos in ['wr', 'te']: stats_to_predict = ['rec_tgt_pg', 'rec_rec_pt', 'rec_yds_pc', 'rec_td_pc']
+        if pos in ['wr', 'te']: stats_to_predict = ['games_played', 'rec_tgt_pg', 'rec_rec_pt', 'rec_yds_pc', 'rec_td_pc']
+        stats_to_predict = ['games_played']
         avg_st = {st:posdf[st].mean() for st in stats_to_predict}
         std_st = {st:posdf[st].std() for st in stats_to_predict}
+        md_gp_const = lambda data: 0.4*16 + 0.6*pm.mean(data) # compare games played models to a constant, full value
+        const_gp_sse = 0
         naive_sse = {key:0 for key in stats_to_predict}
         md_naive = lambda data: pm.naive(data)
         mean_sse = {key:0 for key in stats_to_predict}
@@ -125,15 +134,19 @@ if __name__ == '__main__':
         for name in posnames:
             pdf = posdf[posdf['name'] == name]
             n_data += pdf.size - 1
+            const_gp_sse += pm.sse_subseries(pdf['games_played'], md_gp_const)
             for st in stats_to_predict:
                 naive_sse[st] += pm.sse_subseries(pdf[st], md_naive)
                 mean_sse[st] += pm.sse_subseries(pdf[st], md_mean)
                 for a in alphas:
                     exp_sse[st][a] += pm.sse_subseries(pdf[st], md_exp[a])
 
+        
         for st in stats_to_predict:
             logging.info('\n  model performance for {}:'.format(st))
             logging.info('{:.4g} \pm {:.4g}'.format(avg_st[st], std_st[st]))
+            if st == 'games_played':
+                logging.info('constant (16) RMSE: {:.4g}'.format(sqrt(const_gp_sse/n_data)))
             logging.info('naive RMSE: {:.4g}'.format(sqrt(naive_sse[st]/n_data)))
             logging.info('mean RMSE: {:.4g}'.format(sqrt(mean_sse[st]/n_data)))
             minalpha = min(exp_sse[st].items(), key=lambda x: x[1])
@@ -141,7 +154,6 @@ if __name__ == '__main__':
             
     # compare the dumb prediction methodology to experts for the last year
     # the dumb model really doesn't work well for RBs, seemingly because it's more a question of who gets touches
-    rules = phys_league
     # the year to compare predictions with
     current_year = 2017
     current_posnames = get_pos_list(pos, [current_year])
@@ -157,7 +169,8 @@ if __name__ == '__main__':
         pred_data['name'] = name
         pred_pos.append(pred_data)
     pred_posdf = pd.DataFrame(pred_pos)
-    pred_posdf['dumb_proj'] = get_points(pos, rules, pred_posdf) / pred_posdf['games_played']
+    # pred_posdf['dumb_proj'] = get_points(pos, rules, pred_posdf) / pred_posdf['games_played'] # effectively gives ppg and scales up by 15
+    pred_posdf['dumb_proj'] = get_points(pos, rules, pred_posdf) / 15 # accounts for our prediction of games played. works better for TE, WR, RB, but QB is not improved
 
     real_posdat = get_pos_df(pos, [current_year])
     real_posdat['fantasy_ppg'] = get_points(pos, rules, real_posdat) / real_posdat['games_played']
@@ -180,12 +193,13 @@ if __name__ == '__main__':
         pred_posdf.loc[pred_posdf['name']=='Tom Brady', 'expert_proj'] *= 16/12
         pred_posdf.loc[pred_posdf['name']=='Le\'veon Bell', 'expert_proj'] *= 16/13
     
-    pred_posdf = pred_posdf[(pred_posdf['games_played'] > 4) & (pred_posdf['expert_proj'] > 1) & (pred_posdf['fantasy_ppg'] > 1)]
+    pred_posdf = pred_posdf[(pred_posdf['games_played'] >= 1) & (pred_posdf['expert_proj'] > 1) & (pred_posdf['fantasy_ppg'] > 1)]
     pred_posdf.sort_values('fantasy_ppg', inplace=True, ascending=False)
     pred_posdf.reset_index(drop=True,inplace=True)
     
     pd.options.display.precision = 3
     logging.info('2017 comparison:\n' + str(pred_posdf[['name', 'dumb_proj', 'expert_proj', 'fantasy_ppg', 'games_played']]))
+    # logging.info('2017 comparison:\n' + str(pred_posdf))
     
     # when computing the error, weight by games played
     expert_err = (pred_posdf['expert_proj'] - pred_posdf['fantasy_ppg'])
@@ -198,20 +212,17 @@ if __name__ == '__main__':
 
     # next year's predictions
     pred_ny = []
-    if pos == 'rb':
-        # rel_ny_indices |= posdf['name'] == 'David Johnson'
-        current_posnames = current_posnames.append(pd.Series(['David Johnson']))
-    print(current_posnames)
     rel_ny_indices = posdf['name'].isin(current_posnames)
     ny_posdf = posdf[rel_ny_indices]
-    # print(posdf[posdf['name'] == 'David Johnson'])
     for name in current_posnames:
         pred_data = pm.dumb_pos_predictions(pos, ny_posdf[ny_posdf['name'] == name])
         pred_data['name'] = name
         pred_ny.append(pred_data)
     pred_ny = pd.DataFrame(pred_ny)
     # logging.info('2018 dumb predictions:\n' + str(pred_ny))
-    pred_ny['dumb_proj'] = get_points(pos, rules, pred_ny) / pred_ny['games_played']
-    pred_ny.sort_values('dumb_proj', inplace=True, ascending=False)
+    pred_ny['dumb_ppg'] = get_points(pos, rules, pred_ny) / pred_ny['games_played']
+    pred_ny.sort_values('dumb_ppg', inplace=True, ascending=False)
     pred_ny.reset_index(inplace=True)
-    logging.info('2018 dumb predictions:\n' + str(pred_ny[['name', 'dumb_proj']].head(32)))
+    pred_ny['dumb_proj'] = pred_ny['dumb_ppg'] * pred_ny['games_played']
+    # should look at individual columns more carefully - there are some head-scratchers
+    logging.info('2018 dumb predictions:\n' + str(pred_ny[['name', 'dumb_ppg', 'games_played', 'dumb_proj']].head(32)))
