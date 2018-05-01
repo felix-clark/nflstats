@@ -55,22 +55,9 @@ def get_points( rs, df ):
     + rs.ppINC * (df['passing_att'] - df['passing_cmp']) \
     + rs.ppPTD * df['passing_td'] \
     + rs.ppINT * df['passing_int'] \
-    # + rs.pp2PC * df['passing_twoptm'] \
     + rs.ppRY * df['rushing_yds'] \
     + rs.ppRY10 * (df['rushing_yds'] / 10) \
-    + rs.ppRTD * df['rushing_td'] \
-    + rs.pp2PR * df['rushing_twoptm']# \
-    # + rs.ppREY * df['receiving_yds'] \
-    # + rs.ppREY10 * (df['receiving_yds'] / 10) \
-    # + rs.ppREC * df['receiving_rec'] \
-    # + rs.ppRETD * df['receiving_td'] \
-    # + rs.pp2PRE * df['receiving_twoptm'] \
-    # + rs.ppFUML * df['fumbles_lost'] \
-    # + rs.ppPAT * df['kicking_xpmade'] \
-    # + rs.ppFGM * (df['kicking_fga'] - df['kicking_fgm']) \
-    # + rs.ppFG0 * df['kicking_fgm']
-# TODO: missing: missed PATs (ppPATM)
-
+    + rs.ppRTD * df['rushing_td']
 
 if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
@@ -116,57 +103,59 @@ if __name__ == '__main__':
     # ls = [qbdf[qbdf['name'] == name] for name in ['Peyton Manning', 'Tom Brady']]
     # ac = autocorrelation_plot()
 
-    n_data = 0
-    stats_to_predict = ['pass_att_pg', 'cmp_pct', 'pass_yds_pc', 'pass_td_pc', 'int_pct'
-                        ,'rush_att_pg', 'rush_yds_pa', 'rush_td_pa']
-    avg_st = {st:qbdf[st].mean() for st in stats_to_predict}
-    std_st = {st:qbdf[st].std() for st in stats_to_predict}
-    naive_sse = {key:0 for key in stats_to_predict}
-    md_naive = lambda data: pm.naive(data)
-    mean_sse = {key:0 for key in stats_to_predict}
-    md_mean = lambda data: pm.mean(data)
-    alphas = [0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9]
-    # exp_sse = {a:{key:0 for key in stats_to_predict} for a in alphas}
-    exp_sse = {key:{a:0 for a in alphas} for key in stats_to_predict}
-    md_exp = {}
-    for a in alphas:
-        # we won't count rookie years in the squared error calculation.
-        # thus we won't provide a default value, since they're dependent on the statistic anyway.
-        md_exp[a] = lambda data: pm.exp_window(data, alpha=a)
+    checkWindowModels = False
+    if checkWindowModels:
     
-    # for name in ['Peyton Manning', 'Tom Brady']:
-    for name in qbnames:
-        pdf = qbdf[qbdf['name'] == name]
-        # logging.info(pdf)
-        # ac = autocorrelation_plot(pdf['pass_att_pg'])
-        # ac.figure.show()
-        n_data += pdf.size - 1
-        for st in stats_to_predict:
-            naive_sse[st] += pm.sse_subseries(pdf[st], md_naive)
-            mean_sse[st] += pm.sse_subseries(pdf[st], md_mean)
-            for a in alphas:
-                exp_sse[st][a] += pm.sse_subseries(pdf[st], md_exp[a])
+        n_data = 0
+        stats_to_predict = ['pass_att_pg', 'cmp_pct', 'pass_yds_pc', 'pass_td_pc', 'int_pct'
+                            ,'rush_att_pg', 'rush_yds_pa', 'rush_td_pa']
+        avg_st = {st:qbdf[st].mean() for st in stats_to_predict}
+        std_st = {st:qbdf[st].std() for st in stats_to_predict}
+        naive_sse = {key:0 for key in stats_to_predict}
+        md_naive = lambda data: pm.naive(data)
+        mean_sse = {key:0 for key in stats_to_predict}
+        md_mean = lambda data: pm.mean(data)
+        alphas = [0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9]
+        # exp_sse = {a:{key:0 for key in stats_to_predict} for a in alphas}
+        exp_sse = {key:{a:0 for a in alphas} for key in stats_to_predict}
+        md_exp = {}
+        for a in alphas:
+            # we won't count rookie years in the squared error calculation.
+            # thus we won't provide a default value, since they're dependent on the statistic anyway.
+            md_exp[a] = lambda data: pm.exp_window(data, alpha=a)
+    
+        for name in qbnames:
+            pdf = qbdf[qbdf['name'] == name]
+            # logging.info(pdf)
+            # ac = autocorrelation_plot(pdf['pass_att_pg'])
+            # ac.figure.show()
+            n_data += pdf.size - 1
+            for st in stats_to_predict:
+                naive_sse[st] += pm.sse_subseries(pdf[st], md_naive)
+                mean_sse[st] += pm.sse_subseries(pdf[st], md_mean)
+                for a in alphas:
+                    exp_sse[st][a] += pm.sse_subseries(pdf[st], md_exp[a])
 
-    for st in stats_to_predict:
-        logging.info('\n  model performance for {}:'.format(st))
-        logging.info('{:.4g} \pm {:.4g}'.format(avg_st[st], std_st[st]))
-        logging.info('naive RMSE: {:.4g}'.format(sqrt(naive_sse[st]/n_data)))
-        logging.info('mean RMSE: {:.4g}'.format(sqrt(mean_sse[st]/n_data)))
-        minalpha = min(exp_sse[st].items(), key=lambda x: x[1])
-        logging.info('exp[{}] RMSE: {:.5g}'.format(minalpha[0], sqrt(minalpha[1]/(n_data-1))))
-        # for a in alphas:
-            # logging.info('exp[{}] RMSE: {:.5g}'.format(a, sqrt(exp_sse[st][a]/(n_data-1))))
+        for st in stats_to_predict:
+            logging.info('\n  model performance for {}:'.format(st))
+            logging.info('{:.4g} \pm {:.4g}'.format(avg_st[st], std_st[st]))
+            logging.info('naive RMSE: {:.4g}'.format(sqrt(naive_sse[st]/n_data)))
+            logging.info('mean RMSE: {:.4g}'.format(sqrt(mean_sse[st]/n_data)))
+            minalpha = min(exp_sse[st].items(), key=lambda x: x[1])
+            logging.info('exp[{}] RMSE: {:.5g}'.format(minalpha[0], sqrt(minalpha[1]/(n_data-1))))
 
     # compare the dumb prediction methodology to experts for the last year
     # the year to compare predictions with
-    rules = bro_league
+    rules = phys_league
     current_year = 2017
     current_qbnames = get_qb_list([current_year])
     current_qbdf = qbdf[(qbdf['name'].isin(current_qbnames)) & (qbdf['year'] < current_year)]
 
     pred_qbs = []
     for name in current_qbnames:
-        pred_data = pm.dumb_qb_predictions(current_qbdf[current_qbdf['name'] == name])
+        qbdat = current_qbdf[current_qbdf['name'] == name]
+        if qbdat.size == 0: continue
+        pred_data = pm.dumb_qb_predictions(qbdat)
         pred_data['name'] = name
         pred_qbs.append(pred_data)
     pred_qbdf = pd.DataFrame(pred_qbs)
@@ -187,7 +176,9 @@ if __name__ == '__main__':
     pred_qbdf.sort_values('fantasy_points', inplace=True, ascending=False)
     pred_qbdf.reset_index(drop=True,inplace=True)
     logging.info(pred_qbdf[['name', 'dumb_proj', 'expert_proj', 'fantasy_points']])
-    expert_sqe = (pred_qbdf['expert_proj'] - pred_qbdf['fantasy_points'])**2
-    dumb_sqe = (pred_qbdf['dumb_proj'] - pred_qbdf['fantasy_points'])**2
-    logging.info( 'expert MSE: {}'.format( sqrt(sum(expert_sqe)/(expert_sqe.size-1)) ) )
-    logging.info( 'dumb MSE: {}'.format( sqrt(sum(dumb_sqe)/(dumb_sqe.size-1)) ) )
+    expert_err = pred_qbdf['expert_proj'] - pred_qbdf['fantasy_points']
+    dumb_err = pred_qbdf['dumb_proj'] - pred_qbdf['fantasy_points']
+    logging.info( 'expert MSE: {}'.format( sqrt(sum(expert_err**2)/expert_err.size) ) )
+    logging.info( 'dumb MSE: {}'.format( sqrt(sum(dumb_err**2)/dumb_err.size) ) )
+    logging.info( 'expert MAE: {}'.format( sum(expert_err.abs())/expert_err.size ) )
+    logging.info( 'dumb MAE: {}'.format( sum(dumb_err)/dumb_err.size ) )
