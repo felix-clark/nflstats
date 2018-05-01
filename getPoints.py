@@ -63,7 +63,7 @@ def getBasePoints( rs, plyr ):
 #     + rs.ppFG0 * df['kicking_fgm']
 #     return df
 
-def get_points_from_data_frame( rs, df, name='fantasy_points' ):
+def get_points_from_data_frame( rs, df ):
     """
     repeating ourselves a lot here; it would be good to combine code w/ above (or only use this)
     rs: rule set
@@ -91,5 +91,5 @@ def get_points_from_data_frame( rs, df, name='fantasy_points' ):
     + rs.ppPAT * df['kicking_xpmade'] \
     + rs.ppFGM * (df['kicking_fga'] - df['kicking_fgm']) \
     + rs.ppFG0 * df['kicking_fgm']
-    return df
+    # return df
 # TODO: missing: missed PATs (ppPATM)
