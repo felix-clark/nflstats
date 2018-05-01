@@ -226,3 +226,4 @@ if __name__ == '__main__':
     pred_ny['dumb_proj'] = pred_ny['dumb_ppg'] * pred_ny['games_played']
     # should look at individual columns more carefully - there are some head-scratchers
     logging.info('2018 dumb predictions:\n' + str(pred_ny[['name', 'dumb_ppg', 'games_played', 'dumb_proj']].head(32)))
+    # logging.info('2018 dumb predictions:\n' + str(pred_ny.head(32)))
