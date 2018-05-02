@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 import prediction_models as pm
-# from getPoints import *
 from ruleset import *
 import logging
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-# from pandas.plotting import autocorrelation_plot
 from numpy import sqrt
 from sys import argv
 
@@ -67,6 +63,7 @@ if __name__ == '__main__':
 
     if len(argv) < 2:
         logging.error('usage: {} <position> <rules>'.format(argv[0]))
+        exit(1)
         
     pos = argv[1].lower()
     rules = phys_league
