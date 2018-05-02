@@ -76,6 +76,7 @@ def get_fantasy_df_pfr(year):
     df = df.rename(columns=rename_dict)
     # label rows have a NaN for the name.
     df = df.loc[df['name'].notna()]
+    df = df.loc[df['pos'].notna()] # players w/out position listed aren't useful
     # players w/ a NaN in GS did not start any games, and will cause the next check to fail.
     # these seem to occur only when games_played = 0
     # df = df.loc[df['games_played'].notna()]
