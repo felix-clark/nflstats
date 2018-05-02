@@ -1,8 +1,7 @@
-#!/usr/bin/env python
-
+import logging
 import numpy as np
 from numpy import sqrt, log, exp, pi
-from scipy.special import gammaln, betaln, comb, digamma
+from scipy.special import gammaln, betaln, beta, comb, digamma
 from scipy.misc import factorial
 import scipy.optimize as opt
 import matplotlib.pyplot as plt
@@ -28,6 +27,16 @@ def log_neg_binomial( k, r, p ):
     if k < 0: return -np.inf
     if k == 0: return r*log(1-p)
     return k*log(p) + r*log(1-p) - log(k) - betaln( k, r )
+
+# discrete in range [0,n]
+def beta_binomial( k, n, a, b ):
+    # return comb(n, k) * exp( betaln(k + a, n - k + b) - betaln(a,b) )
+    return comb(n, k) * beta(k + a, n - k + b) / beta(a,b)
+
+def log_beta_binomial( k, n, a, b ):
+    if k < 0 or k > n: return -np.inf
+    # if k == 0: return r*log(1-p)
+    return log( comb(n,k) ) + betaln(k+a, n-k+b) - betaln(a,b)
 
 # discrete (can be non-negative)
 def gaussian_int( bounds, k, mu, sigma ):
@@ -55,7 +64,20 @@ def grad_sum_log_neg_binomial( ks, r, p ):
     dldp = sum( ks ) / p - N*r/(1-p)
     # dldr = N*(log(1-p) - digamma(r)) + sum( ( digamma(k+r) for k in ks ) )
     dldr = N*(log(1-p) - digamma(r)) + sum( digamma(ks+r) )
-    return np.array([dldr, dldp])
+    return np.array((dldr, dldp))
+
+
+def sum_log_beta_binomial( ks, n, a, b ):
+    N = len(ks)
+    return -N * betaln(a,b) + sum( log(comb(n,ks)) + betaln(ks+a, n-ks+b) )
+    # return log( comb(n,k) ) + betaln(k+a, n-k+b) - betaln(a,b)
+
+def grad_sum_log_beta_binomial( ks, n, a, b ):
+    N = len(ks)
+    common = N*(digamma(a+b) - digamma(n+a+b))
+    dlda = sum(digamma(ks+a)) - N*digamma(a) + common
+    dldb = sum(digamma(n-ks+b)) - N*digamma(b) + common
+    return np.array((dlda, dldb))
 
 
 def sum_log_gaussian_int( bounds, ks, mu, sigma):
@@ -133,7 +155,7 @@ def grad_sum_log_exp_poly_ratio( bounds, ks, pis, qis ):
 
 def to_poisson( data=[] ):
     if not data:
-        print 'error: empty data set'
+        logging.error('empty data set')
         exit(1)
     n = len( data )
     mu = float( sum( data ) ) / n
@@ -144,7 +166,7 @@ def to_poisson( data=[] ):
 
 def to_geometric( data=[] ):
     if not data:
-        print 'error: empty data set'
+        logging.error('empty data set')
         exit(1)
     n = len( data )
     p = float(n) / ( n + sum( data ) )
@@ -157,11 +179,11 @@ def to_geometric( data=[] ):
 # then p is easily expressed in terms of the mean and r.
 def to_neg_binomial( data=[] ):
     # if not data:
-    #     print 'error: empty data set'
+    #     logging.error('empty data set')
     #     exit(1)
     for x in data:
         if x < 0:
-            print 'warning: negative value in data set. negative binomial may not be appropriate.'
+            logging.warning('negative value in data set. negative binomial may not be appropriate.')
     arr_ks = np.asarray( data )
     n = len( arr_ks )
     mean = float( sum( arr_ks ) ) / n
@@ -177,7 +199,7 @@ def to_neg_binomial( data=[] ):
     opt_result = opt.minimize( func, rp0, method=method, jac=grad, bounds=[(0,None),(0,1)] )
     # print opt_result.message
     if not opt_result.success:
-        print 'negative binomial fit did not succeed.'
+        logging.error('negative binomial fit did not succeed.')
     r,p = opt_result.x
     # print 'jacobian = ', opt_result.jac # should be zero, or close to it
     cov = opt_result.hess_inv
@@ -186,6 +208,35 @@ def to_neg_binomial( data=[] ):
     # err_p = sqrt(cov_array[1][1]) # ?
     neg_ll = opt_result.fun
     return (r,p),cov_array,-neg_ll/(n-2)
+
+def to_beta_binomial( bounds, data ):
+    """
+    bounds = (min,max) where [min,max] are integers determining the (inclusive) domain
+    """
+    kmin,kmax = bounds
+    n = kmax - kmin
+    for x in data:
+        if x < kmin or x > kmax:
+            logging.warning('data out of domain for beta-binomial')
+    arr_ks = np.asarray(data) - kmin # subtract lower edge to do fit
+    N = len(arr_ks)
+    m1 = float(sum( arr_ks )) / N
+    m2 = float(sum( arr_ks**2 )) / N
+    # use these moments for good initial guesses
+    ab0 = np.array((n*m1-m2, (n-m1)*(n-m2/m1)))/(n*(m2/m1 - m1 - 1) + m1)
+    method = 'L-BFGS-B'    
+    func = lambda pars: - sum_log_beta_binomial( arr_ks, n, *pars )
+    grad = lambda pars: - grad_sum_log_beta_binomial( arr_ks, n, *pars )
+    opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)] )
+    logging.debug(opt_result.message)
+    if not opt_result.success:
+        logging.error('beta binomial fit did not succeed.')
+    r,p = opt_result.x
+    # logging.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
+    cov = opt_result.hess_inv
+    cov_array = cov.todense()  # dense array
+    neg_ll = opt_result.fun
+    return (r,p),cov_array,-neg_ll/(N-2)
 
 def to_gaussian_int( bounds, data=[] ):
     # if not data:
@@ -203,7 +254,7 @@ def to_gaussian_int( bounds, data=[] ):
     opt_result = opt.minimize( func, rp0, method=method, jac=grad, bounds=[(0,None),(1,bounds[1]-bounds[0])] )
     # print opt_result.message
     if not opt_result.success:
-        print 'integer gaussian fit did not succeed.'
+        logging.error('integer gaussian fit did not succeed.')
     mu,sigma = opt_result.x
     # print 'jacobian = ', opt_result.jac # should be zero, or close to it
     cov = opt_result.hess_inv
@@ -211,33 +262,32 @@ def to_gaussian_int( bounds, data=[] ):
     neg_ll = opt_result.fun
     return (mu,sigma), cov_array, -neg_ll/(n-2)
 
-def to_exp_poly_ratio( (n_p,n_q), dom_bounds, data=[] ):
+def to_exp_poly_ratio( npq, dom_bounds, data=[] ):
     """
     fits to exp( (1 + p1*x + ... + pnp*x**np)/(1 + q1*x + ... + qnq*x**nq) )
+    npq = (n_p,n_q)
     n_p: order of polynomial p(x)
     n_q: order of polynomial q(x)
     dom_bounds: boundaries of integral domain (e.g. (2,6) -> [2,3,4,5])
     data: integral data to fit
     """
-    # if not data:
-    #     print 'error: empty data set'
-    #     exit(1)
+    (n_p,n_q) = npq
     if n_p <= n_q:
-        print 'require higher degree of polynomial in numerator than denominator'
+        logging.error('require higher degree of polynomial in numerator than denominator')
         exit(1)
     assert( n_p >= 2 )
     # don't technically need even order on p(x) for truly finite domain
     if n_p % 2 != 0:
-        print 'need even order of p'
+        logging.error('need even order of p')
         exit(1)
     # even order on q(x) to avoid guaranteeing a zero. if coefficients are small enough this might be okay, if n_q < n_p.
     if n_q % 2 != 0:
-        print 'need even order of q'
+        logging.error('need even order of q')
         exit(1)
     arr_ks = np.asarray( data )
     n = len( arr_ks )
     if n_p+n_q > n:
-        print 'polynomial is under-constrained'
+        logging.error('polynomial is under-constrained')
         exit(1)
     mean = float( sum( arr_ks ) ) / n
     var = sum( (arr_ks - mean)**2 ) / (n-1)
@@ -251,7 +301,7 @@ def to_exp_poly_ratio( (n_p,n_q), dom_bounds, data=[] ):
     # the highest-order p term should be negative
     #   (not necessary in general, but we want distributions that go to zero at |k| >> 1)
     fit_bounds = [(-10.0/sdx**(i+1),10.0/sdx**(i+1)) for i in range(n_p-1)] + [(0,None)] + [(-0.1/sdx**(i+1),0.1/sdx**(i+1)) for i in range(n_q)]
-    print fit_bounds
+    logging.debug(fit_bounds)
     # fit_bounds = None
     allowed_methods = ['L-BFGS-B', 'TNC', 'SLSQP'] # these are the only ones that can handle bounds. they can also all handle jacobians. none of them can handle hessians.
     # only LBFGS returns Hessian, in form of "LbjgsInvHessProduct"
@@ -269,8 +319,8 @@ def to_exp_poly_ratio( (n_p,n_q), dom_bounds, data=[] ):
     opt_result = opt.minimize( func, par0, method=method, jac=grad, bounds=fit_bounds )
     # print opt_result.message
     if not opt_result.success:
-        print 'integer exponential polynomial ratio fit did not succeed.'
-        print 'jacobian = ', opt_result.jac # should be zero, or close to it
+        logging.error('integer exponential polynomial ratio fit did not succeed.')
+        logging.error('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
     result = opt_result.x
     cov = opt_result.hess_inv
     cov_array = cov.todense()  # dense array
@@ -322,9 +372,9 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
 
     if 'geometric' in fits:             
         (p,errp),logl = to_geometric( data )
-        print '  Geometric fit:'
-        print '    p = {:.3} '.format(p) + u'\u00B1' + ' {:.2}'.format( errp )
-        print '    log(L)/NDF = {:.3}'.format( logl )    
+        logging.info('  Geometric fit:')
+        logging.info('    p = {:.3} '.format(p) + u'\u00B1' + ' {:.2}'.format( errp ))
+        logging.info('    log(L)/NDF = {:.3}'.format( logl ))
         plt.subplot(121)
         plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*geometric( xfvals, p ), 'g-', lw=2)
@@ -335,9 +385,9 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
 
     if 'poisson' in fits:
         (mu,errmu),logl = to_poisson( data )
-        print '  Poisson fit:'
-        print '    ' + u'\u03BC' + ' = {:.3} '.format(mu) +  u'\u00B1' + ' {:.2}'.format( errmu )
-        print '    log(L)/NDF = {:.3}'.format( logl )
+        logging.info('  Poisson fit:')
+        logging.info('    ' + u'\u03BC' + ' = {:.3} '.format(mu) +  u'\u00B1' + ' {:.2}'.format( errmu ))
+        logging.info('    log(L)/NDF = {:.3}'.format( logl ))
         plt.subplot(121)
         plt.plot(xfvals, ndata*poisson( xfvals, mu ), 'r-', lw=2)
         plt.subplot(122)
@@ -349,10 +399,10 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
         (r,p),cov,logl = to_neg_binomial( data )
         errr = sqrt( cov[0][0] )
         errp = sqrt( cov[1][1] )
-        print '  Negative binomial fit:'
-        print '    r = {:.3} '.format(r) + u'\u00B1' + ' {:.2}'.format( errr )
-        print '    p = {:.3} '.format(p) + u'\u00B1' + ' {:.2}'.format( errp )
-        print '    log(L)/NDF = {:.3}'.format( logl )
+        logging.info('  Negative binomial fit:')
+        logging.info('    r = {:.3} '.format(r) + u'\u00B1' + ' {:.2}'.format( errr ))
+        logging.info('    p = {:.3} '.format(p) + u'\u00B1' + ' {:.2}'.format( errp ))
+        logging.info('    log(L)/NDF = {:.3}'.format( logl ))
         # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
         # plt.plot(xfvals, yfvals, 'v-', lw=2 )
         plt.subplot(121)
@@ -391,9 +441,9 @@ def plot_counts_poly( data=[], bounds=(-100,100), label='', norm=False ):
     (mu,sigma),cov,logl = to_gaussian_int( bounds, data )
     errmu = sqrt( cov[0][0] )
     errsigma = sqrt( cov[1][1] )
-    print '    ' + u'\u03BC' + ' = {:.3} '.format(mu) +  u'\u00B1' + ' {:.2}'.format( errmu )
-    print '    ' + u'\u03C3' + ' = {:.3} '.format(sigma) +  u'\u00B1' + ' {:.2}'.format( errsigma )
-    print '    log(L)/NDF = {:.3}'.format( logl )
+    logging.info('    ' + u'\u03BC' + ' = {:.3} '.format(mu) +  u'\u00B1' + ' {:.2}'.format( errmu ))
+    logging.info('    ' + u'\u03C3' + ' = {:.3} '.format(sigma) +  u'\u00B1' + ' {:.2}'.format( errsigma ))
+    logging.info('    log(L)/NDF = {:.3}'.format( logl ))
     plt.subplot(121)
     plt.plot(xfvals, ndata*gaussian_int( bounds, xfvals, mu, sigma ), '--', lw=2, color='blue' )
     plt.subplot(122)
@@ -408,10 +458,10 @@ def plot_counts_poly( data=[], bounds=(-100,100), label='', norm=False ):
     pis,qis = pars[:n_p], pars[n_p:]
     errpis,errqis = errs[:n_p], errs[n_p:]
     for i,(p,dp) in enumerate(zip(pis,errpis), start=1):
-        print '    p{} = {:.3} '.format( i,p ) +  u'\u00B1' + ' {:.2}'.format( dp )
+        logging.info('    p{} = {:.3} '.format( i,p ) +  u'\u00B1' + ' {:.2}'.format( dp ))
     for i,(q,dq) in enumerate(zip(qis,errqis), start=1):
-        print '    q{} = {:.3} '.format( i,q ) +  u'\u00B1' + ' {:.2}'.format( dq )
-    print '    log(L)/NDF = {:.3}'.format( logl )
+        logging.info('    q{} = {:.3} '.format( i,q ) +  u'\u00B1' + ' {:.2}'.format( dq ))
+    logging.info('    log(L)/NDF = {:.3}'.format( logl ))
     plt.subplot(121)
     plt.plot(xfvals, ndata*exp_poly_ratio( bounds, xfvals, pis, qis ), '-', lw=2, color='green' )
     plt.subplot(122)
@@ -421,4 +471,3 @@ def plot_counts_poly( data=[], bounds=(-100,100), label='', norm=False ):
     plt.axis( (xlow,xup,0.5,yup) )
     
     plt.show()
-
