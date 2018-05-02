@@ -8,12 +8,14 @@ from sys import argv
 
 
 # get a dataframe of the relevant positional players
-def get_pos_df(pos, years, datadir='./yearly_stats/'):
+def get_pos_df(pos, years, datadir='./yearly_stats/', keepnames=None):
     ls_dfs = []
     for year in years:
         csvName = '{}/fantasy_{}.csv'.format(datadir,year)
         df = pd.read_csv(csvName)
         valids = df.loc[df['pos'] == pos.upper()]
+        if keepnames is not None:
+            valids = valids[valids['name'].isin(keepnames)]
         valids = valids.loc[valids['games_played'].astype(int) >= 1]
         if pos.lower() == 'qb':
             valids = valids.loc[valids['passing_att'].astype(int) >= 8]
@@ -21,14 +23,16 @@ def get_pos_df(pos, years, datadir='./yearly_stats/'):
             valids = valids.loc[valids['rushing_att'].astype(int) >= 8]
         if pos.lower() in ['wr', 'te']:
             valids = valids.loc[valids['receiving_rec'].astype(int) >= 8]
+        if valids.size == 0:
+            logging.warning('No valid {} in {}'.format(pos, year))
         valids['year'] = year
         ls_dfs.append(valids)
-    allpos = pd.concat(ls_dfs, ignore_index=True, verify_integrity=True).drop_duplicates()
+    allpos = pd.concat(ls_dfs, ignore_index=True, verify_integrity=True)
     return allpos
 
 def get_pos_list(pos, years, datadir='./yearly_stats/'):
     posdf = get_pos_df(pos, years, datadir)
-    posnames = posdf['name'].sort_values()
+    posnames = posdf['name'].drop_duplicates().sort_values()
     posnames.reset_index(drop=True,inplace=True)
     return posnames
 
@@ -73,10 +77,11 @@ if __name__ == '__main__':
     if rulestr == 'dude': rules = dude_league
     if rulestr in ['nyc', 'nycfc']: rules = nycfc_league
     
-    years = range(1998, 2018)
+    # years = range(1998, 2018)
+    years = range(2008, 2018) # oldest QB in this year started in 92, when targets were recorded
     posnames = get_pos_list(pos, years)
     years = range(1992, 2018)
-    posdf = get_pos_df(pos, years)
+    posdf = get_pos_df(pos, years, keepnames=posnames)
     posdf = posdf.drop(columns=['pos', 'Unnamed: 0'])
 
     if pos == 'qb':
