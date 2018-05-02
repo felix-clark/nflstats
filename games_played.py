@@ -9,7 +9,8 @@ import matplotlib.pyplot as plt
 # from pandas.plotting import autocorrelation_plot
 from numpy import sqrt
 from sys import argv
-from scipy.stats import beta
+from scipy.stats import *
+# from scipy.stats import beta
 
 # get a dataframe of the relevant positional players
 def get_pos_df(pos, years, datadir='./yearly_stats/'):
@@ -54,12 +55,14 @@ if __name__ == '__main__':
 
     # we literally just care about games played for this script
     sns.set()
-    plt_gp = sns.distplot(posdf['games_played'], bins=range(0,16+2),
+    data_gp = posdf['games_played']
+    plt_gp = sns.distplot(data_gp, bins=range(0,16+2),
                           kde=False, norm_hist=True, fit=beta,
-                          hist_kws={'log':False, 'align':'left'})
+                          hist_kws={'log':False, 'align':'mid'})
     plt_gp.figure.savefig('games_played_{}.png'.format(pos))
     plt_gp.figure.show()
+    # we can't use "fit" w/ discrete distributions. need to customize beta-binomial.
+    a1, b1, loc1, scale1 = beta.fit(data_gp, floc=0, fscale=17)
+    print(a1, b1, loc1, scale1)
     plt.show(block=True)
-    fit_res = beta.fit(posdf['games_played'])
-    print(fit_res)
     

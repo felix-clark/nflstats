@@ -19,3 +19,6 @@ retrying
 
 in the future, a GUI w/ tk might be nice.
 
+## Instructions
+
+To scrape for historic data, run get_yearly_stats.py. This will enable some of the other analyses.
