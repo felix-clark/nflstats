@@ -223,20 +223,30 @@ def to_beta_binomial( bounds, data ):
     m1 = float(sum( arr_ks )) / N
     m2 = float(sum( arr_ks**2 )) / N
     # use these moments for good initial guesses
-    ab0 = np.array((n*m1-m2, (n-m1)*(n-m2/m1)))/(n*(m2/m1 - m1 - 1) + m1)
+    ab0 = np.array((0,0))
+    if m1 > 0:
+        denom = (n*(m2/m1 - m1 - 1) + m1)
+        ab0 = np.array((n*m1-m2, (n-m1)*(n-m2/m1)))/denom
+    else:
+        logging.warning('all terms are zero:')
+        logging.warning(arr_ks)
+        ab0 = np.array((1.0/N,1.0/N))
+    # if denom <= 0:
+    #     logging.warning('m1 = {}, m2 = {}, n = {}, N = {}'.format(m1, m2, n, N))
     method = 'L-BFGS-B'    
     func = lambda pars: - sum_log_beta_binomial( arr_ks, n, *pars )
     grad = lambda pars: - grad_sum_log_beta_binomial( arr_ks, n, *pars )
     opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)] )
     logging.debug(opt_result.message)
-    if not opt_result.success:
-        logging.error('beta binomial fit did not succeed.')
-    r,p = opt_result.x
+    success = opt_result.success
+    if not success:
+        logging.error('beta binomial fit did not succeed with {} data points.'.format(N))
+    a,b = opt_result.x
     # logging.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
     cov = opt_result.hess_inv
     cov_array = cov.todense()  # dense array
     neg_ll = opt_result.fun
-    return (r,p),cov_array,-neg_ll/(N-2)
+    return success,(a,b),cov_array,-neg_ll/(N-2)
 
 def to_gaussian_int( bounds, data=[] ):
     # if not data:
