@@ -45,6 +45,16 @@ def get_pos_list(pos, years, datadir='./yearly_stats/'):
 def gp_mse_model_const(data, const=0, weights=None):
     return (const-data)**2
 
+# model that uses mean of past
+def gp_mse_model_mean(data, default=0):
+    mses = []
+    if data.size == 0:
+        return default
+    for i_d in range(data.size):
+        mean_so_far = data.iloc[:i_d].mean() if i_d > 0 else default
+        mses.append( (mean_so_far-data.iloc[i_d])**2 )
+    return np.array(mses)
+
 # beta-binomial model w/ bayesian updating of parameters
 # alpha -> alpha + gp
 # beta -> beta + (n-gp)
@@ -125,12 +135,13 @@ if __name__ == '__main__':
 
     # for QBs we might want to adjust for year-in-league, or just filter on those which started many games
 
-    logging.info('using rookie a,b = {},{}'.format(ark,brk))
-    alpha0,beta0 = ark,brk
+    # logging.info('using rookie a,b = {},{}'.format(ark,brk))
+    # alpha0,beta0 = ark,brk
     # logging.info('using inclusive a,b = {}'.format(ainc, binc)) # does a bit worse
     # alpha0,beta0 = ainc,binc
     # m1 = data_gp_rook.mean()
     # m2 = (data_gp_rook**2).mean()
+    logging.info('using moment method for combined a,b = {},{}'.format(ark,brk))
     m1 = data_gp.mean()
     m2 = (data_gp**2).mean()
     denom = maxgames*(m2/m1 - m1 - 1) + m1
@@ -144,18 +155,21 @@ if __name__ == '__main__':
     # entries = []
     mse_bb_sum = 0.
     mse_const_sum = 0.
+    mse_mean_sum = 0.
     mse_total_n = 0
     
     for pname in posnames:
     # in this loop we should instead evaluate our bayesian model
         pdata = posdf[posdf['name'] == pname][gp_stat]
-        gp_mses_bb = gp_mse_model_bb(pdata, alpha0, beta0, lr=1.0)
+        gp_mses_bb = gp_mse_model_bb(pdata, 16*alpha0, 16*beta0, lr=0.5)
         gp_mses_const = gp_mse_model_const(pdata, gp_avg_all)
+        gp_mses_mean = gp_mse_model_mean(pdata, gp_avg_all) # could also use rookie average
 
         # logging.info('{} {} {}'.format(pdata.size, gp_mses_bb.size, gp_mses_const.size))
         mse_total_n += pdata.size
-        mse_bb_sum += gp_mses_bb.sum()             
-        mse_const_sum += gp_mses_const.sum()             
+        mse_bb_sum += gp_mses_bb.sum()
+        mse_const_sum += gp_mses_const.sum()
+        mse_mean_sum += gp_mses_mean.sum()
         # get an a and b parameter for each player, to form a prior distribution for the values
     #     entry = {'name':pname}
     #     career_length = pdata.size
@@ -178,7 +192,8 @@ if __name__ == '__main__':
 
     # right now bayes does worse than just using the average
     logging.info('RMSE for const model: {}'.format(np.sqrt(mse_const_sum/mse_total_n)))
+    logging.info('RMSE for mean model: {}'.format(np.sqrt(mse_mean_sum/mse_total_n)))
     logging.info('RMSE for bayes model: {}'.format(np.sqrt(mse_bb_sum/mse_total_n)))
-    logging.info('total seasons: {}'.format(mse_total_n))
+    logging.info('total player-seasons: {}'.format(mse_total_n))
     
     # plt.show(block=True)
