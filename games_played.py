@@ -41,6 +41,31 @@ def get_pos_list(pos, years, datadir='./yearly_stats/'):
     posnames.reset_index(drop=True,inplace=True)
     return posnames
 
+# a model that uses the average
+def gp_mse_model_const(data, const=0, weights=None):
+    return (const-data)**2
+
+# beta-binomial model w/ bayesian updating of parameters
+# alpha -> alpha + gp
+# beta -> beta + (n-gp)
+def gp_mse_model_bb(data, alpha0, beta0, lr=1.0, n=16):
+    # lr can be used to suppress learning
+    # we can also apply multiplicatively after adding, which will result in variance decay even in long careers
+    assert((data >= 0).all() and (data <= n).all())
+    mses = []
+    alpha,beta = alpha0,beta0
+    # domain of summation for EV computation:
+    support = np.arange(0,n+1)
+    for d in data:
+        probs = dist_fit.beta_binomial( support, n, alpha, beta )
+        mses.append( sum(probs*(support-d)**2) )
+        alpha += lr*d
+        beta += lr*(n-d)
+    # logging.debug('alpha, beta = {},{}'.format(alpha,beta))
+    return np.array(mses)
+        
+
+    # final alpha and beta for future predictions are computed by here, but are not used
 
 if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
@@ -58,10 +83,11 @@ if __name__ == '__main__':
     posdf = get_pos_df(pos, years, keepnames=posnames)
     posdf = posdf.drop(columns=['pos', 'Unnamed: 0'])
 
+    maxgames = 16
     # we only care about games played for this script
     # Jerry Rice switch teams in 2004 and played 17 games, so we'll just set his to 16    
-    gt16 = posdf['games_played'] > 16
-    posdf.loc[gt16,'games_played'] = 16
+    gt16 = posdf['games_played'] > maxgames
+    posdf.loc[gt16,'games_played'] = maxgames
 
     # rookiedat = []
     # for name in posnames:
@@ -72,46 +98,87 @@ if __name__ == '__main__':
     # while other positions switch in-and-out, a QB is really relevant only if he is starting.
     # looking at starts rather than plays eliminates some noise w/ backups
     gp_stat = 'games_started' if pos == 'qb' else 'games_played'
-    # data_gp = rookiedf[gp_stat]
+    data_gp_rook = rookiedf[gp_stat]
     data_gp = posdf[gp_stat]
     
-    sns.set()
     
-    
-    _,(fa,fb),cov,llpdf = dist_fit.to_beta_binomial( (0,16), data_gp )
-    logging.info('alpha = {}, beta = {}, LL per dof = {}'.format(fa, fb, llpdf))
+    _,(ark,brk),cov,llpdf = dist_fit.to_beta_binomial( (0,maxgames), data_gp_rook )
+    logging.info('rookie: alpha = {}, beta = {}, LL per dof = {}'.format(ark, brk, llpdf))
     logging.info('covariance:\n' + str(cov))
-    xfvals = np.linspace(-0.5, 16.5, 128)
+    _,(ainc,binc),cov,llpdf = dist_fit.to_beta_binomial( (0,maxgames), data_gp )
+    logging.info('all: alpha = {}, beta = {}, LL per dof = {}'.format(ainc, binc, llpdf))
+    logging.info('covariance:\n' + str(cov))
     
-    plt_gp = sns.distplot(data_gp, bins=range(0,16+2),
+    sns.set()
+    xfvals = np.linspace(-0.5, maxgames+0.5, 128)
+    plt_gp = sns.distplot(data_gp, bins=range(0,maxgames+2),
                           kde=False, norm_hist=True,
                           hist_kws={'log':False, 'align':'left'})
-    plt.plot(xfvals, dist_fit.beta_binomial(xfvals, 16, fa, fb), '--', lw=2, color='violet')
+    plt.plot(xfvals, dist_fit.beta_binomial(xfvals, maxgames, ark, brk), '--', lw=2, color='violet')
+    plt.title('rookies')
     plt_gp.figure.savefig('{}_{}.png'.format(gp_stat, pos))
     plt_gp.figure.show()
-    # the covariance matrix from the fit can provide a bayesian prior for a and b (gamma functions? but they are correlated)
+    # The bayesian update rule is:
+    # alpha -> alpha + (games_played)
+    # beta -> beta + (n - games_played)
+    # we can just start on the default rookie values
+
     # for QBs we might want to adjust for year-in-league, or just filter on those which started many games
-    entries = []
+
+    logging.info('using rookie a,b = {},{}'.format(ark,brk))
+    alpha0,beta0 = ark,brk
+    # logging.info('using inclusive a,b = {}'.format(ainc, binc)) # does a bit worse
+    # alpha0,beta0 = ainc,binc
+    # m1 = data_gp_rook.mean()
+    # m2 = (data_gp_rook**2).mean()
+    m1 = data_gp.mean()
+    m2 = (data_gp**2).mean()
+    denom = maxgames*(m2/m1 - m1 - 1) + m1
+    alpha0 = (maxgames*m1 - m2)/denom
+    beta0 = (maxgames-m1)*(maxgames - m2/m1)/denom
+    logging.info('starting mean = {}'.format(maxgames*alpha0/(alpha0+beta0)))
+                 
+    gp_avg_all = data_gp.mean()
+    logging.info('used for const model: average games_played = {}'.format(gp_avg_all))
+    
+    # entries = []
+    mse_bb_sum = 0.
+    mse_const_sum = 0.
+    mse_total_n = 0
+    
     for pname in posnames:
-        # get an a and b parameter for each player, to form a prior distribution for the values
-        entry = {'name':pname}
+    # in this loop we should instead evaluate our bayesian model
         pdata = posdf[posdf['name'] == pname][gp_stat]
-        career_length = pdata.size
-        if career_length < 4:
-            logging.info('{} had short career of length {} - will be overdetermined'.format(pname, career_length))
-            continue
-        success,(pa,pb),pcov,llpdf = dist_fit.to_beta_binomial( (0,16), pdata )
-        if not success:
-            continue
-        entry['alpha'] = pa
-        entry['beta'] = pb
-        entry['mean'] = 16*pa/(pa+pb)
-        entry['rho'] = 1.0/(pa+pb+1)
-        entry['var'] = entry['mean']*entry['rho']*(pa+pb+16)/(pa+pb)
-        entry['career_length'] = career_length
-        entries.append(entry)
-    prior_gp_df = pd.DataFrame(entries)
-    plt_abprior = sns.pairplot(prior_gp_df, hue='career_length', vars=['alpha', 'beta', 'mean', 'rho','career_length'])
-    plt_abprior.savefig('gp_ab_prior_{}.png'.format(pos))
-    # plt_abprior.show()
-    plt.show(block=True)
+        gp_mses_bb = gp_mse_model_bb(pdata, alpha0, beta0, lr=1.0)
+        gp_mses_const = gp_mse_model_const(pdata, gp_avg_all)
+
+        # logging.info('{} {} {}'.format(pdata.size, gp_mses_bb.size, gp_mses_const.size))
+        mse_total_n += pdata.size
+        mse_bb_sum += gp_mses_bb.sum()             
+        mse_const_sum += gp_mses_const.sum()             
+        # get an a and b parameter for each player, to form a prior distribution for the values
+    #     entry = {'name':pname}
+    #     career_length = pdata.size
+    #     if career_length < 4:
+    #         logging.debug('{} had short career of length {} - will be overdetermined'.format(pname, career_length))
+    #         continue
+    #     success,(pa,pb),pcov,llpdf = dist_fit.to_beta_binomial( (0,maxgames), pdata )
+    #     if not success:
+    #         continue
+    #     entry['alpha'] = pa
+    #     entry['beta'] = pb
+    #     entry['mean'] = maxgames*pa/(pa+pb)
+    #     entry['rho'] = 1.0/(pa+pb+1)
+    #     entry['var'] = entry['mean']*entry['rho']*(pa+pb+maxgames)/(pa+pb)
+    #     entry['career_length'] = career_length
+    #     entries.append(entry)
+    # prior_gp_df = pd.DataFrame(entries)
+    # plt_abprior = sns.pairplot(prior_gp_df, hue='career_length', vars=['alpha', 'beta', 'rho','career_length'])
+    # plt_abprior.savefig('gp_ab_prior_{}.png'.format(pos))
+
+    # right now bayes does worse than just using the average
+    logging.info('RMSE for const model: {}'.format(np.sqrt(mse_const_sum/mse_total_n)))
+    logging.info('RMSE for bayes model: {}'.format(np.sqrt(mse_bb_sum/mse_total_n)))
+    logging.info('total seasons: {}'.format(mse_total_n))
+    
+    # plt.show(block=True)

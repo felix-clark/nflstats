@@ -38,9 +38,12 @@ def dumb_qb_predictions(df):
     predictions = {}
     # assume by default that all 16 games are played
     # only 15 games are relevant for fantasy though
-    predictions['games_played'] = 15
+    # predictions['games_played'] = 15
     # the QB MSE for points is not improved by trying to account for games played, unless we make it quite small
-    predictions['games_played'] = 15.0/16.0*(0.9*16 + 0.1*mean(df['games_played']))
+    # predictions['games_played'] = 15.0/16.0*(0.9*16 + 0.1*mean(df['games_played']))
+    # bayesian model using beta-binomial for predictive posterior:
+    # instead of scaling we should add the part in the 16 bin to 15 -- will predict more games played
+    predictions['games_played'] = 15.0*(0.816 + 0.0*sum(df['games_played']))/(0.816 + 1.03 + 0.0*df.shape[0]*16.0)
     wt = df['games_played'] # weight average by games played per year
     data_pa_pg = df['passing_att'] / df['games_played']
     # these defaults are for all QBs, not rookies
@@ -86,7 +89,13 @@ def dumb_rb_predictions(df):
     # only 15 games are relevant for fantasy though
     # predictions['games_played'] = 15
     # RB MSE is small around 50-50 (for phys rules)
-    predictions['games_played'] = 15.0/16.0*(0.5*16 + 0.5*mean(df['games_played']))
+    # predictions['games_played'] = 15.0/16.0*(0.5*16 + 0.5*mean(df['games_played']))
+    # with no bayesian updating, we actually do better than the above
+    bayes_damp = 0.00 # updating actually does worse.
+    # version for rookies
+    # predictions['games_played'] = 15.0*(2.08 + bayes_damp*sum(df['games_played']))/(2.08 + 0.481 + bayes_damp*df.shape[0]*16.0)
+    # version for all years. this works better w/out updating.
+    predictions['games_played'] = 15.0*(1.96 + bayes_damp*sum(df['games_played']))/(1.96 + 0.379 + bayes_damp*df.shape[0]*16.0)
     wt = df['games_played'] # weight average by games played per year
     data_rushatt_pg = df['rushing_att'] / df['games_played']
     pred_rushatt_pg = exp_window(data_rushatt_pg, alpha=0.4, default=9.65, weights=wt)
