@@ -67,8 +67,10 @@ def gp_mse_model_bb(data, alpha0, beta0, lr=1.0, n=16):
     # domain of summation for EV computation:
     support = np.arange(0,n+1)
     for d in data:
-        probs = dist_fit.beta_binomial( support, n, alpha, beta )
-        mses.append( sum(probs*(support-d)**2) )
+        # probs = dist_fit.beta_binomial( support, n, alpha, beta )
+        # mses.append( sum(probs*(support-d)**2) )
+        # try KL divergence instead: it results in smaller number, but is the comparison really fair?
+        mses.append( -dist_fit.log_beta_binomial( d, n, alpha, beta ) )
         alpha += lr*d
         beta += lr*(n-d)
     # logging.debug('alpha, beta = {},{}'.format(alpha,beta))
@@ -161,7 +163,7 @@ if __name__ == '__main__':
     for pname in posnames:
     # in this loop we should instead evaluate our bayesian model
         pdata = posdf[posdf['name'] == pname][gp_stat]
-        gp_mses_bb = gp_mse_model_bb(pdata, 16*alpha0, 16*beta0, lr=0.5)
+        gp_mses_bb = gp_mse_model_bb(pdata, 1*alpha0, 1*beta0, lr=1.0)
         gp_mses_const = gp_mse_model_const(pdata, gp_avg_all)
         gp_mses_mean = gp_mse_model_mean(pdata, gp_avg_all) # could also use rookie average
 
