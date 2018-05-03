@@ -45,6 +45,14 @@ def get_pos_list(pos, years, datadir='./yearly_stats/'):
 def gp_mse_model_const(data, const=0, weights=None):
     return (const-data)**2
 
+# a model that uses the average
+def gp_mae_model_const(data, const=0, weights=None):
+    return np.abs(const-data)
+
+# a model that uses the average
+def gp_kld_model_const(data, const=0.0, var=1.0, weights=None):
+    return (const-data)**2/(2.0*var) + 0.5*np.log(2.0*np.pi*var)
+
 # model that uses mean of past
 def gp_mse_model_mean(data, default=0):
     mses = []
@@ -67,17 +75,47 @@ def gp_mse_model_bb(data, alpha0, beta0, lr=1.0, n=16):
     # domain of summation for EV computation:
     support = np.arange(0,n+1)
     for d in data:
-        # probs = dist_fit.beta_binomial( support, n, alpha, beta )
-        # mses.append( sum(probs*(support-d)**2) )
+        probs = dist_fit.beta_binomial( support, n, alpha, beta )
+        mses.append( sum(probs*(support-d)**2) )
+        alpha += lr*d
+        beta += lr*(n-d)
+    # logging.debug('alpha, beta = {},{}'.format(alpha,beta))
+    return np.array(mses)
+
+# mean absolute error
+def gp_mae_model_bb(data, alpha0, beta0, lr=1.0, n=16):
+    # lr can be used to suppress learning
+    # we can also apply multiplicatively after adding, which will result in variance decay even in long careers
+    assert((data >= 0).all() and (data <= n).all())
+    maes = []
+    alpha,beta = alpha0,beta0
+    # domain of summation for EV computation:
+    support = np.arange(0,n+1)
+    for d in data:
+        probs = dist_fit.beta_binomial( support, n, alpha, beta )
+        maes.append( sum(probs*np.abs(support-d)) )
+        alpha += lr*d
+        beta += lr*(n-d)
+    # logging.debug('alpha, beta = {},{}'.format(alpha,beta))
+    return np.array(maes)
+
+# computes Kullback-Leibler divergence
+# beta-binomial model w/ bayesian updating of parameters
+# alpha -> alpha + gp
+# beta -> beta + (n-gp)
+def gp_kld_model_bb(data, alpha0, beta0, lr=1.0, n=16):
+    # lr can be used to suppress learning
+    # we can also apply multiplicatively after adding, which will result in variance decay even in long careers
+    assert((data >= 0).all() and (data <= n).all())
+    mses = []
+    alpha,beta = alpha0,beta0
+    for d in data:
         # try KL divergence instead: it results in smaller number, but is the comparison really fair?
         mses.append( -dist_fit.log_beta_binomial( d, n, alpha, beta ) )
         alpha += lr*d
         beta += lr*(n-d)
     # logging.debug('alpha, beta = {},{}'.format(alpha,beta))
     return np.array(mses)
-        
-
-    # final alpha and beta for future predictions are computed by here, but are not used
 
 if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
@@ -152,26 +190,43 @@ if __name__ == '__main__':
     logging.info('starting mean = {}'.format(maxgames*alpha0/(alpha0+beta0)))
                  
     gp_avg_all = data_gp.mean()
-    logging.info('used for const model: average games_played = {}'.format(gp_avg_all))
+    gp_var_all = data_gp.var()
+    logging.info('used for const model: average games_played = {} \pm {}'.format(gp_avg_all, np.sqrt(gp_var_all)))
     
     # entries = []
+    mse_total_n = 0
     mse_bb_sum = 0.
     mse_const_sum = 0.
     mse_mean_sum = 0.
-    mse_total_n = 0
+    kld_bb_sum = 0.
+    kld_const_sum = 0.
+    mae_bb_sum = 0.
+    mae_const_sum = 0.
     
     for pname in posnames:
     # in this loop we should instead evaluate our bayesian model
         pdata = posdf[posdf['name'] == pname][gp_stat]
-        gp_mses_bb = gp_mse_model_bb(pdata, 1*alpha0, 1*beta0, lr=1.0)
+        alpha0p = 1.0*alpha0
+        beta0p = 1.0*beta0
+        # for QBs there may be no hope, but for WRs a bayes model w/ a slower learn rate seems to do well
+        lrp = 0.25
+        gp_mses_bb = gp_mse_model_bb(pdata, alpha0p, beta0p, lr=lrp)
         gp_mses_const = gp_mse_model_const(pdata, gp_avg_all)
         gp_mses_mean = gp_mse_model_mean(pdata, gp_avg_all) # could also use rookie average
+        gp_maes_bb = gp_mae_model_bb(pdata, alpha0p, beta0p, lr=lrp)
+        gp_maes_const = gp_mae_model_const(pdata, gp_avg_all)
+        gp_kld_const = gp_kld_model_const(pdata, gp_avg_all, gp_var_all)
+        gp_kld_bb = gp_kld_model_bb(pdata, alpha0p, beta0p, lr=lrp)
 
         # logging.info('{} {} {}'.format(pdata.size, gp_mses_bb.size, gp_mses_const.size))
         mse_total_n += pdata.size
         mse_bb_sum += gp_mses_bb.sum()
         mse_const_sum += gp_mses_const.sum()
         mse_mean_sum += gp_mses_mean.sum()
+        mae_bb_sum += gp_maes_bb.sum()
+        mae_const_sum += gp_maes_const.sum()
+        kld_bb_sum += gp_kld_bb.sum()
+        kld_const_sum += gp_kld_const.sum()
         # get an a and b parameter for each player, to form a prior distribution for the values
     #     entry = {'name':pname}
     #     career_length = pdata.size
@@ -196,6 +251,10 @@ if __name__ == '__main__':
     logging.info('RMSE for const model: {}'.format(np.sqrt(mse_const_sum/mse_total_n)))
     logging.info('RMSE for mean model: {}'.format(np.sqrt(mse_mean_sum/mse_total_n)))
     logging.info('RMSE for bayes model: {}'.format(np.sqrt(mse_bb_sum/mse_total_n)))
+    logging.info('MAE for const model: {}'.format(np.sqrt(mae_const_sum/mse_total_n)))
+    logging.info('MAE for bayes model: {}'.format(np.sqrt(mae_bb_sum/mse_total_n)))
+    logging.info('Kullback-Leibler divergence for const: {}'.format(kld_const_sum/mse_total_n))
+    logging.info('Kullback-Leibler divergence for bayes: {}'.format(kld_bb_sum/mse_total_n))
     logging.info('total player-seasons: {}'.format(mse_total_n))
     
     # plt.show(block=True)
