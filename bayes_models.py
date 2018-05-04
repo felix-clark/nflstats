@@ -10,6 +10,7 @@ class bayes_model:
         """
         the data is assumed to be sequential
         """
+        # print(np.array(data))
         return self._mse(np.array(data), *pars, **kwargs)
 
     def mae(self, data, *pars, **kwargs):
@@ -125,46 +126,71 @@ bbinom = beta_binomial_model_gen()
 ## the update rules are:
 # r -> r + lr*k
 # beta -> beta + lr where beta = (1-p)/p so:
-#   p -> p/(1 + (2-lr)*p) ... but for lr = 0, this goes to p/(1+2p) != p... (think about this)
+#   p = 1/(1+beta0+n)
 # where if lr < 1 we are slowing the update
 # we could also apply multiplicative decay after adding, which will result in variance decay even in long careers
 class neg_binomial_model_gen(bayes_model):
     def _mse(self, data, r0, p0, lr=1.0):
         mses = []
-        r,b = r0,(1-p0)/p0
+        # note these lists should be 1 longer than the data
+        rs,ps = self._get_rps(data, r0, p0, lr)
+        r_data = data if len(data.shape) == 1 else data[0] / data[1]
         # domain of summation for EV computation - extend out to 5 significance
-        p = 1/(1+b)
-        maxct = 5*(p*r)**(1.5)/(1-p)**2
-        # support = np.arange(0,maxct)
-        for d in data:
+        for d,r,p in zip(r_data,rs,ps):
             # neg-binomial is in scipy.stats, but uses a different parameterization.
             # will probably be worth it to switch for the function nbinom.expect()
-            p = 1/(1+b)
-            # probs = dist_fit.neg_binomial( support, r, p )
-            # mse = sum(probs*(support-d)**2)
             # the definition on scipy defines p as 1-p compared to wiki.
             # this is confusing... but let's roll with it
+            maxct = 5*(p*r)**(1.5)/(1-p)**2 # not clear that computing this initially is the best
             mse = st.nbinom.expect(lambda k: (k-d)**2, args=(r,1-p), maxcount=max(1000,maxct))
             mses.append( mse )
-            r += lr*d
-            b += lr
-        # log.debug('alpha, beta = {},{}'.format(alpha,beta))
         return np.array(mses)
 
     def _mae(self, data, *pars):
         raise NotImplementedError
-    
-        # computes Kullback-Leibler divergence
-    def _kld(self, data, n, alpha0, beta0, lr=1.0):
-        assert((data >= 0).all() and (data <= n).all())
-        mses = []
-        alpha,beta = alpha0,beta0
-        for d in data:
-            mses.append( -dist_fit.log_beta_binomial( d, n, alpha, beta ) )
-            alpha += lr*d
-            beta += lr*(n-d)
-        return np.array(mses)
 
+    def _get_rps(self, data, r0, p0, lr=1.0):
+        r,b = r0,(1-p0)/p0
+        rs = [r]
+        bs = [b]
+        assert(len(data.shape) <= 2)
+        if len(data.shape) == 2:
+            for dn,dd in data.T:
+                rs.append(rs[-1]+lr*dn)
+                bs.append(bs[-1]+lr*dd)
+        else:
+            for d in data:
+                rs.append(rs[-1]+lr*d)
+                bs.append(bs[-1]+lr*d)
+        ps = 1.0/(1.0+np.array(bs))
+        # these probably have one additional element which is not used. it may or may not matter.
+        return np.array(rs),np.array(ps)
+
+    # computes Kullback-Leibler divergence
+    def _kld(self, data, r0, p0, lr=1.0):
+        rs,ps = self._get_rps(data, r0, p0, lr)
+        r_data = data if len(data.shape) == 1 else data[0] / data[1]
+        # self.log.info('{}, {}, {}'.format(rs,ps,r_data))
+        # TODO: this doesn't take non-integer arguments. guess we need our own.
+        # TODO: or we can find a scaling property to use and plug in integer?
+        result = -st.nbinom.logpmf(r_data, rs[:-1], 1-ps[:-1])
+        # result = -dist_fit.log_neg_binom(r_data, rs[:-1], 1-ps[:-1])
+        if np.isinf(result).any():
+            self.log.error('inf in KLD')
+            self.log.error('rs = {}, ps = {}'.format(rs, ps))
+            self.log.error('data = {}\n result = {}'.format(r_data, result))
+        return result
+        # klds = []
+        # for d in data:
+        #     # mses.append( -dist_fit.log_neg_binomial( d, r, p ) )
+        #     p = 1/(1+b)
+        #     # recall that scipy uses a strange (backwards?) definition for the p value
+        #     kld = -st.nbinom.logpdf(d, r, 1-p)
+        #     logging.info('{} ?= {}'.format(-dist_fit.log_neg_binomial( d, r, p ), kld))
+        #     klds.append(kld)
+        #     r += lr*d
+        #     b += lr
+        # return np.array(klds)
 
 nbinom = neg_binomial_model_gen()
 
@@ -179,8 +205,10 @@ def mse_model_mean(data, default=0):
     if data.size == 0:
         return default
     for i_d in range(data.size):
-        mean_so_far = data.iloc[:i_d].mean() if i_d > 0 else default
-        mses.append( (mean_so_far-data.iloc[i_d])**2 )
+        # mean_so_far = data.iloc[:i_d].mean() if i_d > 0 else default # this indexer works for Series input
+        # mses.append( (mean_so_far-data.iloc[i_d])**2 )
+        mean_so_far = data[:i_d].mean() if i_d > 0 else default
+        mses.append( (mean_so_far-data[i_d])**2 )
     return np.array(mses)
 
 

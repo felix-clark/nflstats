@@ -24,6 +24,7 @@ def neg_binomial( k, r, p ):
 
 def log_neg_binomial( k, r, p ):
     # return -gammaln( k+1 ) + gammaln( k + r ) - gammaln( r ) + k*log(p) + r*log(1-p)
+    # TODO: turn these ifs into masks so we can pass as arrays
     if k < 0: return -np.inf
     if k == 0: return r*log(1-p)
     return k*log(p) + r*log(1-p) - log(k) - betaln( k, r )
@@ -192,22 +193,18 @@ def to_neg_binomial( data=[] ):
     # only LBFGS returns Hessian, in form of "LbjgsInvHessProduct"
     method = allowed_methods[0]
     
-    # func = lambda pars: sum( ( - log_neg_binomial( k, *pars ) for k in arr_ks ) )
     func = lambda pars: - sum_log_neg_binomial( arr_ks, *pars )
-    # func = lambda pars: - sum( log_neg_binomial( arr_ks, *pars ) ) # doesn't like conditional statements in arrays
     grad = lambda pars: - grad_sum_log_neg_binomial( arr_ks, *pars )
     opt_result = opt.minimize( func, rp0, method=method, jac=grad, bounds=[(0,None),(0,1)] )
-    # print opt_result.message
-    if not opt_result.success:
+    isSuccess = opt_result.success
+    if not isSuccess:
         logging.error('negative binomial fit did not succeed.')
     r,p = opt_result.x
-    # print 'jacobian = ', opt_result.jac # should be zero, or close to it
+    logging.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
     cov = opt_result.hess_inv
     cov_array = cov.todense()  # dense array
-    # err_r = sqrt(cov_array[0][0])
-    # err_p = sqrt(cov_array[1][1]) # ?
     neg_ll = opt_result.fun
-    return (r,p),cov_array,-neg_ll/(n-2)
+    return isSuccess,(r,p),cov_array,-neg_ll/(n-2)
 
 def to_beta_binomial( bounds, data ):
     """
@@ -238,15 +235,15 @@ def to_beta_binomial( bounds, data ):
     grad = lambda pars: - grad_sum_log_beta_binomial( arr_ks, n, *pars )
     opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)] )
     logging.debug(opt_result.message)
-    success = opt_result.success
-    if not success:
+    isSuccess = opt_result.success
+    if not isSuccess:
         logging.error('beta binomial fit did not succeed with {} data points.'.format(N))
     a,b = opt_result.x
     # logging.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
     cov = opt_result.hess_inv
     cov_array = cov.todense()  # dense array
     neg_ll = opt_result.fun
-    return success,(a,b),cov_array,-neg_ll/(N-2)
+    return isSuccess,(a,b),cov_array,-neg_ll/(N-2)
 
 def to_gaussian_int( bounds, data=[] ):
     # if not data:
@@ -406,7 +403,7 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
 
     if 'neg_binomial' in fits:
         # (r,errr),(p,errp),logl = to_neg_binomial( data )
-        (r,p),cov,logl = to_neg_binomial( data )
+        _,(r,p),cov,logl = to_neg_binomial( data )
         errr = sqrt( cov[0][0] )
         errp = sqrt( cov[1][1] )
         logging.info('  Negative binomial fit:')
