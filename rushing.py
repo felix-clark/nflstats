@@ -71,11 +71,12 @@ for year in range(2016, 2017):
 # # neg bin doesn't do as well w/ all years, but still better than poisson
 # dist_fit.plot_counts( rush_att, label='rushing attempts', fits=['neg_binomial'] )
 
-# print 'total TDs:'
-# # negative binomial is redundant w/ poisson here. TDs are rare, and relatively independent.
-# # geometric does OK, but is clearly inferior w/ high stats
-# # poisson does quite well even when all years are combined : -logL/N ~ 1
-# dist_fit.plot_counts( all_td, label='touchdowns', fits=['poisson'] )
+print 'total TDs:'
+# negative binomial is redundant w/ poisson here. TDs are rare, and relatively independent.
+# geometric does OK, but is clearly inferior w/ high stats
+# poisson does quite well even when all years are combined : -logL/N ~ 1
+# for a collection of rushers, we should use NB which gets updated to converge to the rusher's poisson w/ infinite data
+dist_fit.plot_counts( all_td, label='touchdowns', fits=['poisson', 'neg_binomial'] )
 
 # print 'receptions:'
 # # poisson is too narrow, geometric has too heavy of tail

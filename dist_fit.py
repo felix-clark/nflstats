@@ -20,14 +20,21 @@ def geometric( k, p ):
 
 def neg_binomial( k, r, p ):
     # return exp( log_neg_binomial( k, r, p ) )
-    return ( k >= 0 ) * ( comb( k + r - 1, k) * p**k * (1-p)**r )
+    # wikipedia has the opposite convention of everywhere else >:(
+    # use the non-wikipedia convention
+    # return ( k >= 0 ) * ( comb( k + r - 1, k) * (1-p)**k * p**r )
+    karr = np.array(k)
+    result = comb( karr + r - 1, karr) * (1-p)**k * p**r
+    result[karr<0] = 0
+    return result
 
 def log_neg_binomial( k, r, p ):
     # return -gammaln( k+1 ) + gammaln( k + r ) - gammaln( r ) + k*log(p) + r*log(1-p)
-    # TODO: turn these ifs into masks so we can pass as arrays
-    if k < 0: return -np.inf
-    if k == 0: return r*log(1-p)
-    return k*log(p) + r*log(1-p) - log(k) - betaln( k, r )
+    karr = np.array(k) # make sure it's an array
+    result = k*log(1-p) + r*log(p)
+    result[k>0] += - log(k) - betaln( k, r )
+    result[k<0] = -np.inf
+    return result
 
 # discrete in range [0,n]
 def beta_binomial( k, n, a, b ):
@@ -35,7 +42,7 @@ def beta_binomial( k, n, a, b ):
     return comb(n, k) * beta(k + a, n - k + b) / beta(a,b)
 
 def log_beta_binomial( k, n, a, b ):
-    if k < 0 or k > n: return -np.inf
+    # if k < 0 or k > n: return -np.inf # is this check necessary? it makes operations on arrays annoying
     # if k == 0: return r*log(1-p)
     return log( comb(n,k) ) + betaln(k+a, n-k+b) - betaln(a,b)
 
@@ -58,13 +65,19 @@ def exp_poly_ratio( bounds, k, pis, qis):
 
 def sum_log_neg_binomial( ks, r, p ):
     N = len( ks )
-    return N*( r*log( 1-p ) - gammaln( r ) ) + sum( gammaln( ks+r ) - gammaln( ks+1 ) + ks*log(p) )
+    # print(p) # we are getting 0 or 1 here for some data
+    return N*( r*log( p ) - gammaln( r ) ) + sum( gammaln( ks+r ) - gammaln( ks+1 ) + ks*log(1-p) )
+
+    # karr = np.array(k) # make sure it's an array
+    # result = k*log(1-p) + r*log(p)
+    # result[k>0] += - log(k) - betaln( k, r )
+    # result[k<0] = -np.inf
+    # return result
 
 def grad_sum_log_neg_binomial( ks, r, p ):
     N = len( ks )
-    dldp = sum( ks ) / p - N*r/(1-p)
-    # dldr = N*(log(1-p) - digamma(r)) + sum( ( digamma(k+r) for k in ks ) )
-    dldr = N*(log(1-p) - digamma(r)) + sum( digamma(ks+r) )
+    dldp =  N*r/p - sum( ks ) / (1-p)
+    dldr = N*(log(p) - digamma(r)) + sum( digamma(ks+r) )
     return np.array((dldr, dldp))
 
 

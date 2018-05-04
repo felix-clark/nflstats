@@ -133,18 +133,17 @@ if __name__ == '__main__':
     # mae_const_sum = 0. # this one is slow
     
     for pname in posnames:
-    # in this loop we should instead evaluate our bayesian model
-        pdata = posdf[posdf['name'] == pname][gp_stat]
+        pdata = posdf[posdf['name'] == pname][gp_stat].values
         alpha0p = 1.0*alpha0
         beta0p = 1.0*beta0
         # for QBs there may be no hope, but for WRs a bayes model w/ a slower learn rate seems to do well
         lrp = 0.25
         gp_mses_bb = bay.bbinom.mse(pdata, maxgames, alpha0p, beta0p, lr=lrp)
-        gp_mses_delta = bay.delta_const.mse(pdata, gp_avg_all)
+        gp_mses_delta = bay.degen_const.mse(pdata, gp_avg_all)
         gp_mses_const = bay.gauss_const.mse(pdata, gp_avg_all, gp_var_all)
         gp_mses_mean = bay.mse_model_mean(pdata, gp_avg_all) # need to figure out how to specify this model precisely 
         gp_maes_bb = bay.bbinom.mae(pdata, maxgames, alpha0p, beta0p, lr=lrp)
-        gp_maes_delta = bay.delta_const.mae(pdata, gp_avg_all)
+        gp_maes_delta = bay.degen_const.mae(pdata, gp_avg_all)
         # gp_maes_const = bay.gauss_const.mae(pdata, gp_avg_all, gp_var_all) # currently very slow
         gp_kld_const = bay.gauss_const.kld(pdata, gp_avg_all, gp_var_all)
         gp_kld_bb = bay.bbinom.kld(pdata, maxgames, alpha0p, beta0p, lr=lrp)
