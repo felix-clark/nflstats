@@ -123,12 +123,14 @@ if __name__ == '__main__':
     # entries = []
     mse_total_n = 0
     mse_bb_sum = 0.
+    mse_delta_sum = 0.
     mse_const_sum = 0.
     mse_mean_sum = 0.
     kld_bb_sum = 0.
     kld_const_sum = 0.
     mae_bb_sum = 0.
-    mae_const_sum = 0.
+    mae_delta_sum = 0.
+    # mae_const_sum = 0. # this one is slow
     
     for pname in posnames:
     # in this loop we should instead evaluate our bayesian model
@@ -138,11 +140,12 @@ if __name__ == '__main__':
         # for QBs there may be no hope, but for WRs a bayes model w/ a slower learn rate seems to do well
         lrp = 0.25
         gp_mses_bb = bay.bbinom.mse(pdata, maxgames, alpha0p, beta0p, lr=lrp)
-        # gp_mses_const = bay.mse_model_const(pdata, gp_avg_all, gp_var_all)
+        gp_mses_delta = bay.delta_const.mse(pdata, gp_avg_all)
         gp_mses_const = bay.gauss_const.mse(pdata, gp_avg_all, gp_var_all)
-        gp_mses_mean = bay.mse_model_mean(pdata, gp_avg_all) # could also use rookie average
-        gp_maes_bb = bay.mae_model_bb(pdata, alpha0p, beta0p, lr=lrp)
-        gp_maes_const = bay.mae_model_const(pdata, gp_avg_all)
+        gp_mses_mean = bay.mse_model_mean(pdata, gp_avg_all) # need to figure out how to specify this model precisely 
+        gp_maes_bb = bay.bbinom.mae(pdata, maxgames, alpha0p, beta0p, lr=lrp)
+        gp_maes_delta = bay.delta_const.mae(pdata, gp_avg_all)
+        # gp_maes_const = bay.gauss_const.mae(pdata, gp_avg_all, gp_var_all) # currently very slow
         gp_kld_const = bay.gauss_const.kld(pdata, gp_avg_all, gp_var_all)
         gp_kld_bb = bay.bbinom.kld(pdata, maxgames, alpha0p, beta0p, lr=lrp)
 
@@ -150,19 +153,24 @@ if __name__ == '__main__':
         mse_total_n += pdata.size
         mse_bb_sum += gp_mses_bb.sum()
         mse_const_sum += gp_mses_const.sum()
+        mse_delta_sum += gp_mses_delta.sum()
         mse_mean_sum += gp_mses_mean.sum()
         mae_bb_sum += gp_maes_bb.sum()
-        mae_const_sum += gp_maes_const.sum()
+        # mae_const_sum += gp_maes_const.sum()
+        mae_delta_sum += gp_maes_delta.sum()
         kld_bb_sum += gp_kld_bb.sum()
         kld_const_sum += gp_kld_const.sum()
+        # delta KLD is infinite, and we need to specify variance in the "mean" model, or define it as a moving delta
 
     # right now bayes does worse than just using the average
-    log.info('RMSE for const model: {}'.format(np.sqrt(mse_const_sum/mse_total_n)))
+    log.info('RMSE for const gauss model: {}'.format(np.sqrt(mse_const_sum/mse_total_n)))
+    log.info('RMSE for const delta model: {}'.format(np.sqrt(mse_delta_sum/mse_total_n)))
     log.info('RMSE for mean model: {}'.format(np.sqrt(mse_mean_sum/mse_total_n)))
     log.info('RMSE for bayes model: {}'.format(np.sqrt(mse_bb_sum/mse_total_n)))
-    log.info('MAE for const model: {}'.format(np.sqrt(mae_const_sum/mse_total_n)))
+    # log.info('MAE for const model: {}'.format(np.sqrt(mae_const_sum/mse_total_n)))
+    log.info('MAE for const delta model: {}'.format(np.sqrt(mae_delta_sum/mse_total_n)))
     log.info('MAE for bayes model: {}'.format(np.sqrt(mae_bb_sum/mse_total_n)))
-    log.info('Kullback-Leibler divergence for const: {}'.format(kld_const_sum/mse_total_n))
+    log.info('Kullback-Leibler divergence for const gauss: {}'.format(kld_const_sum/mse_total_n))
     log.info('Kullback-Leibler divergence for bayes: {}'.format(kld_bb_sum/mse_total_n))
     log.info('total player-seasons: {}'.format(mse_total_n))
     
