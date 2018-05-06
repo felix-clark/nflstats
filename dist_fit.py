@@ -195,9 +195,10 @@ def to_neg_binomial( data=[] ):
     # if not data:
     #     logging.error('empty data set')
     #     exit(1)
+    log = logging.getLogger(__name__)
     for x in data:
         if x < 0:
-            logging.warning('negative value in data set. negative binomial may not be appropriate.')
+            log.warning('negative value in data set. negative binomial may not be appropriate.')
     arr_ks = np.asarray( data )
     n = len( arr_ks )
     mean = float( sum( arr_ks ) ) / n
@@ -211,9 +212,9 @@ def to_neg_binomial( data=[] ):
     opt_result = opt.minimize( func, rp0, method=method, jac=grad, bounds=[(0,None),(0,1)] )
     isSuccess = opt_result.success
     if not isSuccess:
-        logging.error('negative binomial fit did not succeed.')
+        log.error('negative binomial fit did not succeed.')
     r,p = opt_result.x
-    logging.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
+    log.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
     cov = opt_result.hess_inv
     cov_array = cov.todense()  # dense array
     neg_ll = opt_result.fun
