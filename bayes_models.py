@@ -92,11 +92,12 @@ class const_gauss_model(bayes_model):
 # alpha and beta correspond to those for the beta-binomial (for the posterior predictive),
 # or the beta distribution for the prior.
 class beta_binomial_model(bayes_model):
-    def __init__(self, n, alpha0, beta0, lr=1.0):
+    def __init__(self, n, alpha0, beta0, lr=1.0, mem=1.0):
         self.n = n
         self.alpha0 = alpha0
         self.beta0 = beta0
         self.lr = lr
+        self.mem = mem
     
     # returns EVs
     def _evs(self, data, weights=None):
@@ -152,17 +153,19 @@ class beta_binomial_model(bayes_model):
         alphas = [self.alpha0]
         betas = [self.beta0]
         for d,w in zip(data[:-1],weights):
-            alphas.append(alphas[-1] + w*d)
-            betas.append(betas[-1] + w*(self.n-d))
+            alphas.append(self.mem*alphas[-1] + w*d)
+            betas.append(self.mem*betas[-1] + w*(self.n-d))
         # these have one additional element which is not used. it may or may not matter.
         return np.array(alphas),np.array(betas)
 
     # return the updated model parameters from after the data
     def get_model_pars(self, data, weights=None):
-        ws = np.full(data.shape, self.lr)
+        ndata = data.shape
+        ws = np.full(ndata, self.lr)
         if weights is not None: ws *= weights
-        alpha = self.alpha0 + sum(ws*data)
-        beta = self.beta0 + sum(ws*(self.n-data))
+        weights[::-1] *= np.asarray([self.mem**i for i in range(ndata)])
+        alpha = self.alpha0*self.mem**ndata + sum(ws*data)
+        beta = self.beta0*self.mem**ndata + sum(ws*(self.n-data))
         return alpha,beta
 
 
@@ -176,10 +179,11 @@ class beta_binomial_model(bayes_model):
 # where if lr < 1 we are slowing the update
 # we could also apply multiplicative decay after adding, which will result in variance decay even in long careers
 class neg_binomial_model(bayes_model):
-    def __init__(self, r0, p0, lr=1.0):
+    def __init__(self, r0, p0, lr=1.0, mem=1.0):
         self.r0 = r0
         self.p0 = p0
-        self.lr = lr
+        self.lr = lr # learn rate
+        self.mem = mem # memory factor
         
     def _evs(self, data, weights=None):
         rs,ps = self._get_rps(data, weights)
@@ -245,7 +249,8 @@ class neg_binomial_model(bayes_model):
         return result_ac
         
     def _get_rps(self, data, weights=None):
-        ws = np.full(data.shape[-1], self.lr)
+        ndata = data.shape[-1]
+        ws = np.full(ndata, self.lr)
         if weights is not None: ws *= weights
         rs = [self.r0]
         bs = [self.p0/(1-self.p0)]
@@ -255,21 +260,23 @@ class neg_binomial_model(bayes_model):
                 # rs.append(rs[-1]+w*dn)
                 # bs.append(bs[-1]+w*dd)
                 # this is necessary if using the continuous approximation
-                rs.append(rs[-1]+w*dn/dd)
-                bs.append(bs[-1]+w)
+                rs.append(self.mem*rs[-1]+w*dn/dd)
+                bs.append(self.mem*bs[-1]+w)
         else:
             for d,w in zip(data[:-1],ws):
-                rs.append(rs[-1]+w*d)
-                bs.append(bs[-1]+w)
+                rs.append(self.mem*rs[-1]+w*d)
+                bs.append(self.mem*bs[-1]+w)
         ps = [b/(1+b) for b in bs] # np.array(bs)/(1.0+np.array(bs))
         # these probably have one additional element which is not used. it may or may not matter.
         return np.array(rs),np.array(ps)
 
     def get_model_pars(self, data, weights=None):
-        ws = np.full(data.shape[-1], self.lr)
+        ndata = data.shape[-1]
+        ws = np.full(ndata, self.lr)
         if weights is not None: ws *= weights
-        r = self.r0
-        b = self.p0/(1-self.p0)
+        weights[::-1] *= np.asarray([self.mem**i for i in range(ndata)])
+        r = self.r0 * self.mem**ndata
+        b = self.p0/(1-self.p0) * self.mem**ndata
         assert(len(data.shape) <= 2)
         if len(data.shape) == 2:
             # r += sum(ws*data[0])
@@ -286,12 +293,13 @@ class neg_binomial_model(bayes_model):
 # the predictive posterior is a student's t distribution.
 # the posterior is a gaussian w/ unknown mean and variance
 class t_model(bayes_model):
-    def __init__(self, mu0, nu0, alpha0, beta0, lr=1.0):
+    def __init__(self, mu0, nu0, alpha0, beta0, lr=1.0, mem=1.0):
         self.mu0 = mu0
         self.nu0 = nu0
         self.alpha0 = alpha0
         self.beta0 = beta0
         self.lr = lr
+        self.mem = mem
         
     def _evs(self, data, weights=None):
         mus,_,_,_ = self._get_bps(data, weights)
@@ -309,7 +317,8 @@ class t_model(bayes_model):
         get the 4 bayes parameters for the normal distribution
         """
         # learn rate is probably redundant for this, since it's effectively a change in nu0 (and alpha0?)
-        ws = np.full(data.shape, self.lr)
+        ndata = data.shape
+        ws = np.full(ndata, self.lr)
         if weights is not None: ws *= weights
         mus = [self.mu0]
         nus = [self.nu0]
@@ -319,15 +328,19 @@ class t_model(bayes_model):
         runSum = 0
         runSumSq = 0
         for d,w in zip(data[:-1],ws):
-            runCount += w
-            runSum += w*d
-            runSumSq += w*d**2
+            wp = self.mem # weight for previous data
+            runCount = wp*runCount + w
+            runSum = wp*runSum + w*d
+            runSumSq = wp*runSumSq + w*d**2
             runMean = runSum/runCount
-            nup = nus[-1] + w
-            betap = self.beta0 + 0.5*(runSumSq - runCount*runMean**2) + 0.5*runCount*self.nu0/nup*(runMean - self.mu0)**2
-            mus.append( (nus[-1]*mus[-1] + w*d)/nup )
+            nup = wp*nus[-1] + w
+            # the beta term is a bit difficult. with w.g. 0.5 memory, the variance blows up.
+            # this may just be how it works -- w/ less information the variance should explode
+            betap = wp*self.beta0 + 0.5*(runSumSq - runCount*runMean**2) + \
+                    0.5*runCount*self.nu0/nup*(runMean - self.mu0)**2 # not sure how to handle these mu0/nu0 w/ forgetting...
+            mus.append( (wp*nus[-1]*mus[-1] + w*d)/nup )
             nus.append(nup)
-            alphas.append(alphas[-1] + 0.5*w)
+            alphas.append(wp*alphas[-1] + 0.5*w)
             betas.append(betap)
         return np.array(mus),np.array(nus),np.array(alphas),np.array(betas)
 
@@ -351,13 +364,17 @@ class t_model(bayes_model):
         """
         get the 4 bayes parameters for the normal distribution after updating for the data
         """
-        ws = np.full(data.shape, self.lr)
+        ndata = data.shape
+        ws = np.full(ndata, self.lr)
         if weights is not None: ws *= weights
+        weights[::-1] *= np.asarray([self.mem**i for i in range(ndata)])
         wsum = np.sum(ws)
         datasum = np.sum(ws*data)
         datamean = datasum/wsum
-        mu = (self.nu0*self.mu0 + datasum)/(self.nu0 + wsum)
-        nu = self.nu0 + wsum
-        alpha = self.alpha0 + 0.5*wsum
-        beta = self.beta0 + 0.5*np.sum(ws*(data-datamean)**2) + 0.5*wsum*self.nu0/nu*(datamean-self.mu0)**2
+        w0 = self.mem**ndata
+        nu = w0*self.nu0 + wsum
+        mu = (w0*self.nu0*self.mu0 + datasum)/nu
+        alpha = w0*self.alpha0 + 0.5*wsum
+        # i think this way of dealing w/ memory in the last term for beta makes sense...
+        beta = w0*self.beta0 + 0.5*np.sum(ws*(data-datamean)**2) + 0.5*wsum*self.nu0/nu*(datamean-self.mu0)**2
         return mu,nu,alpha,beta

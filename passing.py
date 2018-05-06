@@ -43,6 +43,7 @@ if __name__ == '__main__':
     log = logging.getLogger(__name__)
     log.setLevel(logging.INFO)
     logging.getLogger('bayes_models').setLevel(logging.INFO)
+    logging.info('dummy')     # somehow this line is needed for the custom log to work...
 
     # starting at 1999 will let us have all data for everyone selected
     years = range(1999, 2018)
@@ -57,17 +58,16 @@ if __name__ == '__main__':
     
     data_papg_inc = posdf['pass_att_pg']
     data_papg_rook = rookiedf['pass_att_pg']
-    
-    
-    _,(rrk,prk),cov,llpdf = dist_fit.to_neg_binomial( data_papg_rook )
-    log.info('rookie: r = {}, p = {}, LL per dof = {}'.format(rrk, prk, llpdf))
-    log.info('covariance:\n' + str(cov))
-    _,(rinc,pinc),cov,llpdf = dist_fit.to_neg_binomial( data_papg_inc )
-    log.info('all: r = {}, p = {}, LL per dof = {}'.format(rinc, pinc, llpdf))
-    log.info('covariance:\n' + str(cov))
 
-    stdf,stloc,stscale = st.t.fit(data_papg_rook)
-    log.info('fit to student\'s t distribution:\n{}'.format((stdf,stloc,stscale)))
+    # _,(rrk,prk),cov,llpdf = dist_fit.to_neg_binomial( data_papg_rook )
+    # log.info('rookie: r = {}, p = {}, LL per dof = {}'.format(rrk, prk, llpdf))
+    # log.info('covariance:\n' + str(cov))
+    # _,(rinc,pinc),cov,llpdf = dist_fit.to_neg_binomial( data_papg_inc )
+    # log.info('all: r = {}, p = {}, LL per dof = {}'.format(rinc, pinc, llpdf))
+    # log.info('covariance:\n' + str(cov))
+
+    # stdf,stloc,stscale = st.t.fit(data_papg_rook)
+    # log.info('fit to student\'s t distribution:\n{}'.format((stdf,stloc,stscale)))
 
     # weib_rook_res = st.weibull_min.fit(data_papg_rook, floc=0)
     # log.info('fit rookies to weibull distribution:\n{}'.format(weib_rook_res))
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     # plt_gp.figure.savefig('pass_att_pg.png'.format())
     # plt_gp.figure.show()
 
-    # plt_gp = sns.pairplot(rookiedf, vars = ['games_started', 'pass_att_pg'])
+    # plt_gp = sns.pairplot(rookiedf, vars = ['games_played', 'pass_att_pg'])
     # plt_gp.savefig('pass_att_gs_qb.png')
     
     # plt.show(block=True)
@@ -127,8 +127,10 @@ if __name__ == '__main__':
     
     ###############################################################
     
-    # define a model that is just a constant gaussian w/ the inclusive distribution
+    # define a baseline model that is just a constant gaussian w/ the inclusive distribution
     cgaussmodel = bay.const_gauss_model(gp_avg_all, gp_var_all)
+
+    memory = 0.875 # a bit of memory loss can account for overall changes. this is like the exponential window.
     
     # r0,p0 = rrk,prk
     # log.info('using rookie r,p = {},{}'.format(r0,p0))
@@ -136,16 +138,16 @@ if __name__ == '__main__':
     # log.info('using inclusive r,p = {},{}'.format(r0,p0))
     log.info('using (weighted) statistical mean and stddev')
     r0,p0 = r0stat,p0stat
-    log.info('starting mean = {}'.format(r0*(1-p0)/p0))
+    log.info('starting mean = {:.4g}'.format(r0*(1-p0)/p0))
     r0 = 1.0*r0
     # # if scale down r and beta to be on the per-game level?
     # beta0 /= 1 # scaling doesn't seem to help
     # p0p = beta0/(1+beta0)
     p0 = 1.0*p0
-    log.info( 'using (possibly reduced) per-game r, b = {}, {}'.format(r0, p0))
+    log.info( 'using (possibly reduced) per-game r, b = {:.4g}, {:.4g}'.format(r0, p0))
     lrp = 1.0 # why does the bayes model have worse performance
 
-    nbmodel = bay.neg_binomial_model(r0, p0, lrp)
+    nbmodel = bay.neg_binomial_model(r0, p0, lrp, mem=memory)
     
     # hyperparameters for t model
     t_mu0 = rk_weight_mean
@@ -157,7 +159,7 @@ if __name__ == '__main__':
     # t_beta0 = rk_weight_stddev**2 * (t_alpha0-1)/(1+1.0/t_nu0)
     t_beta0 = gp_var_all * (t_alpha0-1)/(1+1.0/t_nu0)
 
-    tmodel = bay.t_model(t_mu0, t_nu0, t_alpha0, t_beta0, lrp)
+    tmodel = bay.t_model(t_mu0, t_nu0, t_alpha0, t_beta0, lrp, mem=memory)
     
     # for pname in ['Peyton Manning', 'Tom Brady', 'Troy Aikman', 'Drew Brees']:
     #     tbdf = posdf[posdf['name'] == pname]
@@ -232,18 +234,23 @@ if __name__ == '__main__':
     modeldf['revse'] = np.sqrt(modeldf['evse'])
     modeldf['norm_rmse'] = modeldf['rmse'] / modeldf['scale']
     modeldf['norm_revse'] = modeldf['revse'] / modeldf['scale']
-        
+
     log.info('total player-seasons: {}'.format(modeldf[modeldf['model'] == 'data']['weight'].sum()))
     for stat in ['evse', 'mse', 'kld']:
         for model in ['cgauss', 'nbinom', 'studentt']:
             thismodel = modeldf[modeldf['model'] == model]
             val = (thismodel[stat]*thismodel['weight']).sum()/thismodel['weight'].sum()
             if stat in ['evse', 'mse']: val = np.sqrt(val)
-            log.info('{} for {} model: {}'.format(stat, model, val))
+            log.info('{} for {} model: {:.4g}'.format(stat, model, val))
 
-    plot_vars = ['ev', 'residuals', 'norm_rmse', 'norm_revse']
+    plot_vars = ['ev', 'residuals'
+                 , 'scale'
+                 , 'norm_rmse', 'norm_revse'
+                 , 'rmse', 'revse', 'kld'
+    ]
     for var in plot_vars:
         plt.figure()
         varplt = sns.lvplot(data=modeldf, x='career_year', y=var, hue='model')
+        plt.title('passing attempts per game played')
 
     plt.show(block=True)
