@@ -184,9 +184,10 @@ if __name__ == '__main__':
         mses_nb = nbmodel.mse((pdata_pa,pdata_gs))
         mses_t = tmodel.mse(pdata_papg)
         mses_cgauss = cgaussmodel.mse(pdata_papg)
-        klds_cgauss = cgaussmodel.kld(pdata_papg)
-        klds_nb = nbmodel.kld((pdata_pa,pdata_gs))
-        klds_t = tmodel.kld(pdata_papg)
+        normkld = True
+        klds_cgauss = cgaussmodel.kld(pdata_papg, normalize=normkld)
+        klds_nb = nbmodel.kld((pdata_pa,pdata_gs), normalize=normkld)
+        klds_t = tmodel.kld(pdata_papg, normalize=normkld)
         evses_nb = nbmodel.evse((pdata_pa,pdata_gs))
         evses_t = tmodel.evse(pdata_papg)
         evses_cgauss = cgaussmodel.evse(pdata_papg)
@@ -240,7 +241,7 @@ if __name__ == '__main__':
             if stat in ['evse', 'mse']: val = np.sqrt(val)
             log.info('{} for {} model: {}'.format(stat, model, val))
 
-    plot_vars = ['ev', 'residuals', 'norm_rmse']
+    plot_vars = ['ev', 'residuals', 'norm_rmse', 'kld']
     for var in plot_vars:
         plt.figure()
         varplt = sns.lvplot(data=modeldf, x='career_year', y=var, hue='model')
