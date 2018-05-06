@@ -33,7 +33,9 @@ class bayes_model:
         """
         returns the squared difference of the data from the distribution's expectation value
         """
-        return (np.array(data) - self.evs(data, *args, **kwargs))**2
+        darr = np.array(data)
+        d = darr if len(darr.shape) == 1 else darr[0] / darr[1]
+        return (d - self.evs(darr, *args, **kwargs))**2
     
     def evs(self, data, *args, **kwargs):
         # list of expectation values at each point
@@ -44,7 +46,9 @@ class bayes_model:
         return self._vars(np.array(data), *args, **kwargs)
 
     def residuals(self, data, *args, **kwargs):
-        return (np.array(data) - self.evs(data, *args, **kwargs))/np.sqrt(self.vars(data, *args, **kwargs))
+        darr = np.array(data)
+        d = darr if len(darr.shape) == 1 else darr[0] / darr[1]
+        return (d - self.evs(darr, *args, **kwargs))/np.sqrt(self.vars(darr, *args, **kwargs))
         
 ## constant gaussian w/ mean and variance
 class const_gauss_model(bayes_model):
@@ -86,6 +90,7 @@ class const_gauss_model(bayes_model):
 
 # the model is defined by its posterior predictive distribution, which are compound distributions for easy updating of parameters.
 # beta-binomial is a compound of beta with binomial.
+# if n == 1, the predictive distribution is bernoulli.
 # for new observation k, the model is updated:
 # alpha -> alpha + k
 # beta -> beta + (n-k)
@@ -101,12 +106,12 @@ class beta_binomial_model(bayes_model):
     
     # returns EVs
     def _evs(self, data, weights=None):
-        alphas,betas = _get_abs(data, weights)
+        alphas,betas = self._get_abs(data, weights)
         return self.n*alphas/(alphas + betas)
 
     # returns variances of model
     def _vars(self, data, weights=None):
-        alphas,betas = _get_abs(data, weights)
+        alphas,betas = self._get_abs(data, weights)
         return self.n*alphas*betas*(alphas+betas+self.n)/(alphas+betas)**2/(alphas+betas+1)
     
     def _mse(self, data, weights=None):
@@ -127,7 +132,7 @@ class beta_binomial_model(bayes_model):
 
     # mean absolute error
     def _mae(self, data, weights=None):
-        assert((data >= 0).all() and (data <= n).all())
+        assert((data >= 0).all() and (data <= self.n).all())
         maes = []
         alphas,betas = self._get_abs(data, weights)
         support = np.arange(0,n+1)
@@ -147,7 +152,7 @@ class beta_binomial_model(bayes_model):
         return result
         
     def _get_abs(self, data, weights=None):
-        assert(len(data.shape) <= 2)
+        assert(len(data.shape) == 1)
         ws = np.full(data.shape, self.lr)
         if weights is not None: ws *= weights
         alphas = [self.alpha0]
@@ -155,7 +160,6 @@ class beta_binomial_model(bayes_model):
         for d,w in zip(data[:-1],weights):
             alphas.append(self.mem*alphas[-1] + w*d)
             betas.append(self.mem*betas[-1] + w*(self.n-d))
-        # these have one additional element which is not used. it may or may not matter.
         return np.array(alphas),np.array(betas)
 
     # return the updated model parameters from after the data
@@ -168,6 +172,83 @@ class beta_binomial_model(bayes_model):
         beta = self.beta0*self.mem**ndata + sum(ws*(self.n-data))
         return alpha,beta
 
+
+# this model is appropriate for a percentage, like pass completion %.
+# it predicts a value between 0 and 1.
+# the number of completions for a set number of attempts is beta-binomial distributed.
+# to keep from getting too narrow, a reduced learning rate and/or memory is probably appropriate
+class beta_model(bayes_model):
+    def __init__(self, alpha0, beta0, lr=1.0, mem=1.0):
+        self.alpha0 = alpha0
+        self.beta0 = beta0
+        self.lr = lr
+        self.mem = mem
+    
+    # returns EVs
+    def _evs(self, data, weights=None):
+        alphas,betas = self._get_abs(data, weights)
+        return alphas/(alphas + betas)
+
+    # returns variances of model
+    def _vars(self, data, weights=None):
+        alphas,betas = self._get_abs(data, weights)
+        return alphas*betas/(alphas+betas)**2/(alphas+betas+1)
+    
+    def _mse(self, data, weights=None):
+        alphas,betas = self._get_abs(data, weights)
+        rdata = data if len(data.shape) == 1 else data[0]/data[1]
+        return rdata**2 + alphas/(alphas+betas)*(-2*rdata + (1+alphas)/(1+alphas+betas))
+
+    # mean absolute error
+    def _mae(self, data, weights=None):
+        raise NotImplementedError
+
+    # computes Kullback-Leibler divergence
+    def _kld(self, data, weights=None, normalize=False):
+        alphas,betas = self._get_abs(data, weights)
+        rdata = data if len(data.shape) == 1 else data[0] / data[1]
+        result = -st.beta.logpdf( rdata, alphas, betas )
+        if normalize:
+            raise NotImplementedError('not sure how to normalize likelihood for beta distribution')
+        return result
+        
+    def _get_abs(self, data, weights=None):
+        # this can support a ratio
+        assert(len(data.shape) <= 2)
+        ndata = data.shape[-1]
+        ws = np.full(ndata, self.lr)
+        if weights is not None: ws *= weights
+        alphas = [self.alpha0]
+        betas = [self.beta0]
+        if len(data.shape) == 2:
+            for (dn,dd),w in zip(data.T[:-1],ws):
+                alphas.append(self.mem*alphas[-1]+w*dn)
+                betas.append(self.mem*betas[-1]+w*dd)
+                # alphas.append(self.mem*alphas[-1]+w*dn/dd)
+                # betas.append(self.mem*betas[-1]+w)
+        else:
+            for d,w in zip(data[:-1],ws):
+                alphas.append(self.mem*alphas[-1]+w*d)
+                betas.append(self.mem*betas[-1]+w*(1-d))            
+        return np.array(alphas),np.array(betas)
+
+    # return the updated model parameters from after the data
+    def get_model_pars(self, data, weights=None):
+        ndata = data.shape[-1]
+        ws = np.full(ndata, self.lr)
+        if weights is not None: ws *= weights
+        weights[::-1] *= np.asarray([self.mem**i for i in range(ndata)])
+        alpha = self.alpha0*self.mem**ndata
+        beta = self.beta0*self.mem**ndata
+        # return alpha,beta
+        if len(data.shape) == 2:
+            alpha += sum(ws*data[0])
+            beta += sum(ws*data[1])
+            # alpha += sum(ws*data[0]/data[1])
+            # beta += sum(ws)
+        else:
+            alpha += sum(ws*data)
+            beta += sum(ws*(1-data))
 
 
 ## the negative binomial posterior predictor is a gamma convolved with a poisson
@@ -196,19 +277,19 @@ class neg_binomial_model(bayes_model):
         rdata = data if len(data.shape) == 1 else data[0] / data[1]
         return rs*(1-ps)/ps**2
     
-    def evse(self, data, weights=None):
-        """
-        we need to overwrite this for the case where two data cols are provided
-        """
-        darray = np.array(data)
-        rdata = darray if len(darray.shape) == 1 else darray[0] / darray[1]
-        return (rdata - self.evs(darray, weights))**2
+    # def evse(self, data, weights=None):
+    #     """
+    #     we need to overwrite this for the case where two data cols are provided
+    #     """
+    #     darray = np.array(data)
+    #     rdata = darray if len(darray.shape) == 1 else darray[0] / darray[1]
+    #     return (rdata - self.evs(darray, weights))**2
     
-    def residuals(self, data, weights=None):
-        # this also needs to be overwritten
-        darray = np.array(data)
-        rdata = darray if len(darray.shape) == 1 else darray[0] / darray[1]
-        return (rdata - self.evs(data, weights))/np.sqrt(self.vars(data, weights))
+    # def residuals(self, data, weights=None):
+    #     # this also needs to be overwritten
+    #     darray = np.array(data)
+    #     rdata = darray if len(darray.shape) == 1 else darray[0] / darray[1]
+    #     return (rdata - self.evs(data, weights))/np.sqrt(self.vars(data, weights))
     
     def _mse(self, data, weights=None):
         mses = []
@@ -257,8 +338,8 @@ class neg_binomial_model(bayes_model):
         assert(len(data.shape) <= 2)
         if len(data.shape) == 2:
             for (dn,dd),w in zip(data.T[:-1],ws):
-                # rs.append(rs[-1]+w*dn)
-                # bs.append(bs[-1]+w*dd)
+                # rs.append(self.mem*rs[-1]+w*dn)
+                # bs.append(self.mem*bs[-1]+w*dd)
                 # this is necessary if using the continuous approximation
                 rs.append(self.mem*rs[-1]+w*dn/dd)
                 bs.append(self.mem*bs[-1]+w)
@@ -289,7 +370,7 @@ class neg_binomial_model(bayes_model):
         p = b/(1+b)
         return r,p
 
-
+    
 # the predictive posterior is a student's t distribution.
 # the posterior is a gaussian w/ unknown mean and variance
 class t_model(bayes_model):

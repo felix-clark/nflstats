@@ -51,13 +51,23 @@ if __name__ == '__main__':
     years = range(1983, 2018)
     posdf = get_qb_df(years, keepnames=posnames)
     posdf['pass_att_pg'] = posdf['passing_att'] / posdf['games_played']
+    posdf['pass_cmp_pa'] = posdf['passing_cmp'] / posdf['passing_att']
+    # since completion percentage is not independent of the yardage, it may be better to consider yds/att.
+    posdf['pass_yds_pc'] = posdf['passing_yds'] / posdf['passing_cmp']
+    # TDs per attempt instead of per game scales out short games properly
+    posdf['pass_td_pa'] = posdf['passing_td'] / posdf['passing_att']
 
     rookiedf = pd.concat([posdf[posdf['name'] == name].head(1) for name in posnames])
-    rookiedf['pass_att_pg'] = rookiedf['passing_att'] / rookiedf['games_played']
-    # log.debug('rookies:\n' + str(rookiedf[['name','year','team']]))
-    
-    data_papg_inc = posdf['pass_att_pg']
-    data_papg_rook = rookiedf['pass_att_pg']
+
+    # should be a little slicker to use numpy arrays
+    data_papg_inc = posdf['pass_att_pg'].values
+    data_pcpa_inc = posdf['pass_cmp_pa'].values
+    data_pypc_inc = posdf['pass_yds_pc'].values
+    data_ptdpa_inc = posdf['pass_td_pa'].values
+    data_papg_rook = rookiedf['pass_att_pg'].values
+    data_pcpa_rook = rookiedf['pass_cmp_pa'].values
+    data_pypc_rook = rookiedf['pass_yds_pc'].values
+    data_ptdpa_rook = rookiedf['pass_td_pa'].values
 
     # _,(rrk,prk),cov,llpdf = dist_fit.to_neg_binomial( data_papg_rook )
     # log.info('rookie: r = {}, p = {}, LL per dof = {}'.format(rrk, prk, llpdf))
@@ -79,8 +89,7 @@ if __name__ == '__main__':
     log.info('{} rookie seasons'.format(n_rookie_seasons))
     rk_weight_mean = rookiedf['passing_att'].sum() / n_rookie_games
     rk_weight_stddev = np.sqrt(n_rookie_seasons/(n_rookie_seasons-1)*(rookiedf['games_played'] * (rookiedf['pass_att_pg'] - rk_weight_mean)**2).sum()/ n_rookie_games)
-    log.info('weighted by games played, rookie distribution has mean/std: {} \pm {}'.format(rk_weight_mean, rk_weight_stddev))
-
+    log.info('weighted by games played, rookie pass attempt distribution has mean/std: {:.5g} \pm {:.5g}'.format(rk_weight_mean, rk_weight_stddev))
     
     
     sns.set()
@@ -112,7 +121,23 @@ if __name__ == '__main__':
     
     # plt.show(block=True)
 
-                 
+    ## completion PCT
+    pct_mean = np.mean(data_pcpa_rook)
+    pct_var = np.var(data_pcpa_rook)
+    alpha_pcpa_rook = pct_mean*( pct_mean*(1-pct_mean)/pct_var - 1 )
+    beta_pcpa_rook = (1-pct_mean)*( pct_mean*(1-pct_mean)/pct_var - 1 )
+    log.info('using statistical rookie cmp%: a = {}, b = {}'.format(alpha_pcpa_rook, beta_pcpa_rook))
+    xfvals = np.linspace(0.0, 1.0, 128)
+    bins_pcpa = np.linspace(0,1,64+1)
+    plt_gp = sns.distplot(data_pcpa_rook, bins=bins_pcpa,
+                          kde=False, norm_hist=True,
+                          hist_kws={'log':False, 'align':'mid'})
+    plt.plot(xfvals, st.beta.pdf(xfvals, alpha_pcpa_rook, beta_pcpa_rook), '--', lw=2, color='violet')
+    plt.title('rookie completion percentage')
+    plt_gp.figure.savefig('pass_cmp_pa_rookie.png'.format())
+    plt_gp.figure.show()
+
+    
     gp_avg_all = data_papg_inc.mean()
     gp_var_all = data_papg_inc.var()
     log.info('used for const model: average attempts per game (inclusive) = {} \pm {}'.format(gp_avg_all, np.sqrt(gp_var_all)))
@@ -131,6 +156,7 @@ if __name__ == '__main__':
     cgaussmodel = bay.const_gauss_model(gp_avg_all, gp_var_all)
 
     memory = 0.875 # a bit of memory loss can account for overall changes. this is like the exponential window.
+    memory = 1 - 1/2**4
     
     # r0,p0 = rrk,prk
     # log.info('using rookie r,p = {},{}'.format(r0,p0))
@@ -160,22 +186,24 @@ if __name__ == '__main__':
     t_beta0 = gp_var_all * (t_alpha0-1)/(1+1.0/t_nu0)
 
     tmodel = bay.t_model(t_mu0, t_nu0, t_alpha0, t_beta0, lrp, mem=memory)
-    
-    # for pname in ['Peyton Manning', 'Tom Brady', 'Troy Aikman', 'Drew Brees']:
-    #     tbdf = posdf[posdf['name'] == pname]
-    #     mean_papg_tb = tbdf['pass_att_pg'].mean()
-    #     var_papg_tb = tbdf['pass_att_pg'].var()
-    #     log.info('{} \pm {} (index of dispersion {}) pa/pg for {}'
-    #              .format(mean_papg_tb, np.sqrt(var_papg_tb),
-    #                      var_papg_tb/mean_papg_tb, pname)) # they're all under-dispersed
 
+    ## model for cmp %
+    lr_cmp_pct = 1.0
+    mem_cmp_pct = 1-1/2**4
+    pcpa_betamodel = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct, mem=mem_cmp_pct)
+    
     modeldf = pd.DataFrame()
+    pcpadf = pd.DataFrame()
     
     for pname in posnames:
+        pdata = posdf[posdf['name'] == pname]
         # explicitly turn into numpy arrays
-        pdata_gs = posdf[posdf['name'] == pname]['games_played'].values
-        pdata_pa = posdf[posdf['name'] == pname]['passing_att'].values
+        pdata_gs = pdata['games_played'].values
+        pdata_pa = pdata['passing_att'].values
+        pdata_pc = pdata['passing_cmp'].values
         pdata_papg = pdata_pa / pdata_gs
+        pdata_pcpa = pdata_pc / pdata_pa
+        # we should really do an analysis of the covariance between attempts and completion % on a per-player basis
         career_length = pdata_gs.size
         if career_length < 2: continue
 
@@ -204,6 +232,19 @@ if __name__ == '__main__':
         vars_t = tmodel.vars(pdata_papg, weights=weights)
         vars_cgauss = cgaussmodel.vars(pdata_papg, weights=weights)
 
+        mses_pcpa_beta_sep = pcpa_betamodel.mse((pdata_pc,pdata_pa))
+        klds_pcpa_beta_sep = pcpa_betamodel.kld((pdata_pc,pdata_pa))
+        evs_pcpa_beta_sep = pcpa_betamodel.evs((pdata_pc,pdata_pa))
+        evses_pcpa_beta_sep = pcpa_betamodel.evse((pdata_pc,pdata_pa))
+        vars_pcpa_beta_sep = pcpa_betamodel.vars((pdata_pc,pdata_pa))
+        res_pcpa_beta_sep = pcpa_betamodel.residuals((pdata_pc,pdata_pa))
+        mses_pcpa_beta_ratio = pcpa_betamodel.mse(pdata_pcpa, weights=weights)
+        klds_pcpa_beta_ratio = pcpa_betamodel.kld(pdata_pcpa, weights=weights)
+        evs_pcpa_beta_ratio = pcpa_betamodel.evs(pdata_pcpa, weights=weights)
+        evses_pcpa_beta_ratio = pcpa_betamodel.evse(pdata_pcpa, weights=weights)
+        vars_pcpa_beta_ratio = pcpa_betamodel.vars(pdata_pcpa, weights=weights)
+        res_pcpa_beta_ratio = pcpa_betamodel.residuals(pdata_pcpa, weights=weights)
+        
         for iy in range(career_length):            
             dfeldata = {'name':pname, 'model':'data', 'career_year':iy+1,
                         'ev':pdata_papg[iy], 'kld':0, 'weight':weights[iy]}
@@ -217,8 +258,21 @@ if __name__ == '__main__':
                      'ev':evs_t[iy], 'scale':np.sqrt(vars_t[iy]), 'mse':mses_t[iy], 'kld':klds_t[iy],
                      'evse':evses_t[iy], 'career_year':iy+1, 'weight':weights[iy]}
             modeldf = modeldf.append([dfeldata, dfelnb, dfelcgauss, dfelt], ignore_index=True)
+
+            dfpcpadata = {'name':pname, 'model':'data', 'career_year':iy+1,
+                        'ev':pdata_pcpa[iy], 'kld':0, 'weight':weights[iy]}
+            dfpcpabeta_sep = {'name':pname, 'model':'beta_sep', 'career_year':iy+1, 'weight':1,
+                            'ev':evs_pcpa_beta_sep[iy], 'kld':klds_pcpa_beta_sep[iy],
+                            'mse':mses_pcpa_beta_sep[iy], 'evse':evses_pcpa_beta_sep[iy],
+                            'scale':np.sqrt(vars_pcpa_beta_sep[iy]), 'residuals':res_pcpa_beta_sep[iy]}
+            dfpcpabeta_ratio = {'name':pname, 'model':'beta_ratio', 'career_year':iy+1, 'weight':weights[iy],
+                            'ev':evs_pcpa_beta_ratio[iy], 'kld':klds_pcpa_beta_ratio[iy],
+                            'mse':mses_pcpa_beta_ratio[iy], 'evse':evses_pcpa_beta_ratio[iy],
+                                'scale':np.sqrt(vars_pcpa_beta_ratio[iy]), 'residuals':res_pcpa_beta_ratio[iy]}
+            pcpadf = pcpadf.append([dfpcpadata, dfpcpabeta_sep, dfpcpabeta_ratio], ignore_index=True)
         
     modeldf.reset_index(drop=True, inplace=True)
+    pcpadf.reset_index(drop=True, inplace=True)
         
     # with all the data stored, add some extra stats to the data "model"
     career_long = modeldf['career_year'].max()
@@ -230,27 +284,39 @@ if __name__ == '__main__':
         modeldf.loc[mask,'scale'] = stdyr
         modeldf.loc[mask,'residuals'] = (reldf['ev'] - meanyr)/stdyr
 
-    modeldf['rmse'] = np.sqrt(modeldf['mse'])
-    modeldf['revse'] = np.sqrt(modeldf['evse'])
-    modeldf['norm_rmse'] = modeldf['rmse'] / modeldf['scale']
-    modeldf['norm_revse'] = modeldf['revse'] / modeldf['scale']
+    for df in [modeldf, pcpadf]:
+        df['rmse'] = np.sqrt(df['mse'])
+        df['revse'] = np.sqrt(df['evse'])
+        df['norm_rmse'] = df['rmse'] / df['scale']
+        df['norm_revse'] = df['revse'] / df['scale']
 
     log.info('total player-seasons: {}'.format(modeldf[modeldf['model'] == 'data']['weight'].sum()))
-    for stat in ['evse', 'mse', 'kld']:
-        for model in ['cgauss', 'nbinom', 'studentt']:
+    log.info('  evaluation of pass attempt models:')
+    for model in ['cgauss', 'nbinom', 'studentt']:
+        for stat in ['evse', 'mse', 'kld']:
             thismodel = modeldf[modeldf['model'] == model]
             val = (thismodel[stat]*thismodel['weight']).sum()/thismodel['weight'].sum()
             if stat in ['evse', 'mse']: val = np.sqrt(val)
             log.info('{} for {} model: {:.4g}'.format(stat, model, val))
+    log.info('  evaluation of completion pct models:')
+    for model in ['beta_sep', 'beta_ratio']:
+        for stat in ['evse', 'mse', 'kld']:
+            thismodel = pcpadf[pcpadf['model'] == model]
+            val = (thismodel[stat]*thismodel['weight']).sum()/thismodel['weight'].sum()
+            if stat in ['evse', 'mse']: val = np.sqrt(val)
+            log.info('{} for {} model: {:.4g}'.format(stat, model, val))
+
 
     plot_vars = ['ev', 'residuals'
                  , 'scale'
-                 , 'norm_rmse', 'norm_revse'
-                 , 'rmse', 'revse', 'kld'
+                 # , 'norm_rmse', 'norm_revse'
+                 # , 'rmse', 'revse', 'kld'
     ]
+    pltdf = pcpadf
     for var in plot_vars:
         plt.figure()
-        varplt = sns.lvplot(data=modeldf, x='career_year', y=var, hue='model')
-        plt.title('passing attempts per game played')
+        varplt = sns.lvplot(data=pltdf, x='career_year', y=var, hue='model')
+        # plt.title('passing attempts per game played')
+        plt.title('completion percentage')
 
     plt.show(block=True)
