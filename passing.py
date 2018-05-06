@@ -69,10 +69,10 @@ if __name__ == '__main__':
     stdf,stloc,stscale = st.t.fit(data_papg_rook)
     log.info('fit to student\'s t distribution:\n{}'.format((stdf,stloc,stscale)))
 
-    weib_rook_res = st.weibull_min.fit(data_papg_rook, floc=0)
-    log.info('fit rookies to weibull distribution:\n{}'.format(weib_rook_res))
-    weib_inc_res = st.weibull_min.fit(data_papg_inc, floc=0)
-    log.info('fit all to weibull distribution:\n{}'.format(weib_inc_res))
+    # weib_rook_res = st.weibull_min.fit(data_papg_rook, floc=0)
+    # log.info('fit rookies to weibull distribution:\n{}'.format(weib_rook_res))
+    # weib_inc_res = st.weibull_min.fit(data_papg_inc, floc=0)
+    # log.info('fit all to weibull distribution:\n{}'.format(weib_inc_res))
     
     n_rookie_seasons = len(data_papg_rook)
     n_rookie_games = rookiedf['games_played'].sum()
@@ -80,6 +80,8 @@ if __name__ == '__main__':
     rk_weight_mean = rookiedf['passing_att'].sum() / n_rookie_games
     rk_weight_stddev = np.sqrt(n_rookie_seasons/(n_rookie_seasons-1)*(rookiedf['games_played'] * (rookiedf['pass_att_pg'] - rk_weight_mean)**2).sum()/ n_rookie_games)
     log.info('weighted by games played, rookie distribution has mean/std: {} \pm {}'.format(rk_weight_mean, rk_weight_stddev))
+
+    
     
     sns.set()
     # # drew bledsoe has the most pass attempts per game: 70
@@ -149,11 +151,13 @@ if __name__ == '__main__':
     
     # hyperparameters for t model
     t_mu0 = rk_weight_mean
+    t_mu0 = gp_avg_all
     t_nu0 = 1 # turning this down low reduces EVSE and MSE but increases the KLD
     t_alpha0 = 2.0 # needs to be > 1 to have a well-defined variance.
     # if alpha is large, the contribution to the MSE term is small, though in practice it doesn't seem to change it much
     # t_alpha0 = n_rookie_seasons # 211 rookie seasons, tho turning this up makes the variance not change much (?)
-    t_beta0 = rk_weight_stddev**2 * (t_alpha0-1)/(1+1.0/t_nu0)
+    # t_beta0 = rk_weight_stddev**2 * (t_alpha0-1)/(1+1.0/t_nu0)
+    t_beta0 = gp_var_all * (t_alpha0-1)/(1+1.0/t_nu0)
 
     tmodel = bay.t_model(t_mu0, t_nu0, t_alpha0, t_beta0, lrp)
     
@@ -196,7 +200,9 @@ if __name__ == '__main__':
         vars_t = tmodel.vars(pdata_papg)
         vars_cgauss = cgaussmodel.vars(pdata_papg)
 
-        for iy in range(career_length):
+        for iy in range(career_length):            
+            dfeldata = {'name':pname, 'model':'data', 'career_year':iy+1,
+                        'ev':pdata_papg[iy], 'kld':0}
             dfelnb = {'name':pname, 'model':'nbinom', 'residuals':res_nb[iy],
                       'ev':evs_nb[iy], 'scale':np.sqrt(vars_nb[iy]), 'mse':mses_nb[iy], 'kld':klds_nb[iy],
                       'evse':evses_nb[iy], 'career_year':iy+1}
@@ -206,23 +212,37 @@ if __name__ == '__main__':
             dfelt = {'name':pname, 'model':'studentt', 'residuals':res_t[iy],
                      'ev':evs_t[iy], 'scale':np.sqrt(vars_t[iy]), 'mse':mses_t[iy], 'kld':klds_t[iy],
                      'evse':evses_t[iy], 'career_year':iy+1}
-            modeldf = modeldf.append([dfelnb, dfelcgauss, dfelt])
+            modeldf = modeldf.append([dfeldata, dfelnb, dfelcgauss, dfelt], ignore_index=True)
         
         total_n += career_length
 
+    modeldf.reset_index(drop=True, inplace=True)
+        
+    # with all the data stored, add some extra stats to the data "model"
+    career_long = modeldf['career_year'].max()
+    for iy in range(1,career_long+1):
+        mask = (modeldf['model'] == 'data') & (modeldf['career_year'] == iy)
+        reldf = modeldf[mask]
+        meanyr = reldf['ev'].mean()
+        stdyr = reldf['ev'].std()
+        modeldf.loc[mask,'scale'] = stdyr
+        modeldf.loc[mask,'residuals'] = (reldf['ev'] - meanyr)/stdyr
+
+    modeldf['rmse'] = np.sqrt(modeldf['mse'])
+    modeldf['revse'] = np.sqrt(modeldf['evse'])
+    modeldf['norm_rmse'] = modeldf['rmse'] / modeldf['scale']
+    modeldf['norm_revse'] = modeldf['revse'] / modeldf['scale']
+        
     log.info('total player-seasons: {}'.format(total_n))
     for stat in ['evse', 'mse', 'kld']:
         for model in ['cgauss', 'nbinom', 'studentt']:
             val = modeldf[modeldf['model'] == model][stat].sum()/total_n
             if stat in ['evse', 'mse']: val = np.sqrt(val)
             log.info('{} for {} model: {}'.format(stat, model, val))
-        
-    meanplt = sns.lvplot(data=modeldf, x='career_year', y='ev', hue='model')
-    plt.figure()
 
-    varplt = sns.lvplot(data=modeldf, x='career_year', y='scale', hue='model')
-    plt.figure()
-    
-    # resplt = sns.boxplot(data=modeldf, x='career_year', y='residuals', hue='model')
-    resplt = sns.lvplot(data=modeldf, x='career_year', y='residuals', hue='model')
+    plot_vars = ['ev', 'residuals', 'norm_rmse']
+    for var in plot_vars:
+        plt.figure()
+        varplt = sns.lvplot(data=modeldf, x='career_year', y=var, hue='model')
+
     plt.show(block=True)
