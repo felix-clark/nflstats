@@ -125,6 +125,11 @@ if __name__ == '__main__':
     r0stat = rk_weight_mean**2/(rk_weight_stddev**2 - rk_weight_mean)
     log.info('using weighted rookie to set r,p would yield {:.4g},{:.4g}'.format(r0stat,p0stat))
     
+    ###############################################################
+    
+    # define a model that is just a constant gaussian w/ the inclusive distribution
+    cgaussmodel = bay.const_gauss_model(gp_avg_all, gp_var_all)
+    
     # r0,p0 = rrk,prk
     # log.info('using rookie r,p = {},{}'.format(r0,p0))
     # r0,p0 = rinc,pinc
@@ -132,22 +137,15 @@ if __name__ == '__main__':
     log.info('using (weighted) statistical mean and stddev')
     r0,p0 = r0stat,p0stat
     log.info('starting mean = {}'.format(r0*(1-p0)/p0))
-    
-    total_n = 0
-
-    # define a model that is just a constant gaussian w/ the inclusive distribution
-    cgaussmodel = bay.const_gauss_model(gp_avg_all, gp_var_all)
-    
-    r0p = 1.0*r0
-    # beta0 = p0/(1-p0) # mean = r/beta
+    r0 = 1.0*r0
     # # if scale down r and beta to be on the per-game level?
     # beta0 /= 1 # scaling doesn't seem to help
     # p0p = beta0/(1+beta0)
-    p0p = p0
-    log.info( 'using (possibly reduced) per-game r, b = {}, {}'.format(r0p, p0p))
+    p0 = 1.0*p0
+    log.info( 'using (possibly reduced) per-game r, b = {}, {}'.format(r0, p0))
     lrp = 1.0 # why does the bayes model have worse performance
 
-    nbmodel = bay.neg_binomial_model(r0p, p0p, lrp)
+    nbmodel = bay.neg_binomial_model(r0, p0, lrp)
     
     # hyperparameters for t model
     t_mu0 = rk_weight_mean
@@ -173,50 +171,51 @@ if __name__ == '__main__':
     
     for pname in posnames:
         # explicitly turn into numpy arrays
-        pdata_gs = posdf[posdf['name'] == pname]['games_started'].values
+        pdata_gs = posdf[posdf['name'] == pname]['games_played'].values
         pdata_pa = posdf[posdf['name'] == pname]['passing_att'].values
         pdata_papg = pdata_pa / pdata_gs
         career_length = pdata_gs.size
         if career_length < 2: continue
 
+        weights = np.full(pdata_gs.shape, 1.0)
+        # weights = pdata_gs / np.max(pdata_gs)
+
         # we should probably weight all these by the # of games played each season.
         # the learning should be weighted too, so we need to implement this in the bayes models.
-        mses_nb = nbmodel.mse((pdata_pa,pdata_gs))
-        mses_t = tmodel.mse(pdata_papg)
-        mses_cgauss = cgaussmodel.mse(pdata_papg)
-        normkld = True
-        klds_cgauss = cgaussmodel.kld(pdata_papg, normalize=normkld)
-        klds_nb = nbmodel.kld((pdata_pa,pdata_gs), normalize=normkld)
-        klds_t = tmodel.kld(pdata_papg, normalize=normkld)
-        evses_nb = nbmodel.evse((pdata_pa,pdata_gs))
-        evses_t = tmodel.evse(pdata_papg)
-        evses_cgauss = cgaussmodel.evse(pdata_papg)
-        res_nb = nbmodel.residuals((pdata_pa,pdata_gs))
-        res_t = tmodel.residuals(pdata_papg)
-        res_cgauss = cgaussmodel.residuals(pdata_papg)
-        evs_nb = nbmodel.evs((pdata_pa,pdata_gs))
-        evs_t = tmodel.evs(pdata_papg)
-        evs_cgauss = cgaussmodel.evs(pdata_papg)
-        vars_nb = nbmodel.vars((pdata_pa,pdata_gs))
-        vars_t = tmodel.vars(pdata_papg)
-        vars_cgauss = cgaussmodel.vars(pdata_papg)
+        mses_nb = nbmodel.mse((pdata_pa,pdata_gs), weights=weights)*weights
+        mses_t = tmodel.mse(pdata_papg, weights=weights)*weights
+        mses_cgauss = cgaussmodel.mse(pdata_papg, weights=weights)*weights
+        normkld = False
+        klds_cgauss = cgaussmodel.kld(pdata_papg, weights=weights, normalize=normkld)*weights
+        klds_nb = nbmodel.kld((pdata_pa,pdata_gs), weights=weights, normalize=normkld)*weights
+        klds_t = tmodel.kld(pdata_papg, weights=weights, normalize=normkld)
+        evses_nb = nbmodel.evse((pdata_pa,pdata_gs), weights=weights)
+        evses_t = tmodel.evse(pdata_papg, weights=weights)
+        evses_cgauss = cgaussmodel.evse(pdata_papg, weights=weights)
+        res_nb = nbmodel.residuals((pdata_pa,pdata_gs), weights=weights)
+        res_t = tmodel.residuals(pdata_papg, weights=weights)
+        res_cgauss = cgaussmodel.residuals(pdata_papg, weights=weights)
+        evs_nb = nbmodel.evs((pdata_pa,pdata_gs), weights=weights)
+        evs_t = tmodel.evs(pdata_papg, weights=weights)*weights
+        evs_cgauss = cgaussmodel.evs(pdata_papg, weights=weights)
+        vars_nb = nbmodel.vars((pdata_pa,pdata_gs), weights=weights)
+        vars_t = tmodel.vars(pdata_papg, weights=weights)
+        vars_cgauss = cgaussmodel.vars(pdata_papg, weights=weights)
 
         for iy in range(career_length):            
             dfeldata = {'name':pname, 'model':'data', 'career_year':iy+1,
-                        'ev':pdata_papg[iy], 'kld':0}
+                        'ev':pdata_papg[iy], 'kld':0, 'weight':weights[iy]}
             dfelnb = {'name':pname, 'model':'nbinom', 'residuals':res_nb[iy],
                       'ev':evs_nb[iy], 'scale':np.sqrt(vars_nb[iy]), 'mse':mses_nb[iy], 'kld':klds_nb[iy],
-                      'evse':evses_nb[iy], 'career_year':iy+1}
+                      'evse':evses_nb[iy], 'career_year':iy+1, 'weight':weights[iy]}
             dfelcgauss = {'name':pname, 'model':'cgauss', 'residuals':res_cgauss[iy],
                           'ev':evs_cgauss[iy], 'scale':np.sqrt(vars_cgauss[iy]), 'mse':mses_cgauss[iy], 'kld':klds_cgauss[iy],
-                          'evse':evses_cgauss[iy], 'career_year':iy+1}
+                          'evse':evses_cgauss[iy], 'career_year':iy+1, 'weight':weights[iy]}
             dfelt = {'name':pname, 'model':'studentt', 'residuals':res_t[iy],
                      'ev':evs_t[iy], 'scale':np.sqrt(vars_t[iy]), 'mse':mses_t[iy], 'kld':klds_t[iy],
-                     'evse':evses_t[iy], 'career_year':iy+1}
+                     'evse':evses_t[iy], 'career_year':iy+1, 'weight':weights[iy]}
             modeldf = modeldf.append([dfeldata, dfelnb, dfelcgauss, dfelt], ignore_index=True)
         
-        total_n += career_length
-
     modeldf.reset_index(drop=True, inplace=True)
         
     # with all the data stored, add some extra stats to the data "model"
@@ -234,14 +233,15 @@ if __name__ == '__main__':
     modeldf['norm_rmse'] = modeldf['rmse'] / modeldf['scale']
     modeldf['norm_revse'] = modeldf['revse'] / modeldf['scale']
         
-    log.info('total player-seasons: {}'.format(total_n))
+    log.info('total player-seasons: {}'.format(modeldf[modeldf['model'] == 'data']['weight'].sum()))
     for stat in ['evse', 'mse', 'kld']:
         for model in ['cgauss', 'nbinom', 'studentt']:
-            val = modeldf[modeldf['model'] == model][stat].sum()/total_n
+            thismodel = modeldf[modeldf['model'] == model]
+            val = (thismodel[stat]*thismodel['weight']).sum()/thismodel['weight'].sum()
             if stat in ['evse', 'mse']: val = np.sqrt(val)
             log.info('{} for {} model: {}'.format(stat, model, val))
 
-    plot_vars = ['ev', 'residuals', 'norm_rmse', 'kld']
+    plot_vars = ['ev', 'residuals', 'norm_rmse', 'norm_revse']
     for var in plot_vars:
         plt.figure()
         varplt = sns.lvplot(data=modeldf, x='career_year', y=var, hue='model')

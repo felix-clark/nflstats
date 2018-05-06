@@ -56,16 +56,16 @@ class const_gauss_model(bayes_model):
         self.mu = mu
         self.var = var
 
-    def _evs(self, data):
+    def _evs(self, data, weights=None):
         return np.full(data.shape, self.mu)
         
-    def _vars(self, data):
+    def _vars(self, data, weights=None):
         return np.full(data.shape, self.var)
     
-    def _mse(self, data):
+    def _mse(self, data, weights=None):
         return (self.mu-data)**2 + self.var
 
-    def _mae(self, data):
+    def _mae(self, data, weights=None):
         raise NotImplementedError('technically this is implemented, but it is quite slow')
         # we can loop through manually, at least
         maes = []
