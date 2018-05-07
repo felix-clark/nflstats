@@ -9,7 +9,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
-# from sys import argv
+from sys import argv
 import scipy.stats as st
 
 # get a dataframe of the relevant positional players
@@ -122,11 +122,16 @@ if __name__ == '__main__':
     # plt.show(block=True)
 
     ## completion PCT
-    pct_mean = np.mean(data_pcpa_rook)
-    pct_var = np.var(data_pcpa_rook)
-    alpha_pcpa_rook = pct_mean*( pct_mean*(1-pct_mean)/pct_var - 1 )
-    beta_pcpa_rook = (1-pct_mean)*( pct_mean*(1-pct_mean)/pct_var - 1 )
+    pct_mean_rook = np.mean(data_pcpa_rook)
+    pct_var_rook = np.var(data_pcpa_rook)
+    alpha_pcpa_rook = pct_mean_rook*( pct_mean_rook*(1-pct_mean_rook)/pct_var_rook - 1 )
+    beta_pcpa_rook = (1-pct_mean_rook)*( pct_mean_rook*(1-pct_mean_rook)/pct_var_rook - 1 )
     log.info('using statistical rookie cmp%: beta dist pars: a = {:.4g}, b = {:.4g}'.format(alpha_pcpa_rook, beta_pcpa_rook))
+    pct_mean_inc = np.mean(data_pcpa_inc)
+    pct_var_inc = np.var(data_pcpa_inc)
+    alpha_pcpa_inc = pct_mean_inc*( pct_mean_inc*(1-pct_mean_inc)/pct_var_inc - 1 )
+    beta_pcpa_inc = (1-pct_mean_inc)*( pct_mean_inc*(1-pct_mean_inc)/pct_var_inc - 1 )
+    log.info('using statistical inclusive cmp%: beta dist pars: a = {:.4g}, b = {:.4g}'.format(alpha_pcpa_inc, beta_pcpa_inc))
     # xfvals = np.linspace(0.0, 1.0, 128)
     # bins_pcpa = np.linspace(0,1,64+1)
     # plt_gp = sns.distplot(data_pcpa_rook, bins=bins_pcpa,
@@ -140,7 +145,7 @@ if __name__ == '__main__':
     
     papg_avg_all = data_papg_inc.mean()
     papg_var_all = data_papg_inc.var()
-    log.info('used for const model: average attempts per game (inclusive) = {} \pm {}'.format(papg_avg_all, np.sqrt(papg_var_all)))
+    log.info('used for const model: average attempts per game (inclusive) = {:.4g} \pm {:.4g}'.format(papg_avg_all, np.sqrt(papg_var_all)))
     p0stat = papg_avg_all/papg_var_all
     r0stat = papg_avg_all**2/(papg_var_all-papg_avg_all)
     # the distribution for passing attempts is underdispersed compared to neg. bin.
@@ -155,7 +160,7 @@ if __name__ == '__main__':
     # define a baseline model that is just a constant gaussian w/ the inclusive distribution
     cgaussmodel = bay.const_gauss_model(papg_avg_all, papg_var_all)
 
-    memory = 0.875 # a bit of memory loss can account for overall changes. this is like the exponential window.
+    # a memory of 1-1/N corresponds to an exponentially-falling window w/ length scale N
     memory = 1 - 1/2**4
     
     # r0,p0 = rrk,prk
@@ -189,13 +194,20 @@ if __name__ == '__main__':
 
     ## model for cmp %
     lr_cmp_pct = 1.0
-    mem_cmp_pct = 1.0# 1-1/2**4
-    pcpa_betamodel_sep = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct, mem=mem_cmp_pct)
-    pcpa_betamodel_ratio = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct, mem=mem_cmp_pct)
-    
-    modeldf = pd.DataFrame()
-    pcpadf = pd.DataFrame()
-    
+    mem_cmp_pct = 1-1/2**3
+    # the separated model works if the learn rate is slowed
+    # the ratio model is decent too if we speed up learning, but the scale is not very dynamic (all widths the same)
+    # both slightly under-predict the data (positive residuals, on average); possibly because completion % tends to increase w/ time?
+    # maybe using the full (non-rookie) would help -- there's not much difference. it's more important to use the separated model
+    pcpa_betamodel_sep = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct/16, mem=mem_cmp_pct)
+    pcpa_betamodel_ratio = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct*16, mem=mem_cmp_pct)
+    # pcpa_betamodel_sep = bay.beta_model(alpha_pcpa_inc, beta_pcpa_inc, lr=lr_cmp_pct/16, mem=mem_cmp_pct)
+    # pcpa_betamodel_ratio = bay.beta_model(alpha_pcpa_inc, beta_pcpa_inc, lr=lr_cmp_pct*16, mem=mem_cmp_pct)
+
+    # collect models for easy abstraction
+    papg_struct = {'df':pd.DataFrame(), 'models':{'cgauss':cgaussmodel, 'studentt':tmodel}, 'models_sep':{'nbinom':nbmodel}}
+    pcpa_struct = {'df':pd.DataFrame(), 'models':{'beta_ratio':pcpa_betamodel_ratio}, 'models_sep':{'beta_sep':pcpa_betamodel_sep}}
+
     for pname in posnames:
         pdata = posdf[posdf['name'] == pname]
         # explicitly turn into numpy arrays
@@ -210,92 +222,69 @@ if __name__ == '__main__':
 
         weights = np.full(pdata_gs.shape, 1.0)
         # weights = pdata_gs / np.max(pdata_gs)
-
-        # we should probably weight all these by the # of games played each season.
-        # the learning should be weighted too, so we need to implement this in the bayes models.
-        mses_nb = nbmodel.mse((pdata_pa,pdata_gs), weights=weights)*weights
-        mses_t = tmodel.mse(pdata_papg, weights=weights)*weights
-        mses_cgauss = cgaussmodel.mse(pdata_papg, weights=weights)*weights
         normkld = False
-        klds_cgauss = cgaussmodel.kld(pdata_papg, weights=weights, normalize=normkld)*weights
-        klds_nb = nbmodel.kld((pdata_pa,pdata_gs), weights=weights, normalize=normkld)*weights
-        klds_t = tmodel.kld(pdata_papg, weights=weights, normalize=normkld)
-        evses_nb = nbmodel.evse((pdata_pa,pdata_gs), weights=weights)
-        evses_t = tmodel.evse(pdata_papg, weights=weights)
-        evses_cgauss = cgaussmodel.evse(pdata_papg, weights=weights)
-        res_nb = nbmodel.residuals((pdata_pa,pdata_gs), weights=weights)
-        res_t = tmodel.residuals(pdata_papg, weights=weights)
-        res_cgauss = cgaussmodel.residuals(pdata_papg, weights=weights)
-        evs_nb = nbmodel.evs((pdata_pa,pdata_gs), weights=weights)
-        evs_t = tmodel.evs(pdata_papg, weights=weights)*weights
-        evs_cgauss = cgaussmodel.evs(pdata_papg, weights=weights)
-        vars_nb = nbmodel.vars((pdata_pa,pdata_gs), weights=weights)
-        vars_t = tmodel.vars(pdata_papg, weights=weights)
-        vars_cgauss = cgaussmodel.vars(pdata_papg, weights=weights)
 
-        mses_pcpa_beta_sep = pcpa_betamodel_sep.mse((pdata_pc,pdata_pa))
-        klds_pcpa_beta_sep = pcpa_betamodel_sep.kld((pdata_pc,pdata_pa))
-        evs_pcpa_beta_sep = pcpa_betamodel_sep.evs((pdata_pc,pdata_pa))
-        evses_pcpa_beta_sep = pcpa_betamodel_sep.evse((pdata_pc,pdata_pa))
-        vars_pcpa_beta_sep = pcpa_betamodel_sep.vars((pdata_pc,pdata_pa))
-        res_pcpa_beta_sep = pcpa_betamodel_sep.residuals((pdata_pc,pdata_pa))
-        mses_pcpa_beta_ratio = pcpa_betamodel_ratio.mse(pdata_pcpa, weights=weights)
-        klds_pcpa_beta_ratio = pcpa_betamodel_ratio.kld(pdata_pcpa, weights=weights)
-        evs_pcpa_beta_ratio = pcpa_betamodel_ratio.evs(pdata_pcpa, weights=weights)
-        evses_pcpa_beta_ratio = pcpa_betamodel_ratio.evse(pdata_pcpa, weights=weights)
-        vars_pcpa_beta_ratio = pcpa_betamodel_ratio.vars(pdata_pcpa, weights=weights)
-        res_pcpa_beta_ratio = pcpa_betamodel_ratio.residuals(pdata_pcpa, weights=weights)
-        
-        for iy in range(career_length):            
-            dfeldata = {'name':pname, 'model':'data', 'career_year':iy+1,
-                        'ev':pdata_papg[iy], 'kld':0, 'weight':weights[iy]}
-            dfelnb = {'name':pname, 'model':'nbinom', 'residuals':res_nb[iy],
-                      'ev':evs_nb[iy], 'scale':np.sqrt(vars_nb[iy]), 'mse':mses_nb[iy], 'kld':klds_nb[iy],
-                      'evse':evses_nb[iy], 'career_year':iy+1, 'weight':weights[iy]}
-            dfelcgauss = {'name':pname, 'model':'cgauss', 'residuals':res_cgauss[iy],
-                          'ev':evs_cgauss[iy], 'scale':np.sqrt(vars_cgauss[iy]), 'mse':mses_cgauss[iy], 'kld':klds_cgauss[iy],
-                          'evse':evses_cgauss[iy], 'career_year':iy+1, 'weight':weights[iy]}
-            dfelt = {'name':pname, 'model':'studentt', 'residuals':res_t[iy],
-                     'ev':evs_t[iy], 'scale':np.sqrt(vars_t[iy]), 'mse':mses_t[iy], 'kld':klds_t[iy],
-                     'evse':evses_t[iy], 'career_year':iy+1, 'weight':weights[iy]}
-            modeldf = modeldf.append([dfeldata, dfelnb, dfelcgauss, dfelt], ignore_index=True)
+        qlist = [(papg_struct,pdata_pa,pdata_gs)
+                 ,(pcpa_struct,pdata_pc,pdata_pa)]
+        for qstruct,numq,denq in qlist:
+            ratioq = numq/denq
+            df = qstruct['df']
+            df = df.append(pd.DataFrame([{'name':pname, 'model':'data', 'career_year':iy+1,
+                             'ev':ratioq[iy], 'kld':0,
+                             'weight':weights[iy]} for iy in range(career_length)]), ignore_index=True)
+            for mname,model in qstruct['models'].items():
+                mses = model.mse(ratioq, weights=weights)*weights
+                klds = model.kld(ratioq, weights=weights, normalize=normkld)*weights
+                evses = model.evse(ratioq, weights=weights)
+                evs = model.evs(ratioq, weights=weights)
+                vrs = model.vars(ratioq, weights=weights)
+                res = model.residuals(ratioq, weights=weights)
+                df = df.append([{'name':pname, 'model':mname, 'residuals':res[iy],
+                                 'ev':evs[iy], 'scale':np.sqrt(vrs[iy]),
+                                 'mse':mses[iy], 'kld':klds[iy],
+                                 'evse':evses[iy], 'career_year':iy+1,
+                                 'weight':weights[iy]} for iy in range(career_length)], ignore_index=True)
+            for mname,model in qstruct['models_sep'].items():
+                mses = model.mse((numq,denq), weights=weights)*weights
+                klds = model.kld((numq,denq), weights=weights, normalize=normkld)*weights
+                evses = model.evse((numq,denq), weights=weights)
+                evs = model.evs((numq,denq), weights=weights)
+                vrs = model.vars((numq,denq), weights=weights)
+                res = model.residuals((numq,denq), weights=weights)
+                df = df.append([{'name':pname, 'model':mname, 'residuals':res[iy],
+                                 'ev':evs[iy], 'scale':np.sqrt(vrs[iy]),
+                                 'mse':mses[iy], 'kld':klds[iy],
+                                 'evse':evses[iy], 'career_year':iy+1,
+                                 'weight':weights[iy]} for iy in range(career_length)], ignore_index=True)
+            qstruct['df'] = df # we have to re-assign
 
-            dfpcpadata = {'name':pname, 'model':'data', 'career_year':iy+1,
-                        'ev':pdata_pcpa[iy], 'kld':0, 'weight':weights[iy]}
-            dfpcpabeta_sep = {'name':pname, 'model':'beta_sep', 'career_year':iy+1, 'weight':1,
-                            'ev':evs_pcpa_beta_sep[iy], 'kld':klds_pcpa_beta_sep[iy],
-                            'mse':mses_pcpa_beta_sep[iy], 'evse':evses_pcpa_beta_sep[iy],
-                            'scale':np.sqrt(vars_pcpa_beta_sep[iy]), 'residuals':res_pcpa_beta_sep[iy]}
-            dfpcpabeta_ratio = {'name':pname, 'model':'beta_ratio', 'career_year':iy+1, 'weight':weights[iy],
-                            'ev':evs_pcpa_beta_ratio[iy], 'kld':klds_pcpa_beta_ratio[iy],
-                            'mse':mses_pcpa_beta_ratio[iy], 'evse':evses_pcpa_beta_ratio[iy],
-                                'scale':np.sqrt(vars_pcpa_beta_ratio[iy]), 'residuals':res_pcpa_beta_ratio[iy]}
-            pcpadf = pcpadf.append([dfpcpadata, dfpcpabeta_sep, dfpcpabeta_ratio], ignore_index=True)
-        
-    modeldf.reset_index(drop=True, inplace=True)
+            
+    papgdf = papg_struct['df']
+    pcpadf = pcpa_struct['df']
+    papgdf.reset_index(drop=True, inplace=True)
     pcpadf.reset_index(drop=True, inplace=True)
-        
+
     # with all the data stored, add some extra stats to the data "model"
-    career_long = modeldf['career_year'].max()
+    career_long = papgdf['career_year'].max()
     for iy in range(1,career_long+1):
-        mask = (modeldf['model'] == 'data') & (modeldf['career_year'] == iy)
-        reldf = modeldf[mask]
+        mask = (papgdf['model'] == 'data') & (papgdf['career_year'] == iy)
+        reldf = papgdf[mask]
         meanyr = reldf['ev'].mean()
         stdyr = reldf['ev'].std()
-        modeldf.loc[mask,'scale'] = stdyr
-        modeldf.loc[mask,'residuals'] = (reldf['ev'] - meanyr)/stdyr
+        papgdf.loc[mask,'scale'] = stdyr
+        papgdf.loc[mask,'residuals'] = (reldf['ev'] - meanyr)/stdyr
 
-    for df in [modeldf, pcpadf]:
+    for df in [papgdf, pcpadf]:
         df['rmse'] = np.sqrt(df['mse'])
         df['revse'] = np.sqrt(df['evse'])
         df['norm_rmse'] = df['rmse'] / df['scale']
         df['norm_revse'] = df['revse'] / df['scale']
 
-    log.info('total player-seasons: {}'.format(modeldf[modeldf['model'] == 'data']['weight'].sum()))
+    log.info('total player-seasons: {}'.format(papgdf[papgdf['model'] == 'data']['weight'].sum()))
     log.info('  evaluation of pass attempt models:')
     for model in ['cgauss', 'nbinom', 'studentt']:
         for stat in ['evse', 'mse', 'kld']:
-            thismodel = modeldf[modeldf['model'] == model]
+            thismodel = papgdf[papgdf['model'] == model]
             val = (thismodel[stat]*thismodel['weight']).sum()/thismodel['weight'].sum()
             if stat in ['evse', 'mse']: val = np.sqrt(val)
             log.info('{} for {} model: {:.4g}'.format(stat, model, val))
@@ -308,12 +297,13 @@ if __name__ == '__main__':
             log.info('{} for {} model: {:.4g}'.format(stat, model, val))
 
 
-    plot_vars = ['ev', 'residuals'
-                 , 'scale'
-                 , 'norm_rmse', 'norm_revse'
-                 , 'rmse', 'revse', 'kld'
-    ]
+    plot_vars = ['ev', 'residuals', 'scale']
+    if 'all' in argv:
+        plot_vars += ['norm_rmse', 'norm_revse', 'rmse', 'revse', 'kld']
+    
     pltdf = pcpadf
+    if 'att' in argv: pltdf = papgdf
+    if 'cmp' in argv: pltdf = pcpadf
     for var in plot_vars:
         plt.figure()
         varplt = sns.lvplot(data=pltdf, x='career_year', y=var, hue='model')
