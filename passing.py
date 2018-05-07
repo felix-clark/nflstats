@@ -54,8 +54,11 @@ if __name__ == '__main__':
     posdf['pass_cmp_pa'] = posdf['passing_cmp'] / posdf['passing_att']
     # since completion percentage is not independent of the yardage, it may be better to consider yds/att.
     posdf['pass_yds_pc'] = posdf['passing_yds'] / posdf['passing_cmp']
+    posdf['pass_yds_pa'] = posdf['passing_yds'] / posdf['passing_att']
     # TDs per attempt instead of per game scales out short games properly
     posdf['pass_td_pa'] = posdf['passing_td'] / posdf['passing_att']
+    posdf['pass_td_pc'] = posdf['passing_td'] / posdf['passing_cmp']
+    posdf['pass_td_py'] = posdf['passing_td'] / posdf['passing_yds']
 
     rookiedf = pd.concat([posdf[posdf['name'] == name].head(1) for name in posnames])
 
@@ -63,11 +66,15 @@ if __name__ == '__main__':
     data_papg_inc = posdf['pass_att_pg'].values
     data_pcpa_inc = posdf['pass_cmp_pa'].values
     data_pypc_inc = posdf['pass_yds_pc'].values
+    data_pypa_inc = posdf['pass_yds_pa'].values
     data_ptdpa_inc = posdf['pass_td_pa'].values
+    data_ptdpc_inc = posdf['pass_td_pc'].values
     data_papg_rook = rookiedf['pass_att_pg'].values
     data_pcpa_rook = rookiedf['pass_cmp_pa'].values
     data_pypc_rook = rookiedf['pass_yds_pc'].values
+    data_pypa_rook = rookiedf['pass_yds_pa'].values
     data_ptdpa_rook = rookiedf['pass_td_pa'].values
+    data_ptdpc_rook = rookiedf['pass_td_pc'].values
 
     # _,(rrk,prk),cov,llpdf = dist_fit.to_neg_binomial( data_papg_rook )
     # log.info('rookie: r = {}, p = {}, LL per dof = {}'.format(rrk, prk, llpdf))
@@ -93,6 +100,15 @@ if __name__ == '__main__':
     
     
     sns.set()
+
+    # plt.figure()
+    rookplt = sns.pairplot(rookiedf, vars=['pass_att_pg','pass_cmp_pa','pass_yds_pc','pass_td_pc'])
+    rookplt.savefig('rookie_qb_corrs.png')
+    # plt.figure()
+    rookplt = sns.pairplot(rookiedf, vars=['pass_yds_pc','pass_td_pa','pass_td_pc','pass_td_py'])
+    rookplt.savefig('rookie_qb_td_corrs.png')    
+    plt.show(block=True)
+    
     # # drew bledsoe has the most pass attempts per game: 70
     # xfvals = np.linspace(-0.5, 80+0.5, 128)
     # bins_papg = None # range(0,80)
@@ -154,6 +170,24 @@ if __name__ == '__main__':
     p0stat = rk_weight_mean/rk_weight_stddev**2
     r0stat = rk_weight_mean**2/(rk_weight_stddev**2 - rk_weight_mean)
     log.info('using weighted rookie to set r,p would yield {:.4g},{:.4g}'.format(r0stat,p0stat))
+
+
+    pypc_avg_rook = data_pypc_rook.mean()
+    pypc_var_rook = data_pypc_rook.var()
+    xfvals = np.linspace(0, 40, 128)
+    bins_pypc = np.linspace(5,20,64)
+    plt.figure()
+    plt_gp = sns.distplot(data_pypc_rook, bins=bins_pypc,
+                          kde=False, norm_hist=True,
+                          hist_kws={'log':False, 'align':'mid'})
+    # plt.plot(xfvals, st.beta.pdf(xfvals, alpha_pcpa_rook, beta_pcpa_rook), '--', lw=2, color='violet')
+    plt.title('rookie yds/cmp')
+    plt_gp.figure.savefig('pass_yds_pc_rookie.png'.format())
+    plt_gp.figure.show()
+    pypa_avg_rook = data_pypa_rook.mean()
+    pypa_var_rook = data_pypa_rook.var()
+    log.info('sigma/mu for pass yards per completion: {:.4g}'.format(np.sqrt(pypc_var_rook)/pypc_avg_rook))
+    log.info('sigma/mu for pass yards per attempt: {:.4g}'.format(np.sqrt(pypa_var_rook)/pypa_avg_rook))
     
     ###############################################################
     
@@ -201,12 +235,22 @@ if __name__ == '__main__':
     # maybe using the full (non-rookie) would help -- there's not much difference. it's more important to use the separated model
     pcpa_betamodel_sep = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct/16, mem=mem_cmp_pct)
     pcpa_betamodel_ratio = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct*16, mem=mem_cmp_pct)
-    # pcpa_betamodel_sep = bay.beta_model(alpha_pcpa_inc, beta_pcpa_inc, lr=lr_cmp_pct/16, mem=mem_cmp_pct)
-    # pcpa_betamodel_ratio = bay.beta_model(alpha_pcpa_inc, beta_pcpa_inc, lr=lr_cmp_pct*16, mem=mem_cmp_pct)
+
+    ## models for ypc
+    ypc_r0 = pypc_avg_rook**2/(pypc_var_rook - pypc_avg_rook)
+    ypc_p0 = pypc_avg_rook/pypc_var_rook
+    pypc_nbmodel = bay.neg_binomial_model(ypc_r0, ypc_p0, lr=1.0, mem=1-1/2**4)
+    # maybe use inclusive instead of rookie?
+    ypc_mu0 = pypc_avg_rook
+    ypc_nu0 = 1
+    ypc_alpha0 = 2
+    ypc_beta0 = pypc_var_rook * (ypc_alpha0-1)/(1+1/ypc_nu0)
+    pypc_tmodel = bay.t_model(ypc_mu0, ypc_nu0, ypc_alpha0, ypc_beta0, lr=1.0, mem=1.0)
 
     # collect models for easy abstraction
-    papg_struct = {'df':pd.DataFrame(), 'models':{'cgauss':cgaussmodel, 'studentt':tmodel}, 'models_sep':{'nbinom':nbmodel}}
-    pcpa_struct = {'df':pd.DataFrame(), 'models':{'beta_ratio':pcpa_betamodel_ratio}, 'models_sep':{'beta_sep':pcpa_betamodel_sep}}
+    papg_struct = {'df':pd.DataFrame(), 'desc':'pass attempts per game', 'models':{'cgauss':cgaussmodel, 'studentt':tmodel}, 'models_sep':{'nbinom':nbmodel}}
+    pcpa_struct = {'df':pd.DataFrame(), 'desc':'completion percentage', 'models':{'beta_ratio':pcpa_betamodel_ratio}, 'models_sep':{'beta_sep':pcpa_betamodel_sep}}
+    pypc_struct = {'df':pd.DataFrame(), 'desc':'yards per completion', 'models':{'studentt':pypc_tmodel}, 'models_sep':{'nbinom':pypc_nbmodel}}
 
     for pname in posnames:
         pdata = posdf[posdf['name'] == pname]
@@ -214,8 +258,9 @@ if __name__ == '__main__':
         pdata_gs = pdata['games_played'].values
         pdata_pa = pdata['passing_att'].values
         pdata_pc = pdata['passing_cmp'].values
-        pdata_papg = pdata_pa / pdata_gs
-        pdata_pcpa = pdata_pc / pdata_pa
+        pdata_pyds = pdata['passing_yds'].values
+        # pdata_papg = pdata_pa / pdata_gs
+        # pdata_pcpa = pdata_pc / pdata_pa
         # we should really do an analysis of the covariance between attempts and completion % on a per-player basis
         career_length = pdata_gs.size
         if career_length < 2: continue
@@ -225,7 +270,8 @@ if __name__ == '__main__':
         normkld = False
 
         qlist = [(papg_struct,pdata_pa,pdata_gs)
-                 ,(pcpa_struct,pdata_pc,pdata_pa)]
+                 ,(pcpa_struct,pdata_pc,pdata_pa)
+                 ,(pypc_struct,pdata_pyds,pdata_pc)]
         for qstruct,numq,denq in qlist:
             ratioq = numq/denq
             df = qstruct['df']
@@ -281,23 +327,19 @@ if __name__ == '__main__':
         df['norm_revse'] = df['revse'] / df['scale']
 
     log.info('total player-seasons: {}'.format(papgdf[papgdf['model'] == 'data']['weight'].sum()))
-    log.info('  evaluation of pass attempt models:')
-    for model in ['cgauss', 'nbinom', 'studentt']:
-        for stat in ['evse', 'mse', 'kld']:
-            thismodel = papgdf[papgdf['model'] == model]
-            val = (thismodel[stat]*thismodel['weight']).sum()/thismodel['weight'].sum()
-            if stat in ['evse', 'mse']: val = np.sqrt(val)
-            log.info('{} for {} model: {:.4g}'.format(stat, model, val))
-    log.info('  evaluation of completion pct models:')
-    for model in ['beta_sep', 'beta_ratio']:
-        for stat in ['evse', 'mse', 'kld']:
-            thismodel = pcpadf[pcpadf['model'] == model]
-            val = (thismodel[stat]*thismodel['weight']).sum()/thismodel['weight'].sum()
-            if stat in ['evse', 'mse']: val = np.sqrt(val)
-            log.info('{} for {} model: {:.4g}'.format(stat, model, val))
+    for st in [papg_struct, pcpa_struct, pypc_struct]:
+        log.info('  evaluation of {} models:'.format(st['desc']))
+        mnames = [mn for mn in st['models'].keys()] + [mn for mn in st['models_sep'].keys()]
+        for model in mnames:
+            for stat in ['evse', 'mse', 'kld']:
+                df = st['df']
+                thismodel = df[df['model'] == model]
+                val = (thismodel[stat]*thismodel['weight']).sum()/thismodel['weight'].sum()
+                if stat in ['evse', 'mse']: val = np.sqrt(val)
+                log.info('{} for {} model: {:.4g}'.format(stat, model, val))
 
-
-    plot_vars = ['ev', 'residuals', 'scale']
+    plot_vars = []
+    if 'noplt' not in argv: plot_vars += ['ev', 'residuals', 'scale']
     if 'all' in argv:
         plot_vars += ['norm_rmse', 'norm_revse', 'rmse', 'revse', 'kld']
     
