@@ -222,8 +222,8 @@ class beta_model(bayes_model):
         betas = [self.beta0]
         if len(data.shape) == 2:
             for (dn,dd),w in zip(data.T[:-1],ws):
-                alphas.append(self.mem*alphas[-1]+w*dn)
-                betas.append(self.mem*betas[-1]+w*dd)
+                alphas.append(self.mem*alphas[-1] + w*dn)
+                betas.append(self.mem*betas[-1] + w*(dd-dn))
                 # alphas.append(self.mem*alphas[-1]+w*dn/dd)
                 # betas.append(self.mem*betas[-1]+w)
         else:
@@ -243,9 +243,7 @@ class beta_model(bayes_model):
         # return alpha,beta
         if len(data.shape) == 2:
             alpha += sum(ws*data[0])
-            beta += sum(ws*data[1])
-            # alpha += sum(ws*data[0]/data[1])
-            # beta += sum(ws)
+            beta += sum(ws*(data[1]-data[0]))
         else:
             alpha += sum(ws*data)
             beta += sum(ws*(1-data))
@@ -276,20 +274,6 @@ class neg_binomial_model(bayes_model):
         rs,ps = self._get_rps(data, weights)
         rdata = data if len(data.shape) == 1 else data[0] / data[1]
         return rs*(1-ps)/ps**2
-    
-    # def evse(self, data, weights=None):
-    #     """
-    #     we need to overwrite this for the case where two data cols are provided
-    #     """
-    #     darray = np.array(data)
-    #     rdata = darray if len(darray.shape) == 1 else darray[0] / darray[1]
-    #     return (rdata - self.evs(darray, weights))**2
-    
-    # def residuals(self, data, weights=None):
-    #     # this also needs to be overwritten
-    #     darray = np.array(data)
-    #     rdata = darray if len(darray.shape) == 1 else darray[0] / darray[1]
-    #     return (rdata - self.evs(data, weights))/np.sqrt(self.vars(data, weights))
     
     def _mse(self, data, weights=None):
         mses = []

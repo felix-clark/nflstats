@@ -126,23 +126,23 @@ if __name__ == '__main__':
     pct_var = np.var(data_pcpa_rook)
     alpha_pcpa_rook = pct_mean*( pct_mean*(1-pct_mean)/pct_var - 1 )
     beta_pcpa_rook = (1-pct_mean)*( pct_mean*(1-pct_mean)/pct_var - 1 )
-    log.info('using statistical rookie cmp%: a = {}, b = {}'.format(alpha_pcpa_rook, beta_pcpa_rook))
-    xfvals = np.linspace(0.0, 1.0, 128)
-    bins_pcpa = np.linspace(0,1,64+1)
-    plt_gp = sns.distplot(data_pcpa_rook, bins=bins_pcpa,
-                          kde=False, norm_hist=True,
-                          hist_kws={'log':False, 'align':'mid'})
-    plt.plot(xfvals, st.beta.pdf(xfvals, alpha_pcpa_rook, beta_pcpa_rook), '--', lw=2, color='violet')
-    plt.title('rookie completion percentage')
-    plt_gp.figure.savefig('pass_cmp_pa_rookie.png'.format())
-    plt_gp.figure.show()
+    log.info('using statistical rookie cmp%: beta dist pars: a = {:.4g}, b = {:.4g}'.format(alpha_pcpa_rook, beta_pcpa_rook))
+    # xfvals = np.linspace(0.0, 1.0, 128)
+    # bins_pcpa = np.linspace(0,1,64+1)
+    # plt_gp = sns.distplot(data_pcpa_rook, bins=bins_pcpa,
+    #                       kde=False, norm_hist=True,
+    #                       hist_kws={'log':False, 'align':'mid'})
+    # plt.plot(xfvals, st.beta.pdf(xfvals, alpha_pcpa_rook, beta_pcpa_rook), '--', lw=2, color='violet')
+    # plt.title('rookie completion percentage')
+    # plt_gp.figure.savefig('pass_cmp_pa_rookie.png'.format())
+    # plt_gp.figure.show()
 
     
-    gp_avg_all = data_papg_inc.mean()
-    gp_var_all = data_papg_inc.var()
-    log.info('used for const model: average attempts per game (inclusive) = {} \pm {}'.format(gp_avg_all, np.sqrt(gp_var_all)))
-    p0stat = gp_avg_all/gp_var_all
-    r0stat = gp_avg_all**2/(gp_var_all-gp_avg_all)
+    papg_avg_all = data_papg_inc.mean()
+    papg_var_all = data_papg_inc.var()
+    log.info('used for const model: average attempts per game (inclusive) = {} \pm {}'.format(papg_avg_all, np.sqrt(papg_var_all)))
+    p0stat = papg_avg_all/papg_var_all
+    r0stat = papg_avg_all**2/(papg_var_all-papg_avg_all)
     # the distribution for passing attempts is underdispersed compared to neg. bin.
     # it actually works well for pass completions, though
     log.info('using the inclusive stats to set r,p would yield {:.4g},{:.4g}'.format(r0stat,p0stat))
@@ -153,7 +153,7 @@ if __name__ == '__main__':
     ###############################################################
     
     # define a baseline model that is just a constant gaussian w/ the inclusive distribution
-    cgaussmodel = bay.const_gauss_model(gp_avg_all, gp_var_all)
+    cgaussmodel = bay.const_gauss_model(papg_avg_all, papg_var_all)
 
     memory = 0.875 # a bit of memory loss can account for overall changes. this is like the exponential window.
     memory = 1 - 1/2**4
@@ -177,20 +177,21 @@ if __name__ == '__main__':
     
     # hyperparameters for t model
     t_mu0 = rk_weight_mean
-    t_mu0 = gp_avg_all
+    t_mu0 = papg_avg_all
     t_nu0 = 1 # turning this down low reduces EVSE and MSE but increases the KLD
     t_alpha0 = 2.0 # needs to be > 1 to have a well-defined variance.
     # if alpha is large, the contribution to the MSE term is small, though in practice it doesn't seem to change it much
     # t_alpha0 = n_rookie_seasons # 211 rookie seasons, tho turning this up makes the variance not change much (?)
     # t_beta0 = rk_weight_stddev**2 * (t_alpha0-1)/(1+1.0/t_nu0)
-    t_beta0 = gp_var_all * (t_alpha0-1)/(1+1.0/t_nu0)
+    t_beta0 = papg_var_all * (t_alpha0-1)/(1+1.0/t_nu0)
 
     tmodel = bay.t_model(t_mu0, t_nu0, t_alpha0, t_beta0, lrp, mem=memory)
 
     ## model for cmp %
     lr_cmp_pct = 1.0
-    mem_cmp_pct = 1-1/2**4
-    pcpa_betamodel = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct, mem=mem_cmp_pct)
+    mem_cmp_pct = 1.0# 1-1/2**4
+    pcpa_betamodel_sep = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct, mem=mem_cmp_pct)
+    pcpa_betamodel_ratio = bay.beta_model(alpha_pcpa_rook, beta_pcpa_rook, lr=lr_cmp_pct, mem=mem_cmp_pct)
     
     modeldf = pd.DataFrame()
     pcpadf = pd.DataFrame()
@@ -232,18 +233,18 @@ if __name__ == '__main__':
         vars_t = tmodel.vars(pdata_papg, weights=weights)
         vars_cgauss = cgaussmodel.vars(pdata_papg, weights=weights)
 
-        mses_pcpa_beta_sep = pcpa_betamodel.mse((pdata_pc,pdata_pa))
-        klds_pcpa_beta_sep = pcpa_betamodel.kld((pdata_pc,pdata_pa))
-        evs_pcpa_beta_sep = pcpa_betamodel.evs((pdata_pc,pdata_pa))
-        evses_pcpa_beta_sep = pcpa_betamodel.evse((pdata_pc,pdata_pa))
-        vars_pcpa_beta_sep = pcpa_betamodel.vars((pdata_pc,pdata_pa))
-        res_pcpa_beta_sep = pcpa_betamodel.residuals((pdata_pc,pdata_pa))
-        mses_pcpa_beta_ratio = pcpa_betamodel.mse(pdata_pcpa, weights=weights)
-        klds_pcpa_beta_ratio = pcpa_betamodel.kld(pdata_pcpa, weights=weights)
-        evs_pcpa_beta_ratio = pcpa_betamodel.evs(pdata_pcpa, weights=weights)
-        evses_pcpa_beta_ratio = pcpa_betamodel.evse(pdata_pcpa, weights=weights)
-        vars_pcpa_beta_ratio = pcpa_betamodel.vars(pdata_pcpa, weights=weights)
-        res_pcpa_beta_ratio = pcpa_betamodel.residuals(pdata_pcpa, weights=weights)
+        mses_pcpa_beta_sep = pcpa_betamodel_sep.mse((pdata_pc,pdata_pa))
+        klds_pcpa_beta_sep = pcpa_betamodel_sep.kld((pdata_pc,pdata_pa))
+        evs_pcpa_beta_sep = pcpa_betamodel_sep.evs((pdata_pc,pdata_pa))
+        evses_pcpa_beta_sep = pcpa_betamodel_sep.evse((pdata_pc,pdata_pa))
+        vars_pcpa_beta_sep = pcpa_betamodel_sep.vars((pdata_pc,pdata_pa))
+        res_pcpa_beta_sep = pcpa_betamodel_sep.residuals((pdata_pc,pdata_pa))
+        mses_pcpa_beta_ratio = pcpa_betamodel_ratio.mse(pdata_pcpa, weights=weights)
+        klds_pcpa_beta_ratio = pcpa_betamodel_ratio.kld(pdata_pcpa, weights=weights)
+        evs_pcpa_beta_ratio = pcpa_betamodel_ratio.evs(pdata_pcpa, weights=weights)
+        evses_pcpa_beta_ratio = pcpa_betamodel_ratio.evse(pdata_pcpa, weights=weights)
+        vars_pcpa_beta_ratio = pcpa_betamodel_ratio.vars(pdata_pcpa, weights=weights)
+        res_pcpa_beta_ratio = pcpa_betamodel_ratio.residuals(pdata_pcpa, weights=weights)
         
         for iy in range(career_length):            
             dfeldata = {'name':pname, 'model':'data', 'career_year':iy+1,
@@ -309,8 +310,8 @@ if __name__ == '__main__':
 
     plot_vars = ['ev', 'residuals'
                  , 'scale'
-                 # , 'norm_rmse', 'norm_revse'
-                 # , 'rmse', 'revse', 'kld'
+                 , 'norm_rmse', 'norm_revse'
+                 , 'rmse', 'revse', 'kld'
     ]
     pltdf = pcpadf
     for var in plot_vars:
