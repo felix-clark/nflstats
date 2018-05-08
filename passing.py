@@ -56,10 +56,12 @@ if __name__ == '__main__':
     posdf['pass_yds_pc'] = posdf['passing_yds'] / posdf['passing_cmp']
     posdf['pass_yds_pa'] = posdf['passing_yds'] / posdf['passing_att']
     # TDs per attempt instead of per game scales out short games properly
+    # posdf['pass_td_pg'] = posdf['passing_td'] / posdf['games_played'] # this is too highly correlated w/ pass attempts per game
     posdf['pass_td_pa'] = posdf['passing_td'] / posdf['passing_att']
     posdf['pass_td_pc'] = posdf['passing_td'] / posdf['passing_cmp']
     posdf['pass_td_py'] = posdf['passing_td'] / posdf['passing_yds']
 
+    # these aren't necessarily rookies, but they represent 1st year playing in the NFL
     rookiedf = pd.concat([posdf[posdf['name'] == name].head(1) for name in posnames])
 
     # should be a little slicker to use numpy arrays
@@ -102,12 +104,15 @@ if __name__ == '__main__':
     sns.set()
 
     # plt.figure()
-    rookplt = sns.pairplot(rookiedf, vars=['pass_att_pg','pass_cmp_pa','pass_yds_pc','pass_td_pc'])
-    rookplt.savefig('rookie_qb_corrs.png')
+    # rookplt = sns.pairplot(rookiedf, vars=['pass_att_pg','pass_cmp_pa','pass_yds_pc','pass_td_pc'])
+    # rookplt.savefig('rookie_qb_corrs.png')
     # plt.figure()
-    rookplt = sns.pairplot(rookiedf, vars=['pass_yds_pc','pass_td_pa','pass_td_pc','pass_td_py'])
-    rookplt.savefig('rookie_qb_td_corrs.png')    
-    plt.show(block=True)
+    # rookplt = sns.pairplot(rookiedf, vars=['pass_yds_pc','pass_td_pa','pass_td_pc','pass_td_py'])
+    # rookplt = sns.jointplot(['pass_td_pc','pass_td_py'], ['pass_cmp_pa','pass_yds_pc'], data=rookiedf)
+    # rookplt.figure.savefig('rookie_qb_td_corrs.png')    
+    tdcorr = rookiedf[['pass_att_pg', 'pass_cmp_pa', 'pass_yds_pc', 'pass_td_pa', 'pass_td_pc', 'pass_td_py']].corr()
+    tdplt = sns.heatmap(tdcorr)
+    plt.show()
     
     # # drew bledsoe has the most pass attempts per game: 70
     # xfvals = np.linspace(-0.5, 80+0.5, 128)
@@ -343,13 +348,14 @@ if __name__ == '__main__':
     if 'all' in argv:
         plot_vars += ['norm_rmse', 'norm_revse', 'rmse', 'revse', 'kld']
     
-    pltdf = pcpadf
-    if 'att' in argv: pltdf = papgdf
-    if 'cmp' in argv: pltdf = pcpadf
-    for var in plot_vars:
-        plt.figure()
-        varplt = sns.lvplot(data=pltdf, x='career_year', y=var, hue='model')
-        # plt.title('passing attempts per game played')
-        plt.title('completion percentage')
+    plt_structs = []
+    if 'att' in argv: plt_structs.append(papg_struct)
+    if 'cmp' in argv: plt_structs.append(pcpa_struct)
+    if 'yds' in argv: plt_structs.append(pypc_struct)
+    for st in plt_structs:
+        for var in plot_vars:
+            plt.figure()
+            varplt = sns.lvplot(data=st['df'], x='career_year', y=var, hue='model')
+            plt.title(st['desc'])
 
     plt.show(block=True)
