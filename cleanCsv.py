@@ -24,8 +24,13 @@ def replaceTitleLine(line):
     line = line.replace('"FG","FGA","XPT"', 'kicking_fgm,kicking_fga,kicking_xpmade')
     line = line.replace('"FL"', 'fumbles_lost')
     # defense stats
-    line = line.replace('"SACK","INT","FR","FF","TD","ASSIST","SAFETY","PA","YDS_AGN",',
-                        'defense_sk,defense_int,defense_frec,defense_ffum,defense_td,defense_ast,defense_safe,defense_pa,defense_lost_yds,')
+    line = line.replace('"SACK","INT","FR","FF","TD"',
+                        'defense_sk,defense_int,defense_frec,defense_ffum,defense_td')
+    line = line.replace('"ASSIST"',
+                        'defense_ast')
+    line = line.replace('"SAFETY","PA","YDS_AGN",',
+                        'defense_safe,defense_pa,defense_lost_yds,')
+
     # more of a stylistic choice to replace this
     line = line.replace('"FPTS"', 'fp_projection')
 
@@ -34,7 +39,10 @@ def replaceTitleLine(line):
     line = line.replace('"Bye"', 'bye')
     line = line.replace('"Pos"', 'pos')
     line = line.replace('"Best","Worst","Avg","Std Dev","ADP","vs. ADP"', 'best,worst,ecp,ecp_std_dev,adp,ecp_vs_adp')
-    line = line.replace('"Overall (Team)"', 'name,team')
+    # line = line.replace('"Overall (Team)"', 'name,team') # old format
+    line = line.replace('"Overall"', 'name')
+    line = line.replace('"Team"', 'team')
+    # line = line.replace(',"WSID",', ',')
 
     return line
     
@@ -59,8 +67,10 @@ if __name__=='__main__':
                 print 'This does not appear to be the type of .csv for which this script is intended.'
                 print elems
                 exit(1)
-            # rejoin with commas
+            # rejoin with commas 
             line = ','.join( elems )
+            # some empty fields may need removing (like WSID in ecp/adp)
+            # line = line.replace(',,', ',') # actually fine to just have empty field
         if not outfile:
             print line
         else:

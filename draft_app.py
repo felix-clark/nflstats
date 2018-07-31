@@ -9,6 +9,7 @@ import sys
 import os.path
 import argparse
 import random
+import logging
 from itertools import takewhile
 from cmd import Cmd
 import pandas as pd
@@ -271,19 +272,21 @@ def print_top_choices(df, ntop=10, npos=3, sort_key='vols', sort_asc=False, drop
         for pos in positions:
             print(df[df.position == pos].drop(drop_stats, inplace=False, axis=1).head(npos))
 
-def print_top_position(df, pos, ntop=24, sort_key='vols', sort_asc=False):
+def print_top_position(df, pos, ntop=24, sort_key='vols', sort_asc=False, drop_stats=None):
     """prints the top `ntop` players in the position in dataframe df"""
     if sort_key is None:
         df.sort_index( ascending=sort_asc, inplace=True)
     else:
         df.sort_values( sort_key, ascending=sort_asc, inplace=True)
-    drop_cols = ['volb', 'tier']
+    if drop_stats is None:
+        drop_stats = []
+    # drop_cols = ['volb', 'tier']
     if pos.upper() == 'FLEX':
         with pd.option_context('display.max_rows', None):
-            print(df.loc[df['position'].isin(['RB', 'WR', 'TE'])].drop(drop_cols, inplace=False, axis=1).head(ntop))
+            print(df.loc[df['position'].isin(['RB', 'WR', 'TE'])].drop(drop_stats, inplace=False, axis=1).head(ntop))
     else:
         with pd.option_context('display.max_rows', None):
-            print(df[df.position == pos.upper()].drop(drop_cols, inplace=False, axis=1).head(ntop))
+            print(df[df.position == pos.upper()].drop(drop_stats, inplace=False, axis=1).head(ntop))
 
 def push_to_player_list(index, ap, pp):
     """
@@ -349,7 +352,7 @@ class MainPrompt(Cmd):
 
     disabled_pos = ['K', 'DST']
 
-    _known_strategies = ['vols', 'vbsd', 'volb', 'adp', 'ecp']
+    _known_strategies = ['vols', 'vbsd', 'volb', 'vorp', 'adp', 'ecp']
     
     # member variables for DRAFT MODE !!!
     draft_mode = False
@@ -595,7 +598,7 @@ class MainPrompt(Cmd):
         a replacement for a 1-st round pick comes from the top of the bench,
         while a replacement for a bottom bench player comes from the waivers.
         """
-        return
+        # return
         ## should maybe cancel this.. it takes time to compute and we have lots of thresholds now
         if ap is None:
             ap = self.ap
@@ -891,7 +894,7 @@ class MainPrompt(Cmd):
                 ntop = int(spl_args[1])
             except ValueError:
                 print('`lspos` requires an integer second argument.')
-        print_top_position(self.ap, pos, ntop, self._sort_key, self._sort_asc)
+        print_top_position(self.ap, pos, ntop, self._sort_key, self._sort_asc, self.hide_stats)
 
     def do_name(self, args):
         """
@@ -899,7 +902,8 @@ class MainPrompt(Cmd):
         names the current manager if first argument is not an integer
         """
         if not args:
-            print('need to pass more than that to `name`')
+            logging.error('usage: name [N] <manager name>')
+            logging.info('names the current manager if first argument is not an integer')
             return
         mannum = self._get_current_manager()
         splitargs = args.split(' ')
@@ -1045,7 +1049,7 @@ class MainPrompt(Cmd):
         verify_and_quit()
 
     def do_recommend(self, args):
-        """quick test for pick_vols"""
+        """print recommendations"""
         manager = self._get_current_manager()
         for strat in self._known_strategies:
             pick = self._pick_rec(manager, strat, disabled_pos=self.disabled_pos)
@@ -1310,19 +1314,23 @@ class MainPrompt(Cmd):
 
 def main():
     """main function that runs upon execution"""
+
+    # default log level is warning
+    logging.getLogger().setLevel(logging.INFO)
+    
     ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc'], default='dude',
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc'], default='phys',
                         help='which ruleset to use of the leagues I am in')
-    parser.add_argument('--n-teams', type=int, default=8, help='number of teams in the league')
+    parser.add_argument('--n-teams', type=int, default=12, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of QB per team')
     parser.add_argument('--n-rb', type=int, default=2, help='number of RB per team')
-    parser.add_argument('--n-wr', type=int, default=3, help='number of WR per team')
+    parser.add_argument('--n-wr', type=int, default=2, help='number of WR per team')
     parser.add_argument('--n-te', type=int, default=1, help='number of TE per team')
-    parser.add_argument('--n-flex', type=int, default=2, help='number of FLEX per team')
+    parser.add_argument('--n-flex', type=int, default=1, help='number of FLEX per team')
     parser.add_argument('--n-dst', type=int, default=1, help='number of D/ST per team')
     parser.add_argument('--n-k', type=int, default=1, help='number of K per team')
-    parser.add_argument('--n-bench', type=int, default=4, help='number of bench slots per team')
+    parser.add_argument('--n-bench', type=int, default=5, help='number of bench slots per team')
 
     args = parser.parse_args()
     n_teams = args.n_teams
@@ -1353,25 +1361,26 @@ def main():
     if args.ruleset == 'nycfc':
         rules = nycfc_league
 
-    print('Initializing with ruleset:')
+    logging.info('Initializing with ruleset:')
     # print some output to verify the ruleset we are working with
     rulestr = '  {} team, {} PPR'.format(n_teams, rules.ppREC)
     if rules.ppPC != 0 or rules.ppINC != 0:
         rulestr += ', {}/{} PPC/I'.format(rules.ppPC, rules.ppINC)
-    print(rulestr)
+    logging.info(rulestr)
     rosterstr = ' '
     for pos in ['QB', 'RB', 'WR', 'TE', 'FLEX']: # there's always just 1 DST and K, right?
         nper = n_roster_per_team[pos]
         rosterstr += ' {}{} /'.format(nper, pos)
-    print(rosterstr[:-2])
+    logging.info(rosterstr[:-2])
     
     main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
 
+    year = 2018
     posdfs = []
     for pos in main_positions:
         # TODO: don't hardcode in the source file names.
         # TODO: better yet, use e.g. Beautiful Soup to grab the latest projections from the web.
-        filename = 'preseason_rankings/project_fp_{}_pre2017.csv'.format(pos.lower())
+        filename = 'preseason_rankings/project_fp_{}_pre{}.csv'.format(pos.lower(), year)
         posdf = pd.read_csv(filename)
         ## TODO (low priority): try using a multi-indexed dataframe instead of decorating every entry with the position?
         posdf['position'] = pos
@@ -1388,9 +1397,11 @@ def main():
     availdf.fillna(0, inplace=True)
 
     # get ECP/ADP
-    dpfname = 'preseason_rankings/ecp_adp_fp_pre2017.csv'
+    dpfname = 'preseason_rankings/ecp_adp_fp_pre{}.csv'.format(year)
     dpdf = pd.read_csv(dpfname)
     # add team acronym on ECP/ADP data too, so that we can use "team" as an additional merge key
+    # dpdf.drop(columns=['rank', 'WSID'],inplace=True)
+    dpdf = dpdf[~dpdf.pos.str.contains('TOL')]
     dpdf.loc[dpdf.team.isnull(),'team'] = dpdf.loc[dpdf.team.isnull(),'name'].map(lambda n: get_team_abbrev(n, teamlist))
 
     # print dpdf
@@ -1513,27 +1524,6 @@ def main():
     # print( availdf['auction'] )
     availdf.loc[:,'auction'] *= league_cap / total_auction_points
     availdf.loc[(availdf.auction > 0),'auction'] = round(availdf['auction'] + min, 1)
-
-    # TODO: make a baseline that compares to the worst player at a level where ~2 bench spots are full,
-    # with the positional distributions governed by ADP.
-    # some more sophisticated methods of picking the baseline
-    # (e.g. http://www.rotoworld.com/articles/nfl/41100/71/draft-analysis)
-    # put the threshold near about 2 bench spots for each team deep.
-    # the above method uses something better than ADP but more difficult to compute on our own.
-    # maybe this is redundant with our dynamic VORP, since we fill bench according to ADP.
-    # This does lead to recommending RBs seemingly too early in PPR, since people often reach for RBs.
-    # perhaps the problem is that the ADP we are using was taken from standard?
-    # n_players_for_adp_baseline = sum([n_roster_per_league[pos]
-    #                                   for pos in n_roster_per_league
-    #                                   if pos not in ['K', 'DST', 'BENCH']]) + n_roster_per_league['BENCH']//2# 2*n_teams
-    # adpsorteddf = availdf.sort_values('adp', ascending=True).head(n_players_for_adp_baseline)
-    # for pos in main_positions:
-    #     posadpdf = adpsorteddf[adpsorteddf.position == pos]
-    #     n_pos_adp = len(posadpdf)
-    #     print (pos, n_pos_adp)
-    #     pos_thresh = posadpdf['projection'].min() if n_pos_adp > 0 else availdf[availdf.position == pos]['projection'].max()        
-    #     availdf.loc[availdf.position == pos, 'vomb'] = availdf['projection'] - pos_thresh
-    
     
     ## now label remaining players as waiver wire material
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'WAIV'

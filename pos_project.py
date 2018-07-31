@@ -185,6 +185,7 @@ if __name__ == '__main__':
     pred_posdf['expert_proj'] /= 16
 
     # hardcode in some fixes for suspensions
+    # would be good to automate this data acquisition from somewhere
     if current_year == 2017:
         pred_posdf.loc[pred_posdf['name']=='Ezekiel Elliott', 'expert_proj'] *= 16/10
         pred_posdf.loc[pred_posdf['name']=='Doug Margin', 'expert_proj'] *= 16/12
