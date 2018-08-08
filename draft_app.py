@@ -165,7 +165,7 @@ def get_team_abbrev(full_team_name, team_abbrevs):
         if up_name[:3] == ta:
             # print full_team_name, ta
             return ta
-    print('error: could not find abbreviation for {}'.format(full_team_name))
+    logging.error('could not find abbreviation for {}'.format(full_team_name))
     
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
@@ -175,11 +175,11 @@ def load_player_list(outname):
         ap = pd.DataFrame.from_csv(outname+'.csv')
         # ap = pd.read_csv(outname+'.csv')
     else:
-        print('Could not find file {}.csv!'.format(outname))
+        logging.error('Could not find file {}.csv!'.format(outname))
     if os.path.isfile(outname+'_picked.csv'):
         pp = pd.DataFrame.from_csv(outname+'_picked.csv')
     else:
-        print('Could not find file {}_picked.csv!'.format(outname))
+        logging.error('Could not find file {}_picked.csv!'.format(outname))
     return ap, pp
 
 def get_k_partition_boundaries(data, k):
@@ -342,7 +342,7 @@ class MainPrompt(Cmd):
     ap = pd.DataFrame()
     pp = pd.DataFrame()
 
-    _sort_key = 'vbsd' #'vols'
+    _sort_key = 'auction' # 'vbsd' #'vols'
     _sort_asc = False
     
     flex_pos = ['RB', 'WR', 'TE']
@@ -1214,6 +1214,8 @@ class MainPrompt(Cmd):
             return
         self._sort_key = argl
         self._sort_asc = argl in [None, 'adp', 'ecp']
+        # TODO: reset the index here? <- will maybe cause problems after players are drafted
+        
     def complete_sort(self, text, line, begidk, endidx):
         """implements auto-complete for sort function"""
         avail_sorts = [name.lower() for name in self.ap.columns]
@@ -1490,6 +1492,7 @@ def main():
         pos_required = len(posdf[(posdf.tier != 'BU') & (~posdf.tier.isnull())]) # number of man-games needed in this position
         pos_prob_play = bye_factor * pos_injury_factor[pos] if pos not in ['K', 'DST'] else 1.0
         pos_rank_benchmark = int(np.ceil(pos_required/pos_prob_play))
+        logging.info('benchmark considered for {}: {}'.format(pos, pos_rank_benchmark))
         # kickers and defenses don't get this bonus for the benchmark since people don't bench them,
         # but they should get penalized for it in auction
         if pos in ['K', 'DST']: pos_prob_play = pos_prob_play * bye_factor * pos_injury_factor[pos]
@@ -1506,7 +1509,9 @@ def main():
         # using VOLB baseline actually seems to give a reasonable result: steeper than FB, less steep than beersheets
         # still pretty arbitrary - we'll care more when we actually do an auction draft.
         auction_multiplier = lambda x: max(1.0 - x*0.5*pos_prob_play/pos_rank_benchmark, 0.0)
-        if pos in ['K', 'DST']: auction_multiplier = lambda x: 0.5 #these are random and have lots of variance, so lets keep the envelop flat
+        # if pos in ['K', 'DST']: auction_multiplier = lambda x: 0.5 #these are random and have lots of variance, so lets keep the envelop flat
+        if pos in ['K', 'DST']: auction_multiplier = lambda x: max(1.0 - x*0.1*pos_prob_play/pos_rank_benchmark, 0.0) #arbitrary factor of 5 less steep
+        
         # grab this again because now it has vbsd
         posdf = availdf[(availdf.position == pos)].sort_values('projection', ascending=False)
         for idx in range(len(posdf)):
@@ -1523,13 +1528,13 @@ def main():
     league_cap = n_teams * (cap - min*sum([n_roster_per_team[pos] for pos in n_roster_per_team]))
     # print( availdf['auction'] )
     availdf.loc[:,'auction'] *= league_cap / total_auction_points
-    availdf.loc[(availdf.auction > 0),'auction'] = round(availdf['auction'] + min, 1)
+    availdf.loc[(availdf.auction > 0),'auction'] = round(availdf['auction'] + min, 2)
     
     ## now label remaining players as waiver wire material
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'WAIV'
 
     ## finally sort by our stat of choice for display
-    sort_stat = 'vbsd'
+    sort_stat = 'auction' # 'vbsd'
     availdf = availdf.sort_values(sort_stat, ascending=False)
     availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by our stat
     
