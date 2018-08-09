@@ -177,7 +177,7 @@ def load_player_list(outname):
     else:
         logging.error('Could not find file {}.csv!'.format(outname))
     if os.path.isfile(outname+'_picked.csv'):
-        pp = pd.DataFrame.from_csv(outname+'_picked.csv')
+        pp = pd.DataFrame.from_csv(outname+'_picked.csv') # TODO: pd.DataFrame.from_csv -> pd.read_csv
     else:
         logging.error('Could not find file {}_picked.csv!'.format(outname))
     return ap, pp

@@ -112,6 +112,8 @@ def sum_log_beta_binomial( ks, ns, a, b ):
     if np.shape(ns) != ():
         weights = np.array(ns).astype(float)/np.mean(ns)
     # return -N * betaln(a,b) + sum( log(comb(ns,ks)) + betaln(ks+a, ns-ks+b) )
+    # assert( a > 0 and b > 0) # why does this assertion fail for L-BFGS-B w/ gradient?
+    assert( (ns>0).all() )
     result = -N * betaln(a,b) + sum( weights * (log(comb(ns,ks)) + betaln(ks+a, ns-ks+b)) )
     return result
 
@@ -201,11 +203,11 @@ def grad_sum_log_exp_poly_ratio( bounds, ks, pis, qis ):
                          
 # functions to return maximum-likelihood estimators for various distributions
 
-def to_poisson( data=[] ):
-    if not data:
+def to_poisson( data ):
+    n = len( data )
+    if n == 0:
         logging.error('empty data set')
         exit(1)
-    n = len( data )
     mu = float( sum( data ) ) / n
     err_mu = sqrt( mu / n )
     log_L_per_ndf = mu * ( log(mu) - 1 ) * n/(n-1) \
@@ -296,34 +298,33 @@ def to_beta_binomial( ks, ns ):
             logging.warning('data out of domain for beta-binomial')
     arr_ks = np.asarray(ks, dtype=float)
     N = len(arr_ks)
-    # m1 = float(sum( arr_ks )) / N
-    # m2 = sum( arr_ks**2 ) / N
     # see "Further bayesian considerations" under beta-binomial wiki 
     mu = sum( arr_ks ) / sum(ns)
-    s2 = np.var( arr_ks/ns ) / N
+    # s2 = np.var( arr_ks/ns ) / N
     s2 = sum( ns*(arr_ks/ns-mu)**2 ) / sum(ns) * 1.0/(1-1.0/N)
-    M = ( mu*(1-mu) - s2 ) / ( s2 - mu*(1-mu)*np.mean(1.0/ns) )
+    # M = ( mu*(1-mu) - s2 ) / ( s2 - mu*(1-mu)*np.mean(1.0/ns) )
+    M = mu*(1-mu)/s2 - 1
+    if M <= 0.0: # don't want this to be too small
+        logging.debug('natural M = {} < 0.'.format(M))
+        logging.debug('mu(1-mu)/var = {} (is it > 1?)'.format(mu*(1-mu)/s2))
+        # M = 1.0/(1.0-mu)
     logging.debug('bayesian mu,mu*(1-mu), s2,M = {}, {}, {}, {}'.format(mu, mu*(1-mu), s2, M))
     # use these moments for good initial guesses
     ab0 = np.array((M*mu, M*(1-mu))) # should be able to at least get the mean
     logging.debug('bayesian a0,b0 = {}, {}'.format(*ab0))
-    # if m1 > 0:
-    #     # using a variable n makes this guess sketchy. could refine this if having trouble
-    #     denom = (ns.mean()*(m2/m1 - m1 - 1) + m1)
-    #     ab0 = np.array((ns.mean()*m1-m2, (ns.mean()-m1)*(ns.mean()-m2/m1)))/denom
-    #     ab0 = np.mean((ns*m1-m2/(ns*(m2/m1 - m1 - 1) + m1) )), np.mean((ns-m1)*(ns-m2/m1)/(ns*(m2/m1 - m1 - 1) + m1))
-    # else:
-    #     logging.warning('all terms are zero:')
-    #     logging.warning(arr_ks)
-    #     ab0 = np.array((1.0/N,1.0/N))
-    logging.info('a0,b0 = {}, {}'.format(*ab0))
     
     # if denom <= 0:
     #     logging.warning('m1 = {}, m2 = {}, n = {}, N = {}'.format(m1, m2, n, N))
-    method = 'L-BFGS-B'    
+    allowed_methods = ['L-BFGS-B', 'TNC', 'SLSQP'] # these are the only ones that can handle bounds. they can also all handle jacobians. none of them can handle hessians.
+    method = allowed_methods[0]
     func = lambda pars: - sum_log_beta_binomial( arr_ks, ns, *pars )
     grad = lambda pars: - grad_sum_log_beta_binomial( arr_ks, ns, *pars )
-    opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)] )
+    minopts = {
+        'maxcor':20, # maximum of variable metric corrections (default 10)
+        'ftol':1e-12, # tolerance of objective function. (default ~2.22e-9)
+        'gtol':1e-8 # gradient tolerance (default 1e-5)
+    }
+    opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)], options=minopts )
     # opt_result = opt.minimize( func, ab0, method=method, bounds=[(0,None),(0,None)] )
     logging.debug(opt_result.message)
     isSuccess = opt_result.success
@@ -331,10 +332,10 @@ def to_beta_binomial( ks, ns ):
         logging.error('beta binomial fit did not succeed with {} data points.'.format(N))
     a,b = opt_result.x
     logging.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
-    cov = opt_result.hess_inv
-    cov_array = cov.todense()  # dense array
+    # cov = opt_result.hess_inv
+    # cov_array = cov.todense()  # dense array
     neg_ll = opt_result.fun
-    return isSuccess,(a,b),cov_array,-neg_ll/(N-2)
+    return isSuccess,(a,b),None,-neg_ll/(N-2)
 
 def to_gaussian_int( bounds, data=[] ):
     # if not data:
@@ -613,6 +614,16 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
     )
 
     # print(data)
+
+    #check the gradient: <- it's good
+    # atest,btest,ep = 1.4,9.2,1e-6
+    # dl_g = grad_sum_log_beta_binomial(data_num, data_den, atest, btest)
+    # dlda_n = (sum_log_beta_binomial(data_num, data_den, atest+ep, btest)
+    #           - sum_log_beta_binomial(data_num, data_den, atest-ep, btest))/(2*ep)
+    # dldb_n = (sum_log_beta_binomial(data_num, data_den, atest, btest+ep)
+    #           - sum_log_beta_binomial(data_num, data_den, atest, btest-ep))/(2*ep)
+    # logging.debug('analytic, numberic along alpha: {}, {}'.format(dl_g[0], dlda_n))
+    # logging.debug('analytic, numberic along beta: {}, {}'.format(dl_g[1], dldb_n))
     
     # yerrs = [ sqrt( x / ndata ) for x in entries ] if norm else [ sqrt( x ) for x in entries ]
     ## these errors don't really hold with weights...
@@ -637,20 +648,22 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
         _,(a,b),cov,logl = to_beta_binomial(data_num, data_den)
             
         # need to do a contour search or use optimize() to get uncertainties (TODO)
-        erra = sqrt( cov[0][0] )
-        errb = sqrt( cov[1][1] )
+        erra,errb = '?','?'
+        if cov is not None:
+            erra = sqrt( cov[0][0] )
+            errb = sqrt( cov[1][1] )
         logging.info('  Beta binomial fit:')
         logging.info('    a = {:.3} '.format(a) + u'\u00B1' + ' {:.2}'.format( erra ))
         logging.info('    b = {:.3} '.format(b) + u'\u00B1' + ' {:.2}'.format( errb ))
         logging.info('    a/(a+b) = {:.3}'.format(a/(a+b)))
         logging.info('    sqrt( ab/(a+b)**2/(a+b+1) ) = {:.3}'.format(np.sqrt(a*b/(a+b)**2/(a+b+1)))) 
-       # logging.info('    log(L)/NDF = {:.3}'.format( sum(st.beta.logpdf( data, a, b ))/(ndata-2) ) )
+        logging.info('    log(L)/NDF = {:.3} (not including constant term)'.format( logl ) )
         # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
         # plt.plot(xfvals, yfvals, 'v-', lw=2 )
         plt.subplot(121)
-        plt.plot(xfvals, st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
+        plt.plot(xfvals, ndata*st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
         res = plt.subplot(122)
-        plt.plot(xfvals, st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
+        plt.plot(xfvals, ndata*st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
         plt.yscale('log')
         res.set_ylim(0.1,None)
 
