@@ -52,9 +52,9 @@ if __name__ == '__main__':
                 if pos not in off_pos: continue
                 # if pos == 'K':
                 #     print(pstat.stats) # lets see which stats are relevant
-                
                 statdict = pstat.stats
                 statdict['name'] = pstat.player.full_name
+                statdict['playerid'] = pstat.playerid
                 statdict['pos'] = pos
                 statdict['team'] = pstat.team
                 statdict['year'] = year
@@ -72,7 +72,7 @@ if __name__ == '__main__':
 
         # print('columns scraped (not all will be saved)')
         # print(df.columns)
-        df = df[['name','team','pos','week',
+        df = df[['name','team','pos','playerid','week',
                  'passing_att','passing_cmp','passing_yds','passing_tds','passing_int',
                  'rushing_att','rushing_yds','rushing_tds',
                  'receiving_rec','receiving_yds','receiving_tds', # add 'receiving_tgt' in here once we get it
