@@ -296,20 +296,22 @@ def to_beta_binomial( ks, ns ):
     arr_ks = np.asarray(ks, dtype=float)
     N = len(arr_ks)
     # m1 = float(sum( arr_ks )) / N
-    m1 = sum( ns*arr_ks ) / sum(ns)
+    m1 = sum( arr_ks ) / sum(ns)
     # m2 = sum( arr_ks**2 ) / N
-    m2 = sum( ns*arr_ks**2 ) / sum(ns)
+    m2 = sum( ns*arr_ks**2 ) / sum(ns) # ?
     # use these moments for good initial guesses
     ab0 = np.array((0,0))
-    ab0 = np.array((1.0, 1.0)) # should be able to at least get the mean
-    if m1 > 0:
-        # using a variable n makes this guess sketchy. could refine this if having trouble
-        denom = (ns.mean()*(m2/m1 - m1 - 1) + m1)
-        ab0 = np.array((ns.mean()*m1-m2, (ns.mean()-m1)*(ns.mean()-m2/m1)))/denom
-    else:
-        logging.warning('all terms are zero:')
-        logging.warning(arr_ks)
-        ab0 = np.array((1.0/N,1.0/N))
+    ab0 = np.array((1.0, 1.0/m1 - 1.)) # should be able to at least get the mean
+    # if m1 > 0:
+    #     # using a variable n makes this guess sketchy. could refine this if having trouble
+    #     denom = (ns.mean()*(m2/m1 - m1 - 1) + m1)
+    #     ab0 = np.array((ns.mean()*m1-m2, (ns.mean()-m1)*(ns.mean()-m2/m1)))/denom
+    #     ab0 = np.mean((ns*m1-m2/(ns*(m2/m1 - m1 - 1) + m1) )), np.mean((ns-m1)*(ns-m2/m1)/(ns*(m2/m1 - m1 - 1) + m1))
+    # else:
+    #     logging.warning('all terms are zero:')
+    #     logging.warning(arr_ks)
+    #     ab0 = np.array((1.0/N,1.0/N))
+    logging.info('a0,b0 = {}, {}'.format(*ab0))
     
     # if denom <= 0:
     #     logging.warning('m1 = {}, m2 = {}, n = {}, N = {}'.format(m1, m2, n, N))
@@ -601,23 +603,30 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
                                             # range=[-0.5, maxtds+1.5],
                                             align='left',
                                             normed=norm,
+                                            weights=data_den, # weight by number of attempts
                                             label=label
     )
 
     # print(data)
     
     # yerrs = [ sqrt( x / ndata ) for x in entries ] if norm else [ sqrt( x ) for x in entries ]
+    ## these errors don't really hold with weights...
     yerrs = sqrt( entries ) / ndata if norm else sqrt( entries )
     
     xfvals = np.linspace(0, 1, 1000) # get from bin_edges instead?
+    plt.subplot(121)
+    plt.errorbar( np.arange(0,1,step), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+    plt.subplot(122)
+    plt.errorbar( np.arange(0,1,step), entries, yerr=yerrs, align='left', fmt='none', color='black' )
 
-    logging.debug('unweighted/weighted mean: {} / {}'.format(sum(data_num)/sum(data_den), data_ratio.mean()))
+    logging.debug('weighted/unweighted mean, stddev: {} / {}, {}'.format(sum(data_num)/sum(data_den), data_ratio.mean(), data_ratio.std()))
     
-    testk,testn = np.array([4]),np.array([10])
-    testa, testb = 2.0, 1.0
-    testpars = testk, testn, testa, testb
-    logging.debug('bb pdf: {}'.format(beta_binomial(*testpars)))
-    logging.debug('bb log pdf: {}, {}, {}'.format(log(beta_binomial(*testpars)), log_beta_binomial(*testpars), sum_log_beta_binomial(*testpars) ))
+    # # we checked that all these functions give consistent values:
+    # testk,testn = np.array([4]),np.array([10])
+    # testa, testb = 2.0, 1.0
+    # testpars = testk, testn, testa, testb
+    # logging.debug('bb pdf: {}'.format(beta_binomial(*testpars)))
+    # logging.debug('bb log pdf: {}, {}, {}'.format(log(beta_binomial(*testpars)), log_beta_binomial(*testpars), sum_log_beta_binomial(*testpars) ))
     
     if 'beta_binomial' in fits:
         _,(a,b),cov,logl = to_beta_binomial(data_num, data_den)
@@ -634,11 +643,10 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
         # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
         # plt.plot(xfvals, yfvals, 'v-', lw=2 )
         plt.subplot(121)
-        plt.errorbar( np.arange(0,1,step), entries, yerr=yerrs, align='left', fmt='none', color='black' )
-        plt.plot(xfvals, ndata*st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
-        plt.subplot(122)
-        plt.errorbar( np.arange(0,1,step), entries, yerr=yerrs, align='left', fmt='none', color='black' )
-        plt.plot(xfvals, ndata*st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
+        plt.plot(xfvals, st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
+        res = plt.subplot(122)
+        plt.plot(xfvals, st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
         plt.yscale('log')
+        res.set_ylim(0.1,None)
 
     plt.show()
