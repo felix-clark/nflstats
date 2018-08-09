@@ -1,9 +1,10 @@
 import logging
 import numpy as np
 from numpy import sqrt, log, exp, pi
-from scipy.special import gammaln, betaln, beta, comb, digamma
+from scipy.special import gammaln, betaln, beta, comb, digamma, gamma
 from scipy.misc import factorial
 import scipy.optimize as opt
+import scipy.stats as st
 import matplotlib.pyplot as plt
 
 # non-negative discrete distributions
@@ -35,6 +36,14 @@ def log_neg_binomial( k, r, p ):
     result[k>0] += - log(k) - betaln( k, r )
     result[k<0] = -np.inf
     return result
+
+# discrete in range 0,infinity
+# more variance than neg. bin.
+def beta_neg_binomial( k, r, a, b ):
+    return gamma(r+k)/(factorial(k) * gamma(r)) * beta(a+r,b+k) / beta(a,b)
+
+def log_beta_neg_binomial( k, r, a, b ):
+    return gammaln(r+k) - gammaln(r) - log(factorial(k)) + betaln(a+r,b+k) - betaln(a,b)
 
 # discrete in range [0,n]
 def beta_binomial( k, n, a, b ):
@@ -80,17 +89,38 @@ def grad_sum_log_neg_binomial( ks, r, p ):
     dldr = N*(log(p) - digamma(r)) + sum( digamma(ks+r) )
     return np.array((dldr, dldp))
 
-
-def sum_log_beta_binomial( ks, n, a, b ):
+def sum_log_beta_neg_binomial( ks, r, a, b ):
     N = len(ks)
-    return -N * betaln(a,b) + sum( log(comb(n,ks)) + betaln(ks+a, n-ks+b) )
-    # return log( comb(n,k) ) + betaln(k+a, n-k+b) - betaln(a,b)
+    return sum(gammaln(r+ks) - log(factorial(ks)) + betaln(a+r,b+ks)) - N*(betaln(a,b) + gammaln(r))
 
-def grad_sum_log_beta_binomial( ks, n, a, b ):
+def grad_sum_log_beta_neg_binomial( ks, r, a, b):
     N = len(ks)
-    common = N*(digamma(a+b) - digamma(n+a+b))
-    dlda = sum(digamma(ks+a)) - N*digamma(a) + common
-    dldb = sum(digamma(n-ks+b)) - N*digamma(b) + common
+    dg_ar = digamma(a+r)
+    dg_ab = digamma(a+b)
+    sum_dg_all = sum(digamma(a+r+b+ks))
+    dldr = sum(digamma(r+ks)) - N*digamma(r) + dg_ar - sum_dg_all
+    dlda = N*(dg_ar + dg_ab - digamma(a)) - sum_dg_all
+    dldb = N*(dg_ab - digamma(b)) + sum(digamma(b+ks)) - sum_dg_all
+    return np.array((dldr, dlda, dldb))
+
+def sum_log_beta_binomial( ks, ns, a, b ):
+    # ns may or may not be variable
+    # if n is variable, we should weight w.r.t. n
+    N = len(ks)
+    if np.shape(ns) == ():
+        ns = np.full(shape=ks.shape, fill_value=ns, dtype=float)
+    # return -N * betaln(a,b) + sum( log(comb(ns,ks)) + betaln(ks+a, ns-ks+b) )
+    result = -N * betaln(a,b) + sum( ns* (log(comb(ns,ks)) + betaln(ks+a, ns-ks+b)) ) / sum(ns)
+    print( 'a, b, result = {}, {}, {}'.format( a, b, result))
+    return result
+
+def grad_sum_log_beta_binomial( ks, ns, a, b ):
+    N = len(ks)
+    if np.shape(ns) == ():
+        ns = np.full(shape=ks.shape, fill_value=ns, dtype=float)
+    common = N*digamma(a+b) - sum(ns*digamma(ns+a+b))/sum(ns)
+    dlda = sum(ns*digamma(ks+a))/sum(ns) - N*digamma(a) + common
+    dldb = sum(ns*digamma(ns-ks+b))/sum(ns) - N*digamma(b) + common
     return np.array((dlda, dldb))
 
 
@@ -191,7 +221,7 @@ def to_geometric( data=[] ):
 # note that these is an equation that can be solved for r, but it is not closed-form.
 # it would reduce the dimensionality of the fit algorithm, however.
 # then p is easily expressed in terms of the mean and r.
-def to_neg_binomial( data=[] ):
+def to_neg_binomial( data ):
     # if not data:
     #     logging.error('empty data set')
     #     exit(1)
@@ -220,40 +250,75 @@ def to_neg_binomial( data=[] ):
     neg_ll = opt_result.fun
     return isSuccess,(r,p),cov_array,-neg_ll/(n-2)
 
-def to_beta_binomial( bounds, data ):
-    """
-    bounds = (min,max) where [min,max] are integers determining the (inclusive) domain
-    """
-    kmin,kmax = bounds
-    n = kmax - kmin
+def to_beta_neg_binomial( data ):
+    # if not data:
+    #     logging.error('empty data set')
+    #     exit(1)
+    log = logging.getLogger(__name__)
     for x in data:
-        if x < kmin or x > kmax:
+        if x < 0:
+            log.warning('negative value in data set. beta negative binomial may not be appropriate.')
+    arr_ks = np.asarray( data )
+    n = len( arr_ks )
+    mean = float( sum( arr_ks ) ) / n
+    a0,b0 = (20., 10.) # start w/ low variance. make sure a > 1
+    r0 = mean*(a0-1)/b0 # initial guess for r,a,b # mean = r*b/(a-1) for a > 1
+    allowed_methods = ['L-BFGS-B', 'TNC', 'SLSQP'] # these are the only ones that can handle bounds. they can also all handle jacobians. none of them can handle hessians.
+    # only LBFGS returns Hessian, in form of "LbjgsInvHessProduct"
+    method = allowed_methods[0]
+    
+    func = lambda pars: - sum_log_beta_neg_binomial( arr_ks, *pars )
+    grad = lambda pars: - grad_sum_log_beta_neg_binomial( arr_ks, *pars )
+    opt_result = opt.minimize( func, (r0,a0,b0), method=method, jac=grad, bounds=[(0,None),(0,None),(0,None)] )
+    isSuccess = opt_result.success
+    if not isSuccess:
+        log.error('beta negative binomial fit did not succeed.')
+    r,a,b = opt_result.x
+    log.debug('jacobian for beta-neg-binomial = {}'.format(opt_result.jac)) # should be zero, or close to it
+    cov = opt_result.hess_inv
+    cov_array = cov.todense()  # dense array
+    neg_ll = opt_result.fun
+    return isSuccess,(r,a,b),cov_array,-neg_ll/(n-3)
+
+def to_beta_binomial( ks, ns ):
+    """
+    bounds = (0,n) where determines the (inclusive) domain
+    ns may be variable
+    """
+    if np.shape(ns) == ():
+        ns = np.full(shape=data.shape, fill_value=ns, dtype=float)
+    for x,n in zip(ks,ns):
+        if x < 0 or x > n:
             logging.warning('data out of domain for beta-binomial')
-    arr_ks = np.asarray(data) - kmin # subtract lower edge to do fit
+    arr_ks = np.asarray(ks, dtype=float)
     N = len(arr_ks)
     m1 = float(sum( arr_ks )) / N
     m2 = float(sum( arr_ks**2 )) / N
     # use these moments for good initial guesses
     ab0 = np.array((0,0))
-    if m1 > 0:
-        denom = (n*(m2/m1 - m1 - 1) + m1)
-        ab0 = np.array((n*m1-m2, (n-m1)*(n-m2/m1)))/denom
-    else:
-        logging.warning('all terms are zero:')
-        logging.warning(arr_ks)
-        ab0 = np.array((1.0/N,1.0/N))
+    ab0 = np.array((1.0, 1.0)) # should be able to at least get the mean
+    # if m1 > 0:
+    #     # using a variable n makes this guess sketchy. could refine this if having trouble
+    #     denom = (ns.mean()*(m2/m1 - m1 - 1) + m1)
+    #     ab0 = np.array((ns.mean()*m1-m2, (ns.mean()-m1)*(ns.mean()-m2/m1)))/denom
+    # else:
+    #     logging.warning('all terms are zero:')
+    #     logging.warning(arr_ks)
+    #     ab0 = np.array((1.0/N,1.0/N))
+    
     # if denom <= 0:
     #     logging.warning('m1 = {}, m2 = {}, n = {}, N = {}'.format(m1, m2, n, N))
     method = 'L-BFGS-B'    
-    func = lambda pars: - sum_log_beta_binomial( arr_ks, n, *pars )
-    grad = lambda pars: - grad_sum_log_beta_binomial( arr_ks, n, *pars )
-    opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)] )
+    func = lambda pars: - sum_log_beta_binomial( arr_ks, ns, *pars )
+    grad = lambda pars: - grad_sum_log_beta_binomial( arr_ks, ns, *pars )
+    # opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)] )
+    opt_result = opt.minimize( func, ab0, method=method, bounds=[(0,None),(0,None)] )
     logging.debug(opt_result.message)
     isSuccess = opt_result.success
     if not isSuccess:
         logging.error('beta binomial fit did not succeed with {} data points.'.format(N))
     a,b = opt_result.x
-    # logging.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
+    logging.debug('jacobian = {}'.format(opt_result.jac)) # should be zero, or close to it
     cov = opt_result.hess_inv
     cov_array = cov.todense()  # dense array
     neg_ll = opt_result.fun
@@ -370,7 +435,9 @@ def to_exp_poly_ratio( npq, dom_bounds, data=[] ):
 ## functions to generate the plots of data with appropriate fits
 
 # appropriate with non-negative integer data
-def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial'] ):
+def plot_counts( data, label='', norm=False, fits=None ):
+    if fits is None:
+        fits = ['poisson', 'neg_binomial', 'beta_neg_binomial']
     ndata = len( data )
     maxdata = max( data )
 
@@ -434,11 +501,31 @@ def plot_counts( data=[], label='', norm=False, fits=['poisson', 'neg_binomial']
         plt.plot(xfvals, ndata*neg_binomial( xfvals, r, p ), '--', lw=2, color='violet' )
         plt.yscale('log')
 
+    if 'beta_neg_binomial' in fits:
+        _,(r,a,b),cov,logl = to_beta_neg_binomial(data)
+        errr = sqrt( cov[0][0] )
+        erra = sqrt( cov[1][1] )
+        errb = sqrt( cov[2][2] )
+        logging.info('  Beta negative binomial fit:')
+        logging.info('    r = {:.3} '.format(r) + u'\u00B1' + ' {:.2}'.format( errr ))
+        logging.info('    a = {:.3} '.format(a) + u'\u00B1' + ' {:.2}'.format( erra ))
+        logging.info('    b = {:.3} '.format(b) + u'\u00B1' + ' {:.2}'.format( errb ))
+        logging.info('    log(L)/NDF = {:.3}'.format( logl ))
+        # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
+        # plt.plot(xfvals, yfvals, 'v-', lw=2 )
+        plt.subplot(121)
+        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+        plt.plot(xfvals, ndata*beta_neg_binomial( xfvals, r, a, b ), '--', lw=2, color='blue' )
+        plt.subplot(122)
+        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+        plt.plot(xfvals, ndata*beta_neg_binomial( xfvals, r, a, b ), '--', lw=2, color='blue' )
+        plt.yscale('log')
+
     plt.show()
 
 # appropriate with any integer data
 # distributions proportional to exponentials of polynomial ratios
-def plot_counts_poly( data=[], bounds=(-100,100), label='', norm=False ):
+def plot_counts_poly( data, bounds=(-100,100), label='', norm=False ):
     ndata = len( data )
     mindata = min( data )
     maxdata = max( data )
@@ -491,4 +578,52 @@ def plot_counts_poly( data=[], bounds=(-100,100), label='', norm=False ):
     xlow,xup,ylow,yup = plt.axis()
     plt.axis( (xlow,xup,0.5,yup) )
     
+    plt.show()
+
+## pretty much only a beta distribution is appropriate here (?)
+def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.01 ):
+    # will fit to fraction num/den to get alpha and beta parameters
+    if fits is None:
+        fits = ['beta_binomial']
+    ndata = len( data_num )
+    data_num = np.array(data_num)
+    data_den = np.array(data_den)
+    data_ratio = data_num.astype(float)/data_den.astype(float)
+    # # instead of fitting unbinned likelihood fits, since the results are all integers
+    # #   we may get speedup by fitting to histograms (which will require an additional implementation)
+    # # probably don't need to save all return values
+    entries, bin_edges, patches = plt.hist( data_ratio, bins=np.arange(-0.0,1+step,step),
+                                            # range=[-0.5, maxtds+1.5],
+                                            align='left',
+                                            normed=norm,
+                                            label=label
+    )
+
+    # print(data)
+    
+    # yerrs = [ sqrt( x / ndata ) for x in entries ] if norm else [ sqrt( x ) for x in entries ]
+    yerrs = sqrt( entries ) / ndata if norm else sqrt( entries )
+    
+    xfvals = np.linspace(0, 1, 1000) # get from bin_edges instead?
+
+    if 'beta_binomial' in fits:
+        _,(a,b),cov,logl = to_beta_binomial(data_num, data_den)
+            
+        # need to do a contour search or use optimize() to get uncertainties (TODO)
+        erra = sqrt( cov[0][0] )
+        errb = sqrt( cov[1][1] )
+        logging.info('  Beta binomial fit:')
+        logging.info('    a = {:.3} '.format(a) + u'\u00B1' + ' {:.2}'.format( erra ))
+        logging.info('    b = {:.3} '.format(b) + u'\u00B1' + ' {:.2}'.format( errb ))
+        # logging.info('    log(L)/NDF = {:.3}'.format( sum(st.beta.logpdf( data, a, b ))/(ndata-2) ) )
+        # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
+        # plt.plot(xfvals, yfvals, 'v-', lw=2 )
+        plt.subplot(121)
+        plt.errorbar( np.arange(0,1,step), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+        plt.plot(xfvals, ndata*st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
+        plt.subplot(122)
+        plt.errorbar( np.arange(0,1,step), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+        plt.plot(xfvals, ndata*st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
+        plt.yscale('log')
+
     plt.show()

@@ -79,10 +79,10 @@ if __name__ == '__main__':
     data_gp = posdf[gp_stat]
     
     
-    _,(ark,brk),cov,llpdf = dist_fit.to_beta_binomial( (0,maxgames), data_gp_rook )
+    _,(ark,brk),cov,llpdf = dist_fit.to_beta_binomial( maxgames, data_gp_rook )
     log.info('rookie: alpha = {}, beta = {}, LL per dof = {}'.format(ark, brk, llpdf))
     log.info('covariance:\n' + str(cov))
-    _,(ainc,binc),cov,llpdf = dist_fit.to_beta_binomial( (0,maxgames), data_gp )
+    _,(ainc,binc),cov,llpdf = dist_fit.to_beta_binomial( maxgames, data_gp )
     log.info('all: alpha = {}, beta = {}, LL per dof = {}'.format(ainc, binc, llpdf))
     log.info('covariance:\n' + str(cov))
     
