@@ -9,7 +9,7 @@ import os.path
 
 # import dist_fit
 from ruleset import bro_league, phys_league
-from getPoints import *
+from get_fantasy_points import *
 
 def getPreseasonRank( position, year, pname ):
     filename = 'preseason_rankings/top_' + position.lower() + 's_pre' + str(year) + '.txt'

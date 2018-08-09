@@ -60,7 +60,7 @@ for year in range(2016, 2017):
             rec_tgt = pstat.receiving_tgt
             rec = pstat.receiving_rec
             recyd = pstat.receiving_yds
-            rectd = pstat.receiving_td
+            rectd = pstat.receiving_tds
             tds = pstat.tds
             # print rshtd,rectd,tds
             rush_att.append( rshatt )

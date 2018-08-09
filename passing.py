@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # import prediction_models as pm
-# from getPoints import *
 from ruleset import *
 import dist_fit
 import bayes_models as bay

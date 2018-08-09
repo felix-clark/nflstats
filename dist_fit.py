@@ -103,6 +103,7 @@ def grad_sum_log_beta_neg_binomial( ks, r, a, b):
     dldb = N*(dg_ab - digamma(b)) + sum(digamma(b+ks)) - sum_dg_all
     return np.array((dldr, dlda, dldb))
 
+# this does not account for the distribution of ns
 def sum_log_beta_binomial( ks, ns, a, b ):
     # ns may or may not be variable
     # if n is variable, we should weight w.r.t. n
@@ -296,12 +297,16 @@ def to_beta_binomial( ks, ns ):
     arr_ks = np.asarray(ks, dtype=float)
     N = len(arr_ks)
     # m1 = float(sum( arr_ks )) / N
-    m1 = sum( arr_ks ) / sum(ns)
     # m2 = sum( arr_ks**2 ) / N
-    m2 = sum( ns*arr_ks**2 ) / sum(ns) # ?
+    # see "Further bayesian considerations" under beta-binomial wiki 
+    mu = sum( arr_ks ) / sum(ns)
+    s2 = np.var( arr_ks/ns ) / N
+    s2 = sum( ns*(arr_ks/ns-mu)**2 ) / sum(ns) * 1.0/(1-1.0/N)
+    M = ( mu*(1-mu) - s2 ) / ( s2 - mu*(1-mu)*np.mean(1.0/ns) )
+    logging.debug('bayesian mu,mu*(1-mu), s2,M = {}, {}, {}, {}'.format(mu, mu*(1-mu), s2, M))
     # use these moments for good initial guesses
-    ab0 = np.array((0,0))
-    ab0 = np.array((1.0, 1.0/m1 - 1.)) # should be able to at least get the mean
+    ab0 = np.array((M*mu, M*(1-mu))) # should be able to at least get the mean
+    logging.debug('bayesian a0,b0 = {}, {}'.format(*ab0))
     # if m1 > 0:
     #     # using a variable n makes this guess sketchy. could refine this if having trouble
     #     denom = (ns.mean()*(m2/m1 - m1 - 1) + m1)

@@ -10,6 +10,7 @@ import pandas as pd
 # decorate this w/ @retry, so it can respond to failed
 # requests intelligently and not overload the server
 # wait 1 second between retries w/ exponential increase of wait times up to 8 seconds
+# NOT USED: replaced by general fantasy scraper
 @retry(wait_exponential_multiplier=1000, wait_exponential_max=8001)
 def get_passing_df_pfr(year=2017):
     sleep(0.5) # let's be conservative to not spam the site
@@ -60,14 +61,16 @@ def get_fantasy_df_pfr(year):
                    'Cmp':'passing_cmp',
                    'Att':'passing_att',
                    'Yds':'passing_yds',
-                   'TD':'passing_td',
+                   'TD':'passing_tds',
                    'Int':'passing_int',
+                   '2PM':'twoptm', # general rushing / receiving
+                   '2PP':'passing_twoptm',
                    'Att.1':'rushing_att',
                    'Yds.1':'rushing_yds',
-                   'TD.1':'rushing_td',
+                   'TD.1':'rushing_tds',
                    'Rec':'receiving_rec',
                    'Yds.2':'receiving_yds',
-                   'TD.2':'receiving_td'
+                   'TD.2':'receiving_tds'
     }
     if 'Tgt' in df:
         # targets were not recorded before 1992

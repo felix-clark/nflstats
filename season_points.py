@@ -12,7 +12,7 @@ import os.path
 
 # import dist_fit
 from ruleset import bro_league, phys_league, dude_league
-from getPoints import *
+from get_fantasy_points import *
 import dist_fit
 
 # this will create a data file with summary data for all positions

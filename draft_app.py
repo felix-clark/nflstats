@@ -16,7 +16,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from getPoints import get_points_from_data_frame
+from get_fantasy_points import get_points_from_data_frame
 from ruleset import bro_league, phys_league, dude_league, nycfc_league
 
 

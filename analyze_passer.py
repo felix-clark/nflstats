@@ -10,7 +10,7 @@ from sys import argv
 import os.path
 
 from ruleset import bro_league, phys_league
-from getPoints import *
+from get_fantasy_points import *
 
 def playerFilename( pname ):
     return pname.lower().replace(' ', '_')
