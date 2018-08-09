@@ -93,7 +93,7 @@ print 'rush TDs per attempt:'
 # poisson does quite well even when all years are combined : -logL/N ~ 1
 # for a collection of rushers, we should use NB which gets updated to converge to the rusher's poisson w/ infinite data
 # dist_fit.plot_counts( all_td, label='touchdowns', fits=['poisson', 'neg_binomial'] )
-dist_fit.plot_fraction( rush_tds, rush_att, label='touchdowns per attempt', fits=['beta_binomial'] )
+dist_fit.plot_fraction( rush_tds, rush_att, label='touchdowns per attempt' )
 
 # print 'receptions:'
 # # poisson is too narrow, geometric has too heavy of tail

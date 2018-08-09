@@ -107,20 +107,23 @@ def sum_log_beta_binomial( ks, ns, a, b ):
     # ns may or may not be variable
     # if n is variable, we should weight w.r.t. n
     N = len(ks)
-    if np.shape(ns) == ():
-        ns = np.full(shape=ks.shape, fill_value=ns, dtype=float)
+    weights = np.full(shape=ks.shape, fill_value=1.0, dtype=float)
+    if np.shape(ns) != ():
+        weights = np.array(ns).astype(float)/np.mean(ns)
     # return -N * betaln(a,b) + sum( log(comb(ns,ks)) + betaln(ks+a, ns-ks+b) )
-    result = -N * betaln(a,b) + sum( ns* (log(comb(ns,ks)) + betaln(ks+a, ns-ks+b)) ) / sum(ns)
-    print( 'a, b, result = {}, {}, {}'.format( a, b, result))
+    result = -N * betaln(a,b) + sum( weights * (log(comb(ns,ks)) + betaln(ks+a, ns-ks+b)) )
     return result
 
 def grad_sum_log_beta_binomial( ks, ns, a, b ):
     N = len(ks)
-    if np.shape(ns) == ():
-        ns = np.full(shape=ks.shape, fill_value=ns, dtype=float)
-    common = N*digamma(a+b) - sum(ns*digamma(ns+a+b))/sum(ns)
-    dlda = sum(ns*digamma(ks+a))/sum(ns) - N*digamma(a) + common
-    dldb = sum(ns*digamma(ns-ks+b))/sum(ns) - N*digamma(b) + common
+    weights = np.full(shape=ks.shape, fill_value=1.0, dtype=float)
+    if np.shape(ns) != ():
+        weights = np.array(ns).astype(float)/np.mean(ns)
+    common = N*digamma(a+b) - sum(weights*digamma(ns+a+b))
+    dlda = sum(weights*digamma(ks+a)) - N*digamma(a) + common
+    dldb = sum(weights*digamma(ns-ks+b)) - N*digamma(b) + common
+    # result = -N * betaln(a,b) + sum( weights* (log(comb(ns,ks)) + betaln(ks+a, ns-ks+b)) )
+    # print( 'a, b, result, dlda, dldb = {}, {}, {}, {}, {}'.format( a, b, result, dlda, dldb))
     return np.array((dlda, dldb))
 
 
@@ -292,27 +295,29 @@ def to_beta_binomial( ks, ns ):
             logging.warning('data out of domain for beta-binomial')
     arr_ks = np.asarray(ks, dtype=float)
     N = len(arr_ks)
-    m1 = float(sum( arr_ks )) / N
-    m2 = float(sum( arr_ks**2 )) / N
+    # m1 = float(sum( arr_ks )) / N
+    m1 = sum( ns*arr_ks ) / sum(ns)
+    # m2 = sum( arr_ks**2 ) / N
+    m2 = sum( ns*arr_ks**2 ) / sum(ns)
     # use these moments for good initial guesses
     ab0 = np.array((0,0))
     ab0 = np.array((1.0, 1.0)) # should be able to at least get the mean
-    # if m1 > 0:
-    #     # using a variable n makes this guess sketchy. could refine this if having trouble
-    #     denom = (ns.mean()*(m2/m1 - m1 - 1) + m1)
-    #     ab0 = np.array((ns.mean()*m1-m2, (ns.mean()-m1)*(ns.mean()-m2/m1)))/denom
-    # else:
-    #     logging.warning('all terms are zero:')
-    #     logging.warning(arr_ks)
-    #     ab0 = np.array((1.0/N,1.0/N))
+    if m1 > 0:
+        # using a variable n makes this guess sketchy. could refine this if having trouble
+        denom = (ns.mean()*(m2/m1 - m1 - 1) + m1)
+        ab0 = np.array((ns.mean()*m1-m2, (ns.mean()-m1)*(ns.mean()-m2/m1)))/denom
+    else:
+        logging.warning('all terms are zero:')
+        logging.warning(arr_ks)
+        ab0 = np.array((1.0/N,1.0/N))
     
     # if denom <= 0:
     #     logging.warning('m1 = {}, m2 = {}, n = {}, N = {}'.format(m1, m2, n, N))
     method = 'L-BFGS-B'    
     func = lambda pars: - sum_log_beta_binomial( arr_ks, ns, *pars )
     grad = lambda pars: - grad_sum_log_beta_binomial( arr_ks, ns, *pars )
-    # opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)] )
-    opt_result = opt.minimize( func, ab0, method=method, bounds=[(0,None),(0,None)] )
+    opt_result = opt.minimize( func, ab0, method=method, jac=grad, bounds=[(0,None),(0,None)] )
+    # opt_result = opt.minimize( func, ab0, method=method, bounds=[(0,None),(0,None)] )
     logging.debug(opt_result.message)
     isSuccess = opt_result.success
     if not isSuccess:
@@ -523,8 +528,8 @@ def plot_counts( data, label='', norm=False, fits=None ):
 
     plt.show()
 
-# appropriate with any integer data
 # distributions proportional to exponentials of polynomial ratios
+# we will likely not use these distributions in our currnet model
 def plot_counts_poly( data, bounds=(-100,100), label='', norm=False ):
     ndata = len( data )
     mindata = min( data )
@@ -586,8 +591,8 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
     if fits is None:
         fits = ['beta_binomial']
     ndata = len( data_num )
-    data_num = np.array(data_num)
-    data_den = np.array(data_den)
+    data_num = np.array(data_num).astype(float)
+    data_den = np.array(data_den).astype(float)
     data_ratio = data_num.astype(float)/data_den.astype(float)
     # # instead of fitting unbinned likelihood fits, since the results are all integers
     # #   we may get speedup by fitting to histograms (which will require an additional implementation)
@@ -606,6 +611,14 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
     
     xfvals = np.linspace(0, 1, 1000) # get from bin_edges instead?
 
+    logging.debug('unweighted/weighted mean: {} / {}'.format(sum(data_num)/sum(data_den), data_ratio.mean()))
+    
+    testk,testn = np.array([4]),np.array([10])
+    testa, testb = 2.0, 1.0
+    testpars = testk, testn, testa, testb
+    logging.debug('bb pdf: {}'.format(beta_binomial(*testpars)))
+    logging.debug('bb log pdf: {}, {}, {}'.format(log(beta_binomial(*testpars)), log_beta_binomial(*testpars), sum_log_beta_binomial(*testpars) ))
+    
     if 'beta_binomial' in fits:
         _,(a,b),cov,logl = to_beta_binomial(data_num, data_den)
             
@@ -615,7 +628,9 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
         logging.info('  Beta binomial fit:')
         logging.info('    a = {:.3} '.format(a) + u'\u00B1' + ' {:.2}'.format( erra ))
         logging.info('    b = {:.3} '.format(b) + u'\u00B1' + ' {:.2}'.format( errb ))
-        # logging.info('    log(L)/NDF = {:.3}'.format( sum(st.beta.logpdf( data, a, b ))/(ndata-2) ) )
+        logging.info('    a/(a+b) = {:.3}'.format(a/(a+b)))
+        logging.info('    sqrt( ab/(a+b)**2/(a+b+1) ) = {:.3}'.format(np.sqrt(a*b/(a+b)**2/(a+b+1)))) 
+       # logging.info('    log(L)/NDF = {:.3}'.format( sum(st.beta.logpdf( data, a, b ))/(ndata-2) ) )
         # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
         # plt.plot(xfvals, yfvals, 'v-', lw=2 )
         plt.subplot(121)
