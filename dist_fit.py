@@ -257,16 +257,11 @@ def to_neg_binomial( data ):
     return isSuccess,(r,p),cov_array,-neg_ll/(n-2)
 
 def to_beta_neg_binomial( data ):
-    # if not data:
-    #     logging.error('empty data set')
-    #     exit(1)
-    log = logging.getLogger(__name__)
-    for x in data:
-        if x < 0:
-            log.warning('negative value in data set. beta negative binomial may not be appropriate.')
-    arr_ks = np.asarray( data )
+    arr_ks = np.asarray( data, dtype=float )
+    if np.any(arr_ks == 0):
+        logging.warning('negative value in data set. beta negative binomial may not be appropriate.')
     n = len( arr_ks )
-    mean = float( sum( arr_ks ) ) / n
+    mean = sum( arr_ks ) / n
     a0,b0 = (20., 10.) # start w/ low variance. make sure a > 1
     r0 = mean*(a0-1)/b0 # initial guess for r,a,b # mean = r*b/(a-1) for a > 1
     allowed_methods = ['L-BFGS-B', 'TNC', 'SLSQP'] # these are the only ones that can handle bounds. they can also all handle jacobians. none of them can handle hessians.
@@ -278,9 +273,9 @@ def to_beta_neg_binomial( data ):
     opt_result = opt.minimize( func, (r0,a0,b0), method=method, jac=grad, bounds=[(0,None),(0,None),(0,None)] )
     isSuccess = opt_result.success
     if not isSuccess:
-        log.error('beta negative binomial fit did not succeed.')
+        logging.error('beta negative binomial fit did not succeed.')
     r,a,b = opt_result.x
-    log.debug('jacobian for beta-neg-binomial = {}'.format(opt_result.jac)) # should be zero, or close to it
+    logging.debug('jacobian for beta-neg-binomial = {}'.format(opt_result.jac)) # should be zero, or close to it
     cov = opt_result.hess_inv
     cov_array = cov.todense()  # dense array
     neg_ll = opt_result.fun
