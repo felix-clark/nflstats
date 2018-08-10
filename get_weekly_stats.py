@@ -10,14 +10,16 @@ import nflgame
 # list of the positions we care about in fantasy
 off_pos = ['QB', 'RB', 'WR', 'TE', 'K']
 
-if __name__ == '__main__':
+def main():
     logging.getLogger().setLevel(logging.DEBUG)
     
     if not os.path.isdir('weekly_stats'):
         logging.info('creating directory weekly_stats')
         os.mkdir('weekly_stats')
         
-    firstyear,lastyear = 2009,2017 # 2009 # full range of available data is from 2009
+    dict_id_pos = {}
+    
+    firstyear,lastyear = 2009,2017 # 2009 # full range of available data is from 2009, though 2009 is not complete
     for year in range(firstyear, lastyear+1):
         print 'processing {} season'.format( year )
         games = nflgame.games_gen( year, kind='REG' )
@@ -49,7 +51,10 @@ if __name__ == '__main__':
                     print(pstat.stats)
                     continue
                 pos = pstat.player.position
-                if pos not in off_pos: continue
+                if not pos:
+                    pos = get_position(pstat, dict_id_pos, year)
+                if pos not in off_pos:
+                    continue
                 # if pos == 'K':
                 #     print(pstat.stats) # lets see which stats are relevant
                 statdict = pstat.stats
@@ -59,6 +64,7 @@ if __name__ == '__main__':
                 statdict['team'] = pstat.team
                 statdict['year'] = year
                 statdict['week'] = week
+                
                 try:
                     statdict['passing_int'] = statdict.pop('passing_ints') # rename this for consistency
                 except:
@@ -82,4 +88,40 @@ if __name__ == '__main__':
          # there are also misses recorded directly, but we don't need them.
          # blocks (fgb/xpb) just count as misses.
         df.to_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year))
-                
+        
+def get_position(pstat, dict_id_pos, year):
+    pid = pstat.playerid
+    if pid not in dict_id_pos:    
+        # if pstat.passing_att == 0 and pstat.rushing_att == 0 and pstat.receiving_rec ==0:
+        #     # probably defensive
+            # dict_id_pos[pid] = 'def'
+        checkdf = pd.read_csv('yearly_stats/fantasy_{}.csv'.format(year))
+        checkdf = checkdf[checkdf['name'] == pstat.player.full_name]
+        poses = checkdf['pos']
+        if poses.size == 0:
+            # logging.warning('no player with name {} found. will skip.'.format(pstat)) # could be defense
+            dict_id_pos[pid] = None
+        elif (poses == poses.iloc[0]).all(): # all elements are the same
+            dict_id_pos[pid] = poses.iloc[0]
+        else:
+            logging.warning('multiple results found for {} ({})'.format(pstat, poses.tolist()))
+            if 'QB' in poses.tolist():
+                if pstat.passing_att > 2:
+                    dict_id_pos[pid] = 'QB'
+                    return dict_id_pos[pid]
+                else: poses = poses[poses != 'QB']
+            if 'RB' in poses.tolist():
+                if pstat.rushing_att > 4:
+                    dict_id_pos[pid] = 'RB'
+                    return dict_id_pos[pid]
+                else: poses = poses[poses != 'RB']
+            assert(poses.size > 0)
+            if poses.size == 1:
+                dict_id_pos[pid] = poses.iloc[0]
+            else:
+                logging.error('still can\'t resolve descrepancy')
+                print(checkdf)
+    return dict_id_pos[pid]
+
+if __name__ == '__main__':
+    main()
