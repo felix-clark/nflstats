@@ -463,7 +463,11 @@ def plot_counts( data, label='', norm=False, fits=None ):
     yerrs = sqrt( entries ) / ndata if norm else sqrt( entries )
     
     xfvals = np.linspace(0, maxdata+3, 1000) # get from bin_edges instead?
-
+    plt.subplot(121)
+    plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+    plt.subplot(122)
+    plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+    
     # do likelihood fits for each type
 
     if 'geometric' in fits:             
@@ -472,10 +476,8 @@ def plot_counts( data, label='', norm=False, fits=None ):
         logging.info('    p = {:.3} '.format(p) + u'\u00B1' + ' {:.2}'.format( errp ))
         logging.info('    log(L)/NDF = {:.3}'.format( logl ))
         plt.subplot(121)
-        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*geometric( xfvals, p ), 'g-', lw=2)
         plt.subplot(122)
-        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*geometric( xfvals, p ), 'g-', lw=2)
         plt.yscale('log')
 
@@ -502,10 +504,8 @@ def plot_counts( data, label='', norm=False, fits=None ):
         # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
         # plt.plot(xfvals, yfvals, 'v-', lw=2 )
         plt.subplot(121)
-        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*neg_binomial( xfvals, r, p ), '--', lw=2, color='violet' )
         plt.subplot(122)
-        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*neg_binomial( xfvals, r, p ), '--', lw=2, color='violet' )
         plt.yscale('log')
 
@@ -522,10 +522,8 @@ def plot_counts( data, label='', norm=False, fits=None ):
         # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
         # plt.plot(xfvals, yfvals, 'v-', lw=2 )
         plt.subplot(121)
-        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*beta_neg_binomial( xfvals, r, a, b ), '--', lw=2, color='blue' )
         plt.subplot(122)
-        plt.errorbar( np.arange(0,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
         plt.plot(xfvals, ndata*beta_neg_binomial( xfvals, r, a, b ), '--', lw=2, color='blue' )
         plt.yscale('log')
 
