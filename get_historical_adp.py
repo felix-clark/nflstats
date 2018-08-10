@@ -30,6 +30,8 @@ def main():
             result['team'] = result['Player'].apply(get_team)
             result['pos'] = result['Player'].apply(get_pos)
             result = result[['name', 'team', 'pos'] + columns]
+            if pos == 'PK': pos = 'K'
+            if pos == 'Def': pos = 'DST'
             result.to_csv('adp_historical/adp_{}_{}.csv'.format(pos.lower(), year))
     
 def get_name(player):
@@ -47,7 +49,12 @@ def get_team(player):
 
 def get_pos(player):
     splits = player.split(' ')
-    return splits[-1]
+    pos = splits[-1]
+    if pos.lower() == 'Def'.lower():
+        pos = 'DST'
+    if pos == 'PK':
+        pos = 'K'
+    return pos
             
 if __name__ == '__main__':
     main()
