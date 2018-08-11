@@ -33,9 +33,9 @@ def neg_binomial( k, r, p ):
 def log_neg_binomial( k, r, p ):
     # return -gammaln( k+1 ) + gammaln( k + r ) - gammaln( r ) + k*log(p) + r*log(1-p)
     karr = np.array(k) # make sure it's an array
-    result = k*log(1-p) + r*log(p)
-    result[k>0] += - log(k) - betaln( k, r )
-    result[k<0] = -np.inf
+    result = np.array(karr*log(1-p) + r*log(p))
+    result[karr>0] += - log(karr) - betaln( karr, r )
+    result[karr<0] = -np.inf
     return result
 
 # discrete in range 0,infinity
@@ -563,7 +563,7 @@ def plot_avg_per( data, bounds=(-5,40), label='', weights=None, norm=True ):
     plt.plot(xfvals, st.norm.pdf( xfvals, mu_wt, sigma_wt ), 'r-')
     plt.yscale('log', nonposy='clip')
     # xlow,xup,ylow,yup = plt.axis()
-    # plt.axis( (xlow,xup,0.5,yup) )
+    plt.axis( (xlow,xup,0.01,yup) )
 
     plt.show()
     

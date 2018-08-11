@@ -39,7 +39,9 @@ class RushAttModel:
     this could be extended to other positions, with different defaults
     """
     # TODO: make these defaults a function of whether this is expected to be an RB1 or RB2/3
-    def __init__(self, lr=0.123, mem=0.651, gmem=0.812, ab0=(6.391,0.4695)):
+    def __init__(self, lr=0.135, mem=0.66, gmem=0.8, ab0=(6.392,0.4694)):
+        self.__var_names=('rushing_att',)
+        
         # these defaults are gotten from top 16 (by ADP) RBs.
         # they won't be good for general RBs down the line.
         # r and p for negative binomial distribution (scipy convention, not wikipedia)
@@ -57,6 +59,20 @@ class RushAttModel:
         self.game_mem = gmem
         self.season_memory = mem
 
+    @property
+    def var_names(self):
+        return self.__var_names
+
+    @property
+    def dep_vars(self):
+        return ()
+        
+    # a shortcut for a re-mapping of beta that comes up a lot due to the common convention for negative binomial
+    def _p(self):
+        # scipy convention for p (not wiki)
+        beta = self.ab[1]
+        return beta/(1.+beta)
+
     def update_game(self, rush_att):
         assert(0 < self.game_mem <= 1.0)
         self.ab *= self.game_mem
@@ -68,21 +84,27 @@ class RushAttModel:
         self.ab *= self.season_memory
         
     def gen_game(self):
-        # scipy convention for p (not wiki)
-        nbpars = (self.ab[0], self.ab[1]/(1.+self.ab[1]))
         # this yields a gamma convoluted w/ a poisson
-        return st.nbinom.rvs(*nbpars)
+        return st.nbinom.rvs(self.ab[0], self._p())
 
+    def ev(self):
+        return self.ab[0] / self.ab[1]
+
+    # we may be able to make this more general, and not have to implement it for every model
+    # remember that we don't want to minimize the chi-sq, we want to minimize the KLD
+    def chi_sq(self, rush_att):
+        norm = dist_fit.log_neg_binomial(self.ev(), self.ab[0], self._p())
+        return 2.*(self.kld(rush_att) + norm)
+    
     def kld(self, rush_att):
-        nbpars = (self.ab[0], self.ab[1]/(1.+self.ab[1]))
-        return -st.nbinom.logpmf(rush_att, *nbpars)
+        result = - st.nbinom.logpmf(rush_att, self.ab[0], self._p())
+        return result
 
     def __str__(self):
-        mu = self.ab[0] / self.ab[1]
-        p = self.ab[1]/(1.+self.ab[1])
         # assert (abs(st.nbinom.mean(self.alpha, p) - mu) < 0.001)
-        std = st.nbinom.std(self.ab[0], p)
-        return u'rush_att: \u03B1={:.2f}, \u03B2={:.2f}; {:.1f} pm {:.1f}'.format(self.ab[0], self.ab[1], mu, std)
+        std = st.nbinom.std(self.ab[0], self._p())
+        return u'rush_att: \u03B1={:.2f}, \u03B2={:.2f}; {:.1f} pm {:.1f}'.format(self.ab[0], self.ab[1],
+                                                                                  self.ev(), std)
 
 # a stochastic model doesn't work right out of the box because the gradients can easily make alpha,beta < 0
 class RushAttStochModel(RushAttModel):
@@ -97,7 +119,7 @@ class RushAttStochModel(RushAttModel):
         self.ab *= self.game_mem
         self.ab += - self.game_lr * self._grad_kld(rush_att)
         if (self.ab <= 0).any():
-            print('uh oh')
+            logging.error('alpha and beta must be > 0')
         
     def _grad_kld(self, rush_att):
         # could use dist_fit.grad_sum_log_neg_binomial,
@@ -113,35 +135,56 @@ class RushTdModel:
     this could again be extended to other positions, with different defaults
     """
     def __init__(self, lr=1.0, mem=0.77, gmem=1.0, ab0=(42.0,1400.)):
-        self.alpha,self.beta = ab0
+        self.__var_names = ('rushing_tds', 'rushing_att')
+        self.__dep_vars = ('rushing_att',)
+    
+        self.ab = np.array(ab0)
 
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.game_mem = gmem
         self.season_memory = mem
 
+    @property
+    def var_names(self):
+        return self.__var_names
+
+    # dependent variables i.e. those required for prediction
+    @property
+    def dep_vars(self):
+        return self.__dep_vars
+    
     def update_game(self, rush_td, rush_att):
         assert(0 < self.game_mem <= 1.0)
-        self.alpha = self.game_mem * self.alpha + self.game_lr * rush_td
-        self.beta  = self.game_mem * self.beta  + self.game_lr * (rush_att - rush_td)
+        self.ab *= self.game_mem
+        self.ab += self.game_lr * np.array((rush_td, rush_att - rush_td))
         # we could accumulate a KLD to diagnose when the model has been very off recently
 
     def new_season(self):
         assert(0 < self.season_memory <= 1.0)
-        self.alpha *= self.season_memory
-        self.beta *= self.season_memory
+        self.ab *= self.season_memory
         
     def gen_game(self, rush_att):
-        p = st.beta.rvs(self.alpha, self.beta)
+        p = st.beta.rvs(self.ab[0], self.ab[1])
         return st.binom.rvs(rush_att, p)
 
+    def ev(self, rush_att):
+        ev = self.ab[0] / self.ab[1] * rush_att
+        return ev
+
+    def chi_sq(self, rush_td, rush_att):
+        norm = dist_fit.log_beta_binomial( self.ev(rush_att), rush_att, self.ab[0], self.ab[1])
+        return 2.*(self.kld(rush_td, rush_att) + norm)
+    
     def kld(self, rush_td, rush_att):
         # return -st.binom.logpmf(rush_td, rush_att, self.alpha, self.beta)
-        return - dist_fit.log_beta_binomial( rush_td, rush_att, self.alpha, self.beta)
+        alpha,beta = self.ab[0],self.ab[1]
+        result = - dist_fit.log_beta_binomial( rush_td, rush_att, alpha, beta)
+        return result
 
     def __str__(self):
         mu = self.alpha / (self.alpha + self.beta)
-        p = self.beta/(1.+self.beta)
+        # p = self.beta/(1.+self.beta)
         # we can't get the variance for this distribtion w/out the rush attempts
         # we could compute it by compounding variance, but that's not too necessary rn
         # std = st.nbinom.std(self.alpha, p)

@@ -39,78 +39,100 @@ def main():
         rbdf = rbdf.append(yrdf)
 
     # they should already be sorted properly, but let's check.
-    rbdf = rbdf.sort_values(['year', 'week'])
+    rbdf = rbdf.sort_values(['year', 'week']).reset_index(drop=True)
     playerids = rbdf['playerid'].unique()
 
     years = rbdf['year'].unique()
     
-    tot_kld = 0.
-    # tot_kld_stoch = 0.
-    tot_week = 0
-    kld_dict,week_dict = {},{}
 
-    # basing rush attempts on the past is actually pretty bad.
+    # basing rush attempts on the past is not so great.
     # ideally we use a team-based touch model.
     # we need to look into the discrepancies more to figure out the problems
     # i suspect injuries, trades, then matchups are the big ones.
-    ra_mod_args = (
-        0.132, # lr
-        0.651, # mem
-        0.812, # gmem
-        (6.391, 0.4695) # ab0
-    )
-    rtd_mod_args = (
-        1.0, # lr
-        0.77, # mem
-        1.0, # gmem
-        (42., 1400.) # ab0
-    )
+    # many mistakes are in week 17, too, where the starters are often different
+    model_defs = {
+        'rush_att':{
+            'model':RushAttModel,
+            'args':(
+                0.135, # lr
+                0.66, # mem
+                0.8, # gmem
+                (6.392, 0.4694) # ab0
+            )
+        },
+        'rush_tds':{
+            'model':RushTdModel,
+            'args':(
+                1.0, # lr
+                0.77, # mem
+                1.0, # gmem
+                (42., 1400.) # ab0
+            )
+        }
+    }
+    tot_week = 0
+    # kld_dict,chisq_dict = {},{}
+    # for key in model_defs:
+    #     kld_dict[key] = 0
+    #     chisq_dict[key] = 0
+    
     for pid in playerids:
         pdf = rbdf[rbdf['playerid'] == pid]
         pname = pdf['name'].unique()[0]
-        
-        ra_mod  = RushAttModel(*ra_mod_args)
-        # stochastic models are not trivial to get working since the parameters can easily jump to invalid values
-        # ra_stoch_mod = RushAttStochModel(*ra_stoch_mod_args)
-        rtd_mod = RushTdModel(*rtd_mod_args)
-        models = [ra_mod,
-                  # ra_stoch_mod,
-                  rtd_mod]
+
+        plmodels = {mname:mdef['model'](*mdef['args'])
+                    for mname,mdef in model_defs.items()}
         
         years = pdf['year'].unique()
         # we could skip single-year seasons
         for icareer,year in enumerate(years):
             # can we use "group by" or something to reduce the depth of these loops?
-            ypdf = pdf[pdf['year'] == year]
-            for index, week in ypdf.iterrows():
-                ra = week['rushing_att']
-                rtd = week['rushing_tds']
-                # kld = ra_mod.kld(ra)
-                kld = rtd_mod.kld(rtd, ra)
-                tot_kld += kld
+            ypdf = pdf[(pdf['year'] == year) & (pdf['week'] < 17)] # week 17 is often funky
+            for index, row in ypdf.iterrows():
+                # these do point to the same one:
+                # assert((row[['name', 'year', 'week']] == rbdf.loc[index][['name', 'year', 'week']]).all())
                 tot_week += 1
-                # if kld > 5:
-                #     logging.info('bad prediction ({}) in year {} week {}: for {}: {}'.format(ra_mod, year, week['week'], pname, ra))
-                ra_mod.update_game(ra)
-                # ra_stoch_mod.update_game(ra)
-                rtd_mod.update_game(rtd, ra)
-            for model in models:
-                model.new_season()
+                for mname,model in plmodels.items():
+                    mvars = [row[v] for v in model.var_names]
+                    kld = model.kld(*mvars)
+                    chisq = model.chi_sq(*mvars)
+                    # kld_dict[mname] += kld
+                    # chisq_dict[mname] += chisq
+                    # saving to the dataframe slows the process down significantly
+                    depvars = [row[v] for v in model.dep_vars]
+                    rbdf.loc[index,'{}_ev'.format(mname)] = model.ev(*depvars)
+                    rbdf.loc[index,'{}_kld'.format(mname)] = kld
+                    rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
+                    model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
+            for _,mod in plmodels.items():
+                mod.new_season()
                 
         # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
         # logging.info('  {}'.format(ra_mod))
         # logging.info('  {}'.format(rtd_mod))
 
-    logging.info('rush att model arguments: {}'.format(ra_mod_args))
-    # logging.info('rush td model arguments: {}'.format(rtd_mod_args))
-    logging.info('rush att kld = {} out of {} weeks (avg {:.6f})'.format(tot_kld, tot_week, tot_kld/tot_week))
-    # logging.info('rush td kld = {} out of {} weeks (avg {:.7f})'.format(tot_kld, tot_week, tot_kld/tot_week))
-    # logging.info('rush att stochastic model arguments: {}'.format(ra_stoch_mod_args))
-    # logging.info('rush att stochastic kld = {} (avg {:.6f})'.format(tot_kld_stoch, tot_kld_stoch/tot_week))
-            
+    print_models = ['rush_att', 'rush_tds'] # edit this to suppress info we've already looked at
+    for model in print_models:
+        logging.info('{} model arguments: {}'.format(model, model_defs[model]['args']))
+        klds = rbdf[model+'_kld']
+        chisqs = rbdf[model+'_chisq']
+        logging.info('{} kld = {:.6f}, chisq = {:.4f} out of {} weeks (avg {:.6f}, {:.3f})'
+                     .format(model, klds.sum(), chisqs.sum(),
+                             tot_week, klds.mean(), chisqs.mean()))
+        # print(rbdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
+
+
+    pd.options.display.max_rows=10
     
-    # logging.warning('exiting early')
-    # exit(0)
+    # ra_chisqs = rbdf.groupby('playerid')['rush_att_chisq'].mean()
+    # print(ra_chisqs[ra_chisqs > 1.5].index)
+    # print( rbdf[rbdf['playerid'].isin(ra_chisqs[ra_chisqs > 1.5].index)][['name','year','week','rushing_att','rush_att_ev','rush_att_chisq']])
+    
+    # print(rbdf.groupby('year')['rush_att_chisq'].mean())
+    
+            
+    logging.warning('exiting early')
+    exit(0)
     
     rush_att = rbdf['rushing_att']
     rush_yds = rbdf['rushing_yds']
