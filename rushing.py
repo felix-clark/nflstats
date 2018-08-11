@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import logging
 
+from rb_model import *
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
@@ -19,28 +20,85 @@ def main():
         good_col = lambda col: 'passing' not in col and 'kicking' not in col
         columns = [col for col in yrdf.columns if good_col(col)]
         yrdf = yrdf[columns].fillna(0)
+        yrdf['year'] = year
         
-        # these are defined pretty much just for debugging
-        display_cols = ['name']
-        display_cols += [col for col in columns if 'rushing' in col]
+        # # these are defined pretty much just for debugging
+        # display_cols = ['name']
+        # display_cols += [col for col in columns if 'rushing' in col]
 
-        good_rb_names = top_rb_names(year, 16)
-        # good_rb_names = good_rb_names.tail(8)
-        good_rbs = yrdf['name'].isin(good_rb_names)
-        yrdf = yrdf[good_rbs]
+        # TODO: select RB1 and RB2/3 each week for each team. use this designation to set bayesian priors.
+        # sould be more precise than this random ADP site, which has a few strange results
         
-        # lets select good RBs by those who have more than some # of touches in a season
-        # we can't just get IDs though, since some players are only relevant for a season or two
-        # season_tot = yrdf.groupby(['name','playerid'], as_index=False).sum() # really just need playerid
-        # season_best = yrdf.groupby(['name','playerid'], as_index=False).max()
-        # baseline_tot = season_tot['rushing_att'] > 60
-        # baseline_best = season_best['rushing_att'] > 20
-        # or had at least some games with lots of attempts, to account for injured stars    
-        # good_rb_ids |= set(season_tot[baseline_tot]['playerid'].tolist()).union(set(season_best[baseline_best]['playerid'].tolist()))
+        # could also provide a weight based on ADP?
+        good_rb_names = top_rb_names(year)
+        # good_rb_names = good_rb_names.tail(8) # we got the defaults from the top 16. we'll refine them later.
+        # to be included each week, they need to have been a good RB and also have actually played:
+        good_rbs = yrdf['name'].isin(good_rb_names) & (yrdf['rushing_att'] > 0)
+        yrdf = yrdf[good_rbs]
         
         rbdf = rbdf.append(yrdf)
 
-    # print(good_rb_ids)
+    # they should already be sorted properly, but let's check.
+    rbdf = rbdf.sort_values(['year', 'week'])
+    playerids = rbdf['playerid'].unique()
+
+    years = rbdf['year'].unique()
+    
+    tot_kld = 0.
+    tot_week = 0
+    kld_dict,week_dict = {},{}
+
+    ra_mod_args = (
+        0.132, # lr
+        0.651, # mem
+        0.812, # gmem
+        (6.391, 0.4695) # ab0
+    )
+    rtd_mod_args = (
+        1.0, # lr
+        0.77, # mem
+        1.0, # gmem
+        (42., 1400.) # ab0
+    )
+    for pid in playerids:
+        pdf = rbdf[rbdf['playerid'] == pid]
+        pname = pdf['name'].unique()[0]
+        
+        ra_mod  = rush_att_model(*ra_mod_args)
+        rtd_mod = rush_td_model(*rtd_mod_args)
+        models = [ra_mod, rtd_mod]
+        
+        years = pdf['year'].unique()
+        # we could skip single-year seasons
+        for icareer,year in enumerate(years):
+            # can we use "group by" or something to reduce the depth of these loops?
+            ypdf = pdf[pdf['year'] == year]
+            for index, week in ypdf.iterrows():
+                ra = week['rushing_att']
+                rtd = week['rushing_tds']
+                # kld = ra_mod.kld(ra)
+                kld = rtd_mod.kld(rtd, ra)
+                tot_kld += kld
+                tot_week += 1
+                # if kld > 5:
+                #     logging.info('bad prediction ({}) in year {} week {}: for {}: {}'.format(ra_mod, year, week['week'], pname, ra))
+                ra_mod.bayes_update_game(ra)
+                rtd_mod.bayes_update_game(rtd, ra)
+            for model in models:
+                model.bayes_new_season()
+                
+        # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
+        # logging.info('  {}'.format(ra_mod))
+        # logging.info('  {}'.format(rtd_mod))
+
+    # logging.info('rush att model arguments: {}'.format(ra_mod_args))
+    logging.info('rush td model arguments: {}'.format(rtd_mod_args))
+    # logging.info('rush att kld = {} out of {} weeks (avg {:.6f})'.format(tot_kld, tot_week, tot_kld/tot_week))
+    logging.info('rush td kld = {} out of {} weeks (avg {:.7f})'.format(tot_kld, tot_week, tot_kld/tot_week))
+            
+    
+    logging.warning('exiting early')
+    exit(0)
     
     rush_att = rbdf['rushing_att']
     rush_yds = rbdf['rushing_yds']
@@ -62,10 +120,7 @@ def main():
                      , 'beta_neg_binomial' # beta-negative is not really an improvement - we don't need more variance
     ]
     dist_fit.plot_counts( rush_att[good_rbs], label='rushing attempts per game' ,fits=rush_att_fits)
-    
-    # logging.info('exiting early')
-    # exit(0)
-    
+
     # print 'rushing yards per attempt:'
     # # in a single game
     # dist_fit.plot_counts_poly( rush_yds_pa, label='rush yds per attempt', bounds=(-10,50))
