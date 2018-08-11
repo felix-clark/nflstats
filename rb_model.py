@@ -1,13 +1,15 @@
 import dist_fit
+import numpy as np
 import scipy.stats as st
+from scipy.special import digamma
 
 # we'll want to split this up into a few types
-class rb_model:
+class RbModel:
     """
     represents a statistical model for a single season for a running back.
     """
     def __init__(self):
-        self.rushatt = rush_att_model()
+        self.rushatt = RushAttModel()
 
     def gen_game(self):
         game = {}
@@ -31,7 +33,7 @@ class rb_model:
 # this is really just like our neg binomial model,
 # but with a different interface and week-to-week sensitivity
 # TODO: implement scipy.stats.rv_discrete ?
-class rush_att_model:
+class RushAttModel:
     """
     statistical model for rushing attempts by RBs
     this could be extended to other positions, with different defaults
@@ -47,43 +49,65 @@ class rush_att_model:
         # alpha and beta, using gamma prior for neg.binom. predictive
         # beta = p/(1-p)
         # EV = alpha/beta
-        self.alpha,self.beta = ab0
+        # self.alpha,self.beta = ab0
+        self.ab = np.array(ab0)
 
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.game_mem = gmem
         self.season_memory = mem
 
-    def bayes_update_game(self, rush_att):
+    def update_game(self, rush_att):
         assert(0 < self.game_mem <= 1.0)
-        self.alpha = self.game_mem * self.alpha + self.game_lr * rush_att
-        self.beta  = self.game_mem * self.beta  + self.game_lr
+        self.ab *= self.game_mem
+        self.ab += self.game_lr * np.array((rush_att, 1.))
         # we could accumulate a KLD to diagnose when the model has been very off recently
 
-    def bayes_new_season(self):
+    def new_season(self):
         assert(0 < self.season_memory <= 1.0)
-        self.alpha *= self.season_memory
-        self.beta *= self.season_memory
+        self.ab *= self.season_memory
         
     def gen_game(self):
         # scipy convention for p (not wiki)
-        p = self.beta/(1.+self.beta)
+        nbpars = (self.ab[0], self.ab[1]/(1.+self.ab[1]))
         # this yields a gamma convoluted w/ a poisson
-        return st.nbinom.rvs(self.alpha, p)
+        return st.nbinom.rvs(*nbpars)
 
     def kld(self, rush_att):
-        p = self.beta/(1.+self.beta)
-        return -st.nbinom.logpmf(rush_att, self.alpha, p)
+        nbpars = (self.ab[0], self.ab[1]/(1.+self.ab[1]))
+        return -st.nbinom.logpmf(rush_att, *nbpars)
 
     def __str__(self):
-        mu = self.alpha / self.beta
-        p = self.beta/(1.+self.beta)
-        assert (abs(st.nbinom.mean(self.alpha, p) - mu) < 0.001)
-        std = st.nbinom.std(self.alpha, p)
-        return u'rush_att: \u03B1={:.2f}, \u03B2={:.2f}; {:.1f} pm {:.1f}'.format(self.alpha, self.beta, mu, std)
+        mu = self.ab[0] / self.ab[1]
+        p = self.ab[1]/(1.+self.ab[1])
+        # assert (abs(st.nbinom.mean(self.alpha, p) - mu) < 0.001)
+        std = st.nbinom.std(self.ab[0], p)
+        return u'rush_att: \u03B1={:.2f}, \u03B2={:.2f}; {:.1f} pm {:.1f}'.format(self.ab[0], self.ab[1], mu, std)
 
+# a stochastic model doesn't work right out of the box because the gradients can easily make alpha,beta < 0
+class RushAttStochModel(RushAttModel):
+    """
+    stochiastic model that updates via gradient descent instead of bayes
+    """
+    def __init__(self, *args):
+        # RushAttModel.__init__(self, *args)
+        super(RushAttStochModel, self).__init__(*args)
+    
+    def update_game(self, rush_att):
+        self.ab *= self.game_mem
+        self.ab += - self.game_lr * self._grad_kld(rush_att)
+        if (self.ab <= 0).any():
+            print('uh oh')
+        
+    def _grad_kld(self, rush_att):
+        # could use dist_fit.grad_sum_log_neg_binomial,
+        # but we don't need the sum and it uses a different change of variables.
+        dlda = digamma(rush_att + self.ab[0]) - digamma(self.ab[0]) + np.log(self.ab[1]/(1.+self.ab[1]))
+        dldb = (self.ab[0]/self.ab[1] - rush_att)/(1.+self.ab[1])
+        # print (dlda, dldb)
+        return np.array((dlda, dldb))
 
-class rush_td_model:
+class RushTdModel:
     """
     statistical model for TDs per rush
     this could again be extended to other positions, with different defaults
@@ -96,13 +120,13 @@ class rush_td_model:
         self.game_mem = gmem
         self.season_memory = mem
 
-    def bayes_update_game(self, rush_td, rush_att):
+    def update_game(self, rush_td, rush_att):
         assert(0 < self.game_mem <= 1.0)
         self.alpha = self.game_mem * self.alpha + self.game_lr * rush_td
         self.beta  = self.game_mem * self.beta  + self.game_lr * (rush_att - rush_td)
         # we could accumulate a KLD to diagnose when the model has been very off recently
 
-    def bayes_new_season(self):
+    def new_season(self):
         assert(0 < self.season_memory <= 1.0)
         self.alpha *= self.season_memory
         self.beta *= self.season_memory

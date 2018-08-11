@@ -45,9 +45,14 @@ def main():
     years = rbdf['year'].unique()
     
     tot_kld = 0.
+    # tot_kld_stoch = 0.
     tot_week = 0
     kld_dict,week_dict = {},{}
 
+    # basing rush attempts on the past is actually pretty bad.
+    # ideally we use a team-based touch model.
+    # we need to look into the discrepancies more to figure out the problems
+    # i suspect injuries, trades, then matchups are the big ones.
     ra_mod_args = (
         0.132, # lr
         0.651, # mem
@@ -64,9 +69,13 @@ def main():
         pdf = rbdf[rbdf['playerid'] == pid]
         pname = pdf['name'].unique()[0]
         
-        ra_mod  = rush_att_model(*ra_mod_args)
-        rtd_mod = rush_td_model(*rtd_mod_args)
-        models = [ra_mod, rtd_mod]
+        ra_mod  = RushAttModel(*ra_mod_args)
+        # stochastic models are not trivial to get working since the parameters can easily jump to invalid values
+        # ra_stoch_mod = RushAttStochModel(*ra_stoch_mod_args)
+        rtd_mod = RushTdModel(*rtd_mod_args)
+        models = [ra_mod,
+                  # ra_stoch_mod,
+                  rtd_mod]
         
         years = pdf['year'].unique()
         # we could skip single-year seasons
@@ -82,23 +91,26 @@ def main():
                 tot_week += 1
                 # if kld > 5:
                 #     logging.info('bad prediction ({}) in year {} week {}: for {}: {}'.format(ra_mod, year, week['week'], pname, ra))
-                ra_mod.bayes_update_game(ra)
-                rtd_mod.bayes_update_game(rtd, ra)
+                ra_mod.update_game(ra)
+                # ra_stoch_mod.update_game(ra)
+                rtd_mod.update_game(rtd, ra)
             for model in models:
-                model.bayes_new_season()
+                model.new_season()
                 
         # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
         # logging.info('  {}'.format(ra_mod))
         # logging.info('  {}'.format(rtd_mod))
 
-    # logging.info('rush att model arguments: {}'.format(ra_mod_args))
-    logging.info('rush td model arguments: {}'.format(rtd_mod_args))
-    # logging.info('rush att kld = {} out of {} weeks (avg {:.6f})'.format(tot_kld, tot_week, tot_kld/tot_week))
-    logging.info('rush td kld = {} out of {} weeks (avg {:.7f})'.format(tot_kld, tot_week, tot_kld/tot_week))
+    logging.info('rush att model arguments: {}'.format(ra_mod_args))
+    # logging.info('rush td model arguments: {}'.format(rtd_mod_args))
+    logging.info('rush att kld = {} out of {} weeks (avg {:.6f})'.format(tot_kld, tot_week, tot_kld/tot_week))
+    # logging.info('rush td kld = {} out of {} weeks (avg {:.7f})'.format(tot_kld, tot_week, tot_kld/tot_week))
+    # logging.info('rush att stochastic model arguments: {}'.format(ra_stoch_mod_args))
+    # logging.info('rush att stochastic kld = {} (avg {:.6f})'.format(tot_kld_stoch, tot_kld_stoch/tot_week))
             
     
-    logging.warning('exiting early')
-    exit(0)
+    # logging.warning('exiting early')
+    # exit(0)
     
     rush_att = rbdf['rushing_att']
     rush_yds = rbdf['rushing_yds']
@@ -121,9 +133,10 @@ def main():
     ]
     dist_fit.plot_counts( rush_att[good_rbs], label='rushing attempts per game' ,fits=rush_att_fits)
 
-    # print 'rushing yards per attempt:'
-    # # in a single game
-    # dist_fit.plot_counts_poly( rush_yds_pa, label='rush yds per attempt', bounds=(-10,50))
+    print('rushing yards per attempt:')
+    # in a single game
+    dist_fit.plot_avg_per( rush_yds[good_rbs]/rush_att[good_rbs], weights=rush_att[good_rbs],
+                           label='rush yds per attempt', bounds=(-10,50))
     
     # negative binomial is redundant w/ poisson here. TDs are rare, and relatively independent.
     # geometric does OK, but is clearly inferior w/ high stats

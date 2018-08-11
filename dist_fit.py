@@ -6,6 +6,7 @@ from scipy.misc import factorial
 import scipy.optimize as opt
 import scipy.stats as st
 import matplotlib.pyplot as plt
+from math import floor, ceil
 
 # non-negative discrete distributions
 
@@ -511,6 +512,61 @@ def plot_counts( data, label='', norm=False, fits=None ):
 
     plt.show()
 
+# this will just do a gaussian fit right now
+# a student-t would be a good addition
+# and perhaps some skewed dists as well?
+def plot_avg_per( data, bounds=(-5,40), label='', weights=None, norm=True ):
+    ndata = len( data )
+    mindata = floor(min( data ))
+    maxdata = ceil(max( data ))
+    
+    # # probably don't need to save all return values
+    entries, bin_edges, patches = plt.hist( data, bins=np.arange(mindata-2,maxdata+4,1),
+                                            # range=[-0.5, maxtds+1.5],
+                                            align='left',
+                                            normed=norm,
+                                            weights=weights,
+                                            label=label
+    )
+    sqerrs, _, _ = plt.hist( data, bins=np.arange(mindata-2,maxdata+4,1),
+                             align='left',
+                             # normed=norm,
+                             weights=weights**2,
+    )
+    yerrs = sqrt( sqerrs ) / weights.sum()
+    
+    plt.subplot(121)
+    plt.errorbar( np.arange(mindata-2,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+    plt.subplot(122)
+    plt.errorbar( np.arange(mindata-2,maxdata+3), entries, yerr=yerrs, align='left', fmt='none', color='black' )
+    
+    xfvals = np.linspace(mindata-5, maxdata+6, 1000)
+
+    # (mu,sigma),cov,logl = to_gaussian_int( bounds, data )
+    mu,sigma = st.norm.fit( data )
+    errmu = '?' # sqrt( cov[0][0] )
+    errsigma = '?' # sqrt( cov[1][1] )
+    logging.info('    ' + u'\u03BC' + ' = {:.3} '.format(mu) +  u'\u00B1' + ' {:.2}'.format( errmu ))
+    logging.info('    ' + u'\u03C3' + ' = {:.3} '.format(sigma) +  u'\u00B1' + ' {:.2}'.format( errsigma ))
+    logging.info('    -log(L)/NDF = {:.3}'.format( -st.norm.logpdf(data, mu, sigma).sum()/(len(data)-2) ))
+    mu_wt = sum(weights*data)/weights.sum()
+    sigma_wt = np.sqrt( sum(weights*(data-mu_wt)**2)/weights.sum() )
+    logging.info('  weighted results:')
+    logging.info('    ' + u'\u03BC' + ' = {:.3} '.format(mu_wt) )
+    logging.info('    ' + u'\u03C3' + ' = {:.3} '.format(sigma_wt))
+    logging.info('    -log(L)/NDF = {:.3}'.format( -sum(weights*st.norm.logpdf(data, mu_wt, sigma_wt))/weights.sum()*len(data)/(len(data)-2.) ))
+    plt.subplot(121)
+    plt.plot(xfvals, st.norm.pdf( xfvals, mu, sigma ), '--', lw=2, color='blue' )
+    plt.plot(xfvals, st.norm.pdf( xfvals, mu_wt, sigma_wt ), 'r-')
+    plt.subplot(122)
+    plt.plot(xfvals, st.norm.pdf( xfvals, mu, sigma ), '--', lw=2, color='blue' )
+    plt.plot(xfvals, st.norm.pdf( xfvals, mu_wt, sigma_wt ), 'r-')
+    plt.yscale('log', nonposy='clip')
+    # xlow,xup,ylow,yup = plt.axis()
+    # plt.axis( (xlow,xup,0.5,yup) )
+
+    plt.show()
+    
 # distributions proportional to exponentials of polynomial ratios
 # we will likely not use these distributions in our currnet model
 def plot_counts_poly( data, bounds=(-100,100), label='', norm=False ):
@@ -569,7 +625,7 @@ def plot_counts_poly( data, bounds=(-100,100), label='', norm=False ):
     plt.show()
 
 ## pretty much only a beta distribution is appropriate here (?)
-def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.01 ):
+def plot_fraction( data_num, data_den, label='', fits=None, step=0.002 ):
     # will fit to fraction num/den to get alpha and beta parameters
     if fits is None:
         fits = ['beta_binomial']
@@ -580,15 +636,20 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
     # # instead of fitting unbinned likelihood fits, since the results are all integers
     # #   we may get speedup by fitting to histograms (which will require an additional implementation)
     # # probably don't need to save all return values
-    entries, bin_edges, patches = plt.hist( data_ratio, bins=np.arange(-0.0,1+step,step),
-                                            # range=[-0.5, maxtds+1.5],
+    entries, bin_edges, patches = plt.hist( data_ratio, bins=np.arange(0,1+step,step),
                                             align='left',
-                                            normed=norm,
+                                            normed=True,
                                             weights=data_den, # weight by number of attempts
                                             label=label
     )
-
-    # print(data)
+    sqerrs, _, _ = plt.hist( data_ratio, bins=np.arange(0,1+step,step),
+                             align='left',
+                             normed=False,
+                             weights=data_den**2,
+    )
+    yerrs = sqrt( sqerrs ) / data_den.sum()
+    
+    # print([(y,e) for y,e in zip(entries,yerrs) if y > 0])# these errors are very small. are we doing this properly?
 
     #check the gradient: <- it's good
     # atest,btest,ep = 1.4,9.2,1e-6
@@ -602,7 +663,6 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
     
     # yerrs = [ sqrt( x / ndata ) for x in entries ] if norm else [ sqrt( x ) for x in entries ]
     ## these errors don't really hold with weights...
-    yerrs = sqrt( entries ) / ndata if norm else sqrt( entries )
     
     xfvals = np.linspace(0, 1, 1000) # get from bin_edges instead?
     plt.subplot(121)
@@ -636,10 +696,10 @@ def plot_fraction( data_num, data_den, label='', norm=False, fits=None, step=0.0
         # yfvals = ( ndata*neg_binomial( x, p, r ) for x in xfvals ) # conditional in neg binomial
         # plt.plot(xfvals, yfvals, 'v-', lw=2 )
         plt.subplot(121)
-        plt.plot(xfvals, ndata*st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
+        plt.plot(xfvals, st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
         res = plt.subplot(122)
-        plt.plot(xfvals, ndata*st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
-        plt.yscale('log')
-        res.set_ylim(0.1,None)
+        plt.plot(xfvals, st.beta.pdf( xfvals, a, b ), '--', lw=2, color='blue' )
+        plt.yscale('log', nonposy='clip')
+        # res.set_ylim(0.1,None)
 
     plt.show()
