@@ -422,24 +422,6 @@ def to_exp_poly_ratio( npq, dom_bounds, data=[] ):
     return result, cov_array, -neg_ll/(n-n_p-n_q)
 
 
-# # for floating point data
-# def to_gaussian( data=[] ):
-#     if not data:
-#         print 'error: empty data set'
-#         exit(1)
-#     if len( data ) == 1:
-#         print 'need more than 1 data point to fit gaussian'
-#         exit(1)
-#     n = len( data )
-#     mu = float( sum( data ) ) / n
-#     var = sum( ( (x - mu)**2 for x in data ) ) / (n-1) # sample (as opposed to population) variance
-#     sigma = sqrt( var )
-#     err_mu = sigma / sqrt(n)
-#     err_sigma = sigma / sqrt( 2*(n-1) ) # report sample standard deviation
-#     log_L_per_ndf = (1 - log(2*pi*var))/2
-#     return (mu, err_mu), (sigma, err_sigma), log_L_per_ndf
-
-
 ## functions to generate the plots of data with appropriate fits
 
 # appropriate with non-negative integer data
