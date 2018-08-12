@@ -40,7 +40,7 @@ class RushAttModel:
     """
     # TODO: make these defaults a function of whether this is expected to be an RB1 or RB2/3
     def __init__(self, lr=0.135, mem=0.66, gmem=0.8, ab0=(6.392,0.4694)):
-        self.__var_names=('rushing_att',)
+        # self.__pred_var=('rushing_att',)
         
         # these defaults are gotten from top 16 (by ADP) RBs.
         # they won't be good for general RBs down the line.
@@ -61,8 +61,15 @@ class RushAttModel:
 
     @property
     def var_names(self):
-        return self.__var_names
+        var_names = [self.pred_var] + list(self.dep_vars)
+        return var_names
 
+    # the variable we're predicting
+    @property
+    def pred_var(self):
+        # return ('rushing_att',)
+        return 'rushing_att'
+    
     @property
     def dep_vars(self):
         return ()
@@ -89,6 +96,11 @@ class RushAttModel:
 
     def ev(self):
         return self.ab[0] / self.ab[1]
+
+    def var(self):
+        # 1 - p = 1/(1+beta)
+        ## var/alpha = (1-p)/p**2  = (1+beta)/beta**2
+        return self.ab[0]*(1.+self.ab[1])/self.ab[1]**2
 
     # we may be able to make this more general, and not have to implement it for every model
     # remember that we don't want to minimize the chi-sq, we want to minimize the KLD
@@ -135,8 +147,8 @@ class RushTdModel:
     this could again be extended to other positions, with different defaults
     """
     def __init__(self, lr=1.0, mem=0.77, gmem=1.0, ab0=(42.0,1400.)):
-        self.__var_names = ('rushing_tds', 'rushing_att')
-        self.__dep_vars = ('rushing_att',)
+        # self.__var_names = ('rushing_tds', 'rushing_att')
+        # self.__dep_vars = ('rushing_att',)
     
         self.ab = np.array(ab0)
 
@@ -147,12 +159,17 @@ class RushTdModel:
 
     @property
     def var_names(self):
-        return self.__var_names
+        var_names = [self.pred_var] + list(self.dep_vars)
+        return var_names
 
+    @property
+    def pred_var(self):
+        return 'rushing_tds'
+    
     # dependent variables i.e. those required for prediction
     @property
     def dep_vars(self):
-        return self.__dep_vars
+        return ('rushing_att',)# self.__dep_vars
     
     def update_game(self, rush_td, rush_att):
         assert(0 < self.game_mem <= 1.0)
@@ -171,6 +188,12 @@ class RushTdModel:
     def ev(self, rush_att):
         ev = self.ab[0] / self.ab[1] * rush_att
         return ev
+
+    def var(self, rush_att):
+        a,b = tuple(self.ab)
+        apb = a + b
+        var = rush_att*a*b*(apb+rush_att)/(apb**2*(apb+1))
+        return var
 
     def chi_sq(self, rush_td, rush_att):
         norm = dist_fit.log_beta_binomial( self.ev(rush_att), rush_att, self.ab[0], self.ab[1])

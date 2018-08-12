@@ -2,134 +2,43 @@
 import dist_fit
 import numpy as np
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 import logging
+import os.path
 
 from rb_model import *
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
-
-    rbdf = pd.DataFrame()
-
-    good_rb_ids = set()
-
-    firstyear,lastyear = 2009,2017 # 2009 seems to have very limited stats
-    for year in range(firstyear,lastyear+1):
-        yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year))
-        yrdf = yrdf[yrdf['pos'] == 'RB']
-        good_col = lambda col: 'passing' not in col and 'kicking' not in col
-        columns = [col for col in yrdf.columns if good_col(col)]
-        yrdf = yrdf[columns].fillna(0)
-        yrdf['year'] = year
-        
-        # # these are defined pretty much just for debugging
-        # display_cols = ['name']
-        # display_cols += [col for col in columns if 'rushing' in col]
-
-        # TODO: select RB1 and RB2/3 each week for each team. use this designation to set bayesian priors.
-        # sould be more precise than this random ADP site, which has a few strange results
-        
-        # could also provide a weight based on ADP?
-        good_rb_names = top_rb_names(year)
-        # good_rb_names = good_rb_names.tail(8) # we got the defaults from the top 16. we'll refine them later.
-        # to be included each week, they need to have been a good RB and also have actually played:
-        good_rbs = yrdf['name'].isin(good_rb_names) & (yrdf['rushing_att'] > 0)
-        yrdf = yrdf[good_rbs]
-        
-        rbdf = rbdf.append(yrdf)
-
-    # they should already be sorted properly, but let's check.
-    rbdf = rbdf.sort_values(['year', 'week']).reset_index(drop=True)
-    playerids = rbdf['playerid'].unique()
-
-    years = rbdf['year'].unique()
+    sns.set()
     
-
-    # basing rush attempts on the past is not so great.
-    # ideally we use a team-based touch model.
-    # we need to look into the discrepancies more to figure out the problems
-    # i suspect injuries, trades, then matchups are the big ones.
-    # many mistakes are in week 17, too, where the starters are often different
-    model_defs = {
-        'rush_att':{
-            'model':RushAttModel,
-            'args':(
-                0.135, # lr
-                0.66, # mem
-                0.8, # gmem
-                (6.392, 0.4694) # ab0
-            )
-        },
-        'rush_tds':{
-            'model':RushTdModel,
-            'args':(
-                1.0, # lr
-                0.77, # mem
-                1.0, # gmem
-                (42., 1400.) # ab0
-            )
-        }
-    }
-    tot_week = 0
-    # kld_dict,chisq_dict = {},{}
-    # for key in model_defs:
-    #     kld_dict[key] = 0
-    #     chisq_dict[key] = 0
-    
-    for pid in playerids:
-        pdf = rbdf[rbdf['playerid'] == pid]
-        pname = pdf['name'].unique()[0]
-
-        plmodels = {mname:mdef['model'](*mdef['args'])
-                    for mname,mdef in model_defs.items()}
-        
-        years = pdf['year'].unique()
-        # we could skip single-year seasons
-        for icareer,year in enumerate(years):
-            # can we use "group by" or something to reduce the depth of these loops?
-            ypdf = pdf[(pdf['year'] == year) & (pdf['week'] < 17)] # week 17 is often funky
-            for index, row in ypdf.iterrows():
-                # these do point to the same one:
-                # assert((row[['name', 'year', 'week']] == rbdf.loc[index][['name', 'year', 'week']]).all())
-                tot_week += 1
-                for mname,model in plmodels.items():
-                    mvars = [row[v] for v in model.var_names]
-                    kld = model.kld(*mvars)
-                    chisq = model.chi_sq(*mvars)
-                    # kld_dict[mname] += kld
-                    # chisq_dict[mname] += chisq
-                    # saving to the dataframe slows the process down significantly
-                    depvars = [row[v] for v in model.dep_vars]
-                    rbdf.loc[index,'{}_ev'.format(mname)] = model.ev(*depvars)
-                    rbdf.loc[index,'{}_kld'.format(mname)] = kld
-                    rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
-                    model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
-            for _,mod in plmodels.items():
-                mod.new_season()
-                
-        # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
-        # logging.info('  {}'.format(ra_mod))
-        # logging.info('  {}'.format(rtd_mod))
-
-    print_models = ['rush_att', 'rush_tds'] # edit this to suppress info we've already looked at
-    for model in print_models:
-        logging.info('{} model arguments: {}'.format(model, model_defs[model]['args']))
+    rbdf = get_model_df()
+    models = ['rush_att', 'rush_tds'] # edit this to suppress info we've already looked at
+    for model in models:
         klds = rbdf[model+'_kld']
         chisqs = rbdf[model+'_chisq']
         logging.info('{} kld = {:.6f}, chisq = {:.4f} out of {} weeks (avg {:.6f}, {:.3f})'
                      .format(model, klds.sum(), chisqs.sum(),
-                             tot_week, klds.mean(), chisqs.mean()))
+                             klds.size, klds.mean(), chisqs.mean()))
         # print(rbdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
 
-
-    pd.options.display.max_rows=10
-    
+    for model in models:
+        residuals = rbdf['{}_residual'.format(model)]
+        residuals = residuals[residuals.notnull()]
+        plt_res = sns.distplot(residuals,
+                               hist_kws={'log':False, 'align':'left'})
+        # plt_rar.figure.savefig('rush_att_residual')
+        plt_res.figure.show()
+        
+    plt.show(block=True)
+        
+    # pd.options.display.max_rows=10    
     # ra_chisqs = rbdf.groupby('playerid')['rush_att_chisq'].mean()
     # print(ra_chisqs[ra_chisqs > 1.5].index)
     # print( rbdf[rbdf['playerid'].isin(ra_chisqs[ra_chisqs > 1.5].index)][['name','year','week','rushing_att','rush_att_ev','rush_att_chisq']])
     
-    # print(rbdf.groupby('year')['rush_att_chisq'].mean())
-    
+    # print(rbdf.groupby('year')['rush_att_chisq'].mean())    
             
     logging.warning('exiting early')
     exit(0)
@@ -180,6 +89,115 @@ def main():
     # there are games with negative yards so counts are not appropriate
     # print 'rushing yards:'
     # dist_fit.plot_counts( rush_yds, label='rushing yards' )
+
+def get_model_df(fname = 'rb_model_cache.csv'):
+    if os.path.isfile(fname):
+        return pd.read_csv(fname)
+    
+    rbdf = pd.DataFrame()
+    good_rb_ids = set()
+
+    firstyear,lastyear = 2009,2017 # 2009 seems to have very limited stats
+    for year in range(firstyear,lastyear+1):
+        yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year))
+        yrdf = yrdf[yrdf['pos'] == 'RB']
+        good_col = lambda col: 'passing' not in col and 'kicking' not in col
+        columns = [col for col in yrdf.columns if good_col(col)]
+        yrdf = yrdf[columns].fillna(0)
+        yrdf['year'] = year
+        
+        # # these are defined pretty much just for debugging
+        # display_cols = ['name']
+        # display_cols += [col for col in columns if 'rushing' in col]
+
+        # TODO: select RB1 and RB2/3 each week for each team. use this designation to set bayesian priors.
+        # sould be more precise than this random ADP site, which has a few strange results
+        
+        # could also provide a weight based on ADP?
+        good_rb_names = top_rb_names(year)
+        # good_rb_names = good_rb_names.tail(8) # we got the defaults from the top 16. we'll refine them later.
+        # to be included each week, they need to have been a good RB and also have actually played:
+        good_rbs = yrdf['name'].isin(good_rb_names) & (yrdf['rushing_att'] > 0)
+        yrdf = yrdf[good_rbs]
+        
+        rbdf = rbdf.append(yrdf)
+
+    # they should already be sorted properly, but let's check.
+    rbdf = rbdf.sort_values(['year', 'week']).reset_index(drop=True)
+    playerids = rbdf['playerid'].unique()
+
+    years = rbdf['year'].unique()    
+
+    # basing rush attempts on the past is not so great.
+    # ideally we use a team-based touch model.
+    # we need to look into the discrepancies more to figure out the problems
+    # i suspect injuries, trades, then matchups are the big ones.
+    # many mistakes are in week 17, too, where the starters are often different
+    model_defs = {
+        'rush_att':{
+            'model':RushAttModel,
+            'args':(
+                0.135, # lr
+                0.66, # mem
+                0.8, # gmem
+                (6.392, 0.4694) # ab0
+            )
+        },
+        'rush_tds':{
+            'model':RushTdModel,
+            'args':(
+                1.0, # lr
+                0.77, # mem
+                1.0, # gmem
+                (42., 1400.) # ab0
+            )
+        }
+    }
+    tot_week = 0
+    
+    for pid in playerids:
+        pdf = rbdf[rbdf['playerid'] == pid]
+        pname = pdf['name'].unique()[0]
+
+        plmodels = {mname:mdef['model'](*mdef['args'])
+                    for mname,mdef in model_defs.items()}
+        
+        years = pdf['year'].unique()
+        # we could skip single-year seasons
+        for icareer,year in enumerate(years):
+            # can we use "group by" or something to reduce the depth of these loops?
+            ypdf = pdf[(pdf['year'] == year) & (pdf['week'] < 17)] # week 17 is often funky
+            for index, row in ypdf.iterrows():
+                # these do point to the same one:
+                # assert((row[['name', 'year', 'week']] == rbdf.loc[index][['name', 'year', 'week']]).all())
+                tot_week += 1
+                for mname,model in plmodels.items():
+                    mvars = [row[v] for v in model.var_names]
+                    kld = model.kld(*mvars)
+                    chisq = model.chi_sq(*mvars)
+                    # kld_dict[mname] += kld
+                    # chisq_dict[mname] += chisq
+                    # saving to the dataframe slows the process down significantly
+                    depvars = [row[v] for v in model.dep_vars]
+                    ev = model.ev(*depvars)
+                    var = model.var(*depvars)
+                    rbdf.loc[index,'{}_ev'.format(mname)] = ev
+                    rbdf.loc[index,'{}_residual'.format(mname)] = (row[model.pred_var]-ev)/np.sqrt(var)
+                    rbdf.loc[index,'{}_kld'.format(mname)] = kld
+                    rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
+                    model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
+            for _,mod in plmodels.items():
+                mod.new_season()
+                
+        # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
+        # logging.info('  {}'.format(ra_mod))
+        # logging.info('  {}'.format(rtd_mod))
+        
+    for mname,mdict in model_defs.items():
+        logging.info('{} model arguments: {}'.format(mname, mdict['args']))
+    rbdf.to_csv(fname)
+    return rbdf
+
 
 # returns a list of the top N rbs by ADP in a given year
 def top_rb_names(year, n=32):
