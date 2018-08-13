@@ -14,24 +14,65 @@ def main():
     sns.set()
     
     rbdf = get_model_df()
-    models = ['rush_att', 'rush_tds'] # edit this to suppress info we've already looked at
+    # models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
+    models = ['rush_att', 'rush_yds'] # edit this to suppress info we've already looked at
     for model in models:
         klds = rbdf[model+'_kld']
         chisqs = rbdf[model+'_chisq']
         logging.info('{} kld = {:.6f}, chisq = {:.4f} out of {} weeks (avg {:.6f}, {:.3f})'
                      .format(model, klds.sum(), chisqs.sum(),
                              klds.size, klds.mean(), chisqs.mean()))
+        weights = rbdf['rushing_att'] / rbdf['rushing_att'].mean()
+        wklds = weights*klds
+        logging.info('weighted kld = {:6f}, (avg {})'.format(wklds.sum(), wklds.mean()))
         # print(rbdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
 
-    for model in models:
-        residuals = rbdf['{}_residual'.format(model)]
-        residuals = residuals[residuals.notnull()]
-        plt_res = sns.distplot(residuals,
-                               hist_kws={'log':False, 'align':'left'})
-        # plt_rar.figure.savefig('rush_att_residual')
-        plt_res.figure.show()
-        
-    plt.show(block=True)
+    # for model in models:
+    #     residuals = rbdf['{}_res'.format(model)]
+    #     residuals = residuals[residuals.notnull()]
+    #     plt_res = sns.distplot(residuals,
+    #                            hist_kws={'log':False, 'align':'left'})
+    #     # plt_rar.figure.savefig('rush_att_res')
+    #     plt_res.figure.show()
+
+    # exit(0)
+
+    # ra_bins = np.arange(0,45,10)
+    # for low,up in zip(ra_bins[:-1], ra_bins[1:]):
+    #     res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_yds_res']
+    #     # res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_tds_kld']
+    #     # res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_att_kld']
+    #     res = res[res.notnull()]
+    #     plt_res = sns.distplot(res,
+    #                            hist_kws={'log':False, 'align':'left'})
+    #     # plt_rar.figure.savefig('rush_att_res')
+    #     plt_res.figure.show()
+    # plt.show(block=True)
+    
+    
+    # print (rbdf.columns)
+    # plt.figure()
+    
+    resdf = rbdf[rbdf['week'] < 17].dropna() # somehow dropna=True doesn't remove these
+    # plt_corr = sns.pairplot(resdf, #height = 4,
+    #                         vars=['rushing_att', 'rush_att_res', 'rush_att_chisq', 'rush_att_kld'],
+    #                         dropna=True,
+    #                         kind='reg' # do linear regression to look for correlations
+    # )
+    # plt.show(block=True)
+    # plt_corr = sns.pairplot(resdf, #height = 4,
+    #                         vars=['rushing_att', 'rushing_yds', 'rush_yds_res', 'rush_yds_kld', 'rushing_tds'],
+    #                         dropna=True,
+    #                         kind='reg' # do linear regression to look for correlations
+    # )
+    # plt.show(block=True)
+
+    # resnames = ['{}_res'.format(m) for m in models]
+    # plt_corr = sns.pairplot(resdf, height = 4,
+    #                         vars=resnames,
+    #                         kind='reg' # do linear regression to look for correlations
+    # )        
+    # plt.show(block=True)
         
     # pd.options.display.max_rows=10    
     # ra_chisqs = rbdf.groupby('playerid')['rush_att_chisq'].mean()
@@ -40,8 +81,8 @@ def main():
     
     # print(rbdf.groupby('year')['rush_att_chisq'].mean())    
             
-    logging.warning('exiting early')
-    exit(0)
+    # logging.warning('exiting early')
+    # exit(0)
     
     rush_att = rbdf['rushing_att']
     rush_yds = rbdf['rushing_yds']
@@ -53,16 +94,16 @@ def main():
     # print(rbdf[~good_rushers])
     # print(rush_att[~good_rushers])
     
-    print('rushing attempts:')
-    # negative binomial does quite well here for single year, but only for top players.
-    # note p~0.5 ... more like 0.7 w/ all seasons
-    # poisson is under-dispersed.
-    # neg bin doesn't do as well w/ all years, but still better than poisson
-    # beta-negative binomial should have the extra dispersion to capture this
-    rush_att_fits = ['neg_binomial'
-                     , 'beta_neg_binomial' # beta-negative is not really an improvement - we don't need more variance
-    ]
-    dist_fit.plot_counts( rush_att[good_rbs], label='rushing attempts per game' ,fits=rush_att_fits)
+    # print('rushing attempts:')
+    # # negative binomial does quite well here for single year, but only for top players.
+    # # note p~0.5 ... more like 0.7 w/ all seasons
+    # # poisson is under-dispersed.
+    # # neg bin doesn't do as well w/ all years, but still better than poisson
+    # # beta-negative binomial should have the extra dispersion to capture this
+    # rush_att_fits = ['neg_binomial'
+    #                  , 'beta_neg_binomial' # beta-negative is not really an improvement - we don't need more variance
+    # ]
+    # dist_fit.plot_counts( rush_att[good_rbs], label='rushing attempts per game' ,fits=rush_att_fits)
 
     print('rushing yards per attempt:')
     # in a single game
@@ -75,10 +116,10 @@ def main():
     # for a collection of rushers, we should use NB which gets updated to converge to the rusher's poisson w/ infinite data
     # dist_fit.plot_counts( all_td, label='touchdowns', fits=['poisson', 'neg_binomial'] )
     
-    # this ratio fit doesn't do so well. TDs are farely rare overall, and the alpha/beta parameters tend to blow up in the fit.
-    # perhaps just a poisson or simple rate would suffice.
-    print('rush TDs per attempt:')
-    dist_fit.plot_fraction( rush_tds[good_rbs], rush_att[good_rbs], label='touchdowns per attempt' )
+    # # the direct ratio fit doesn't do so well. TDs are farely rare overall, and the alpha/beta parameters tend to blow up in the fit.
+    # # perhaps just a poisson or simple rate would suffice.
+    # print('rush TDs per attempt:')
+    # dist_fit.plot_fraction( rush_tds[good_rbs], rush_att[good_rbs], label='touchdowns per attempt' )
     
     # print('receptions:')
     # # poisson is too narrow, geometric has too heavy of tail
@@ -90,7 +131,7 @@ def main():
     # print 'rushing yards:'
     # dist_fit.plot_counts( rush_yds, label='rushing yards' )
 
-def get_model_df(fname = 'rb_model_cache.csv'):
+def get_model_df(fname = 'rush_model_cache.csv', savemodels=True):
     if os.path.isfile(fname):
         return pd.read_csv(fname)
     
@@ -133,6 +174,9 @@ def get_model_df(fname = 'rb_model_cache.csv'):
     # we need to look into the discrepancies more to figure out the problems
     # i suspect injuries, trades, then matchups are the big ones.
     # many mistakes are in week 17, too, where the starters are often different
+
+    mu0,nu0,a0 = (4.15,12.,2.)
+    b0 = 2.9*nu0*a0/(nu0+1)
     model_defs = {
         'rush_att':{
             'model':RushAttModel,
@@ -143,15 +187,25 @@ def get_model_df(fname = 'rb_model_cache.csv'):
                 (6.392, 0.4694) # ab0
             )
         },
-        'rush_tds':{
-            'model':RushTdModel,
+        'rush_yds':{
+            'model':RushYdsModel,
             'args':(
-                1.0, # lr
-                0.77, # mem
-                1.0, # gmem
-                (42., 1400.) # ab0
+                (0.04,0.002), # learn rate
+                0.83, # mem (season)
+                0.99, # game mem
+                1.15*0, # skew # possibly not implemented correctly - any nonzero value worsens KLD
+                (mu0*nu0, nu0, a0, b0) # beta (stddev = 1.78)
             )
-        }
+        },
+        # 'rush_tds':{ # this default one has very poor residuals, or there is some other problem
+        #     'model':RushTdModel,
+        #     'args':(
+        #         1.0, # lr
+        #         0.77, # mem
+        #         1.0, # gmem
+        #         (42., 1400.) # ab0
+        #     )
+        # }
     }
     tot_week = 0
     
@@ -175,23 +229,33 @@ def get_model_df(fname = 'rb_model_cache.csv'):
                     mvars = [row[v] for v in model.var_names]
                     kld = model.kld(*mvars)
                     chisq = model.chi_sq(*mvars)
-                    # kld_dict[mname] += kld
-                    # chisq_dict[mname] += chisq
+                    data = row[model.pred_var]
                     # saving to the dataframe slows the process down significantly
                     depvars = [row[v] for v in model.dep_vars]
                     ev = model.ev(*depvars)
                     var = model.var(*depvars)
-                    rbdf.loc[index,'{}_ev'.format(mname)] = ev
-                    rbdf.loc[index,'{}_residual'.format(mname)] = (row[model.pred_var]-ev)/np.sqrt(var)
-                    rbdf.loc[index,'{}_kld'.format(mname)] = kld
-                    rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
+                    res = (data-ev)/np.sqrt(var)
+                    # res = (data-ev)/model.scale(*depvars)
+                    # if mname == 'rush_tds':
+                    #     print('rush_att, ev, var, res = {}, {}, {}, {}'.format(row['rushing_att'], ev, var, res))
+                    if savemodels:
+                        rbdf.loc[index,'{}_ev'.format(mname)] = ev
+                        rbdf.loc[index,'{}_res'.format(mname)] = res
+                        rbdf.loc[index,'{}_kld'.format(mname)] = kld
+                        rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
+                    if kld > 14:
+                        logging.warning('large KL divergence: {}'.format(kld))
+                        logging.warning('{} = {}'.format(model.pred_var,data))
+                        logging.warning(model)
+                        logging.warning(rbdf.loc[index])
+                        if pname == 'Ray Rice':
+                            exit(1)
                     model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
             for _,mod in plmodels.items():
                 mod.new_season()
                 
         # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
-        # logging.info('  {}'.format(ra_mod))
-        # logging.info('  {}'.format(rtd_mod))
+        # logging.info('  {}'.format(plmodels['rush_yds']))
         
     for mname,mdict in model_defs.items():
         logging.info('{} model arguments: {}'.format(mname, mdict['args']))

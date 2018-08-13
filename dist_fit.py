@@ -562,9 +562,28 @@ def plot_avg_per( data, bounds=(-5,40), label='', weights=None, norm=True ):
     plt.plot(xfvals, st.norm.pdf( xfvals, mu, sigma ), '--', lw=2, color='blue' )
     plt.plot(xfvals, st.norm.pdf( xfvals, mu_wt, sigma_wt ), 'r-')
     plt.yscale('log', nonposy='clip')
-    # xlow,xup,ylow,yup = plt.axis()
-    plt.axis( (xlow,xup,0.01,yup) )
+    xlow,xup,ylow,yup = plt.axis()
+    plt.axis( (xlow,xup,0.001,0.5) )
 
+    logging.info('non-centered t:')
+    df,nc,loc,scale = st.nct.fit( data )
+    logging.info('    df = {:.3} '.format(df))
+    logging.info('    nc = {:.3} '.format(nc))
+    logging.info('    loc = {:.3} '.format(loc))
+    logging.info('    scale = {:.3} '.format(scale))
+    
+    logging.info('    -log(L)/NDF = {:.3}'.format( -st.nct.logpdf(data, df, nc, loc, scale).sum()/(len(data)-4) ))
+    logging.info('    mean (scipy / me) = {:.3f} / {:.3f}'.format(st.nct.mean(df, nc, loc, scale),
+                                                                  loc + scale*nc*np.sqrt(df/2)*gamma((df-1)/2)/gamma(df/2)))
+    plt.subplot(121)
+    plt.plot(xfvals, st.nct.pdf( xfvals, df, nc, loc, scale ), '-', lw=2, color='green' )
+    plt.subplot(122)
+    plt.plot(xfvals, st.nct.pdf( xfvals, df, nc, loc, scale ), '-', lw=2, color='green' )
+    plt.yscale('log', nonposy='clip')
+    xlow,xup,ylow,yup = plt.axis()
+    plt.axis( (xlow,xup,1e-6,0.5) )
+
+    
     plt.show()
     
 # distributions proportional to exponentials of polynomial ratios

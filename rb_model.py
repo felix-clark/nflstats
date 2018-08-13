@@ -1,7 +1,7 @@
 import dist_fit
 import numpy as np
 import scipy.stats as st
-from scipy.special import digamma
+from scipy.special import gamma, digamma
 
 # we'll want to split this up into a few types
 class RbModel:
@@ -102,6 +102,9 @@ class RushAttModel:
         ## var/alpha = (1-p)/p**2  = (1+beta)/beta**2
         return self.ab[0]*(1.+self.ab[1])/self.ab[1]**2
 
+    def scale(self):
+        return np.sqrt(self.var())
+
     # we may be able to make this more general, and not have to implement it for every model
     # remember that we don't want to minimize the chi-sq, we want to minimize the KLD
     def chi_sq(self, rush_att):
@@ -138,8 +141,126 @@ class RushAttStochModel(RushAttModel):
         # but we don't need the sum and it uses a different change of variables.
         dlda = digamma(rush_att + self.ab[0]) - digamma(self.ab[0]) + np.log(self.ab[1]/(1.+self.ab[1]))
         dldb = (self.ab[0]/self.ab[1] - rush_att)/(1.+self.ab[1])
-        # print (dlda, dldb)
         return np.array((dlda, dldb))
+
+class RushYdsModel:
+    """
+    statistical model for yards per rush
+    this could again be extended to other positions, with different defaults
+    this model will assume a symmetry that isn't there at low attempts.
+      (e.g. some might have a 40 yd/att on 1-2 rushes but -40 yd/att is impossible)
+    """
+    def __init__(self, lr=(0.04,0.002), mem=0.83, gmem=0.99, skew=1.1, mnab0=(49.8,12.0,2.0,5.35)):
+        # this represents (mu*nu, nu, alpha, beta). note that we save only mu*nu, for simpler decay.
+        self.mnab = np.array(mnab0)
+        # the skewness will be a constant hyperparameter for now (not clear how to do bayesian updating w/ non-centrality)
+        # to get a good value for skewness directly, we'd need play-by-play data
+        self.skew = skew
+
+        # we might want game_lr to be a function of the season?
+        # for this we might have different learn rates for mu/nu and alpha/beta.
+        self.game_lr = np.array(lr)
+        self.game_mem = gmem
+        self.season_memory = mem
+
+    @property
+    def var_names(self):
+        var_names = [self.pred_var] + list(self.dep_vars)
+        return var_names
+
+    @property
+    def pred_var(self):
+        return 'rushing_yds'
+    
+    # dependent variables i.e. those required for prediction
+    @property
+    def dep_vars(self):
+        return ('rushing_att',)# self.__dep_vars
+    
+    def update_game(self, rush_yds, rush_att):
+        assert(0 < self.game_mem <= 1.0)
+        # mu does not decay simply like the others, but mu*nu does
+        ev = self.ev(rush_att)
+        self.mnab *= self.game_mem
+        self.mnab[:2] += self.game_lr[0] * np.array((rush_yds, rush_att))
+        self.mnab[2:] += self.game_lr[1] * 0.5 * np.array((rush_att, (rush_yds-ev)**2/rush_att))
+        # self.mnab += self.game_lr * np.array((rush_yds, rush_att, 0.5*rush_att,
+        #                                       # this update rule for beta may not be quite right,
+        #                                       # but should approach something reasonable at large n:
+        #                                       0.5*(rush_yds-self.ev(rush_att))**2/rush_att)
+        #                                      )
+        # we could accumulate a KLD to diagnose when the model has been very wrong recently
+
+    def new_season(self):
+        assert(0 < self.season_memory <= 1.0)
+        self.mnab *= self.season_memory
+
+    def _df(self, rush_att):
+        # we should either use the # of attempts, or twice alpha.
+        # if using rush_att, alpha is not used at all.
+        # return 2.0*self.mnab[2]
+        return rush_att
+        
+    # helper function for common parameter
+    def _sigma2(self):
+        nu,alpha,beta = tuple(self.mnab[1:])
+        return beta*(nu+1.)/(nu*alpha)
+        
+    def gen_game(self, rush_att):
+        df = self._df(rush_att) # if we do this approach, we don't use our alpha at all?
+        loc = (self.mnab[0] / self.mnab[1] - st.nct.mean(df, self.skew)) * rush_att # can't use ev since that includes skew
+        return st.nct.rvs(df, self.skew, loc=loc, scale=rush_att*np.sqrt(self._sigma2()))
+
+    def ev(self, rush_att):
+        # the mean is mu*nu / nu
+        munu = self.mnab[0]
+        nu = self.mnab[1]
+        # df,nc = rush_att,self.skew
+        # ncmean = nc * np.sqrt(df/2)*gamma((df-1)/2)/gamma(df/2)
+        # ncmean=0
+        ev = munu / nu * rush_att
+        # print (ev, st.nct.mean(df, nc, loc=(munu/nu-ncmean)*rush_att, scale=rush_att*np.sqrt(self._sigma2())))
+        return ev
+
+    def var(self, rush_att):
+        # sig2 = self._sigma2()
+        # nu = self.mnab[1]
+        nc = self.skew
+        df = self._df(rush_att)
+        if df <= 2:
+            return np.inf
+        return st.nct.var(df, nc, scale=self.scale(rush_att))
+
+    def scale(self, rush_att):
+        return rush_att*np.sqrt(self._sigma2())
+
+    def chi_sq(self, rush_yds, rush_att):
+        df = self._df(rush_att)
+        nu = self.mnab[1]
+        # ev = self.ev(1) + self.skew*np.sqrt(nu/2.)*gamma(0.5*(nu-1))/gamma(0.5*nu)
+        # ev = self.ev(rush_att) # should be converging to the mean
+        norm = st.nct.logpdf( st.nct.mean(df, self.skew), df, self.skew, loc=0., scale=self.scale(rush_att) )
+        # kld_calc = st.nct.logpdf(rush_yds, df, self.skew,
+        #                          loc=(self.mnab[0] / self.mnab[1] - st.nct.mean(df, self.skew)) * rush_att,
+        #                          scale=self.scale(rush_att))
+        # print(norm, kld_calc)
+        return 2.*(self.kld(rush_yds, rush_att) + norm)
+    
+    def kld(self, rush_yds, rush_att):
+        df = self._df(rush_att)
+        nc = self.skew
+        # ncmean = nc * np.sqrt(df/2)*gamma((df-1)/2)/gamma(df/2)
+        ncmean = st.nct.mean(df, nc) # get the unscaled contribution to the mean from the skew
+        # print(ncmean, st.nct.mean(df, nc)) # these are the same
+        loc = (self.mnab[0] / self.mnab[1] - ncmean) * rush_att # can't use ev since that includes skew
+        scale = self.scale(rush_att) # /( df*(1+nc**2)/(df-2) - nc**2*df/2*(gamma((df-1)/2)/gamma(df/2))**2 )
+        result = - st.nct.logpdf(rush_yds, df, nc, loc=loc,
+                                 scale=scale)
+        return result
+
+    def __str__(self):
+        return u'rush_yds: \u03BC={:.2f}, \u03BD={:.2f}, \u03B1={:.2f}, \u03B2={:.2f}'.format(self.mnab[0]/self.mnab[1], *self.mnab[1:])
+
 
 class RushTdModel:
     """
@@ -175,6 +296,8 @@ class RushTdModel:
         assert(0 < self.game_mem <= 1.0)
         self.ab *= self.game_mem
         self.ab += self.game_lr * np.array((rush_td, rush_att - rush_td))
+        # print(self.ab)
+        # exit(1)
         # we could accumulate a KLD to diagnose when the model has been very off recently
 
     def new_season(self):
@@ -190,17 +313,19 @@ class RushTdModel:
         return ev
 
     def var(self, rush_att):
-        a,b = tuple(self.ab)
+        a,b = self.ab[0],self.ab[1]
         apb = a + b
         var = rush_att*a*b*(apb+rush_att)/(apb**2*(apb+1))
         return var
+
+    def scale(self, rush_att):
+        return np.sqrt(var(rush_att))
 
     def chi_sq(self, rush_td, rush_att):
         norm = dist_fit.log_beta_binomial( self.ev(rush_att), rush_att, self.ab[0], self.ab[1])
         return 2.*(self.kld(rush_td, rush_att) + norm)
     
     def kld(self, rush_td, rush_att):
-        # return -st.binom.logpmf(rush_td, rush_att, self.alpha, self.beta)
         alpha,beta = self.ab[0],self.ab[1]
         result = - dist_fit.log_beta_binomial( rush_td, rush_att, alpha, beta)
         return result
