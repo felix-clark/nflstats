@@ -57,7 +57,7 @@ class RushAttModel:
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.game_mem = gmem
-        self.season_memory = mem
+        self.season_mem = mem
 
     @property
     def var_names(self):
@@ -87,8 +87,8 @@ class RushAttModel:
         # we could accumulate a KLD to diagnose when the model has been very off recently
 
     def new_season(self):
-        assert(0 < self.season_memory <= 1.0)
-        self.ab *= self.season_memory
+        assert(0 < self.season_mem <= 1.0)
+        self.ab *= self.season_mem
         
     def gen_game(self):
         # this yields a gamma convoluted w/ a poisson
@@ -150,7 +150,7 @@ class RushYdsModel:
     this model will assume a symmetry that isn't there at low attempts.
       (e.g. some might have a 40 yd/att on 1-2 rushes but -40 yd/att is impossible)
     """
-    def __init__(self, lr=(0.04,0.002), mem=0.83, gmem=0.99, skew=1.1, mnab0=(49.8,12.0,2.0,5.35)):
+    def __init__(self, lr=(0.04,0.002), mem=(0.83,0.8), gmem=(0.99,0.99), skew=1.1, mnab0=(49.8,12.0,2.0,5.35)):
         # this represents (mu*nu, nu, alpha, beta). note that we save only mu*nu, for simpler decay.
         self.mnab = np.array(mnab0)
         # the skewness will be a constant hyperparameter for now (not clear how to do bayesian updating w/ non-centrality)
@@ -159,9 +159,9 @@ class RushYdsModel:
 
         # we might want game_lr to be a function of the season?
         # for this we might have different learn rates for mu/nu and alpha/beta.
-        self.game_lr = np.array(lr)
-        self.game_mem = gmem
-        self.season_memory = mem
+        self.game_lr = np.repeat(lr, 4//len(lr))
+        self.game_mem = np.repeat(gmem, 4//len(gmem))
+        self.season_mem = np.repeat(mem, 4//len(mem))
 
     @property
     def var_names(self):
@@ -178,22 +178,17 @@ class RushYdsModel:
         return ('rushing_att',)# self.__dep_vars
     
     def update_game(self, rush_yds, rush_att):
-        assert(0 < self.game_mem <= 1.0)
+        assert((0 < self.game_mem).all() and (self.game_mem <= 1.0).all())
         # mu does not decay simply like the others, but mu*nu does
         ev = self.ev(rush_att)
         self.mnab *= self.game_mem
-        self.mnab[:2] += self.game_lr[0] * np.array((rush_yds, rush_att))
-        self.mnab[2:] += self.game_lr[1] * 0.5 * np.array((rush_att, (rush_yds-ev)**2/rush_att))
-        # self.mnab += self.game_lr * np.array((rush_yds, rush_att, 0.5*rush_att,
-        #                                       # this update rule for beta may not be quite right,
-        #                                       # but should approach something reasonable at large n:
-        #                                       0.5*(rush_yds-self.ev(rush_att))**2/rush_att)
-        #                                      )
+        self.mnab += self.game_lr * np.array((rush_yds, rush_att, 0.5*rush_att,
+                                                  0.5*(rush_yds-ev)**2/rush_att))
         # we could accumulate a KLD to diagnose when the model has been very wrong recently
 
     def new_season(self):
-        assert(0 < self.season_memory <= 1.0)
-        self.mnab *= self.season_memory
+        assert((0 < self.season_mem).all() and (self.season_mem <= 1.0).all())
+        self.mnab *= self.season_mem
 
     def _df(self, rush_att):
         # we should either use the # of attempts, or twice alpha.
@@ -276,7 +271,7 @@ class RushTdModel:
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.game_mem = gmem
-        self.season_memory = mem
+        self.season_mem = mem
 
     @property
     def var_names(self):
@@ -301,8 +296,8 @@ class RushTdModel:
         # we could accumulate a KLD to diagnose when the model has been very off recently
 
     def new_season(self):
-        assert(0 < self.season_memory <= 1.0)
-        self.ab *= self.season_memory
+        assert(0 < self.season_mem <= 1.0)
+        self.ab *= self.season_mem
         
     def gen_game(self, rush_att):
         p = st.beta.rvs(self.ab[0], self.ab[1])

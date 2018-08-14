@@ -15,16 +15,13 @@ def main():
     
     rbdf = get_model_df()
     # models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
-    models = ['rush_att', 'rush_yds'] # edit this to suppress info we've already looked at
+    models = ['rush_yds'] # edit this to suppress info we've already looked at
     for model in models:
         klds = rbdf[model+'_kld']
         chisqs = rbdf[model+'_chisq']
         logging.info('{} kld = {:.6f}, chisq = {:.4f} out of {} weeks (avg {:.6f}, {:.3f})'
                      .format(model, klds.sum(), chisqs.sum(),
                              klds.size, klds.mean(), chisqs.mean()))
-        weights = rbdf['rushing_att'] / rbdf['rushing_att'].mean()
-        wklds = weights*klds
-        logging.info('weighted kld = {:6f}, (avg {})'.format(wklds.sum(), wklds.mean()))
         # print(rbdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
 
     # for model in models:
@@ -37,17 +34,17 @@ def main():
 
     # exit(0)
 
-    # ra_bins = np.arange(0,45,10)
-    # for low,up in zip(ra_bins[:-1], ra_bins[1:]):
-    #     res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_yds_res']
-    #     # res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_tds_kld']
-    #     # res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_att_kld']
-    #     res = res[res.notnull()]
-    #     plt_res = sns.distplot(res,
-    #                            hist_kws={'log':False, 'align':'left'})
-    #     # plt_rar.figure.savefig('rush_att_res')
-    #     plt_res.figure.show()
-    # plt.show(block=True)
+    ra_bins = np.arange(0,45,10)
+    for low,up in zip(ra_bins[:-1], ra_bins[1:]):
+        res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_yds_res']
+        # res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_tds_kld']
+        # res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_att_kld']
+        res = res[res.notnull()]
+        plt_res = sns.distplot(res,
+                               hist_kws={'log':False, 'align':'left'})
+        # plt_rar.figure.savefig('rush_att_res')
+        plt_res.figure.show()
+    plt.show(block=True)
     
     
     # print (rbdf.columns)
@@ -105,10 +102,10 @@ def main():
     # ]
     # dist_fit.plot_counts( rush_att[good_rbs], label='rushing attempts per game' ,fits=rush_att_fits)
 
-    print('rushing yards per attempt:')
-    # in a single game
-    dist_fit.plot_avg_per( rush_yds[good_rbs]/rush_att[good_rbs], weights=rush_att[good_rbs],
-                           label='rush yds per attempt', bounds=(-10,50))
+    # print('rushing yards per attempt:')
+    # # in a single game
+    # dist_fit.plot_avg_per( rush_yds[good_rbs]/rush_att[good_rbs], weights=rush_att[good_rbs],
+    #                        label='rush yds per attempt', bounds=(-10,50))
     
     # negative binomial is redundant w/ poisson here. TDs are rare, and relatively independent.
     # geometric does OK, but is clearly inferior w/ high stats
@@ -175,25 +172,25 @@ def get_model_df(fname = 'rush_model_cache.csv', savemodels=True):
     # i suspect injuries, trades, then matchups are the big ones.
     # many mistakes are in week 17, too, where the starters are often different
 
-    mu0,nu0,a0 = (4.15,12.,2.)
-    b0 = 2.9*nu0*a0/(nu0+1)
+    mu0,nu0,a0 = (3.29,36.,5.2)
+    b0 = 2.43*nu0*a0/(nu0+1)
     model_defs = {
-        'rush_att':{
-            'model':RushAttModel,
-            'args':(
-                0.135, # lr
-                0.66, # mem
-                0.8, # gmem
-                (6.392, 0.4694) # ab0
-            )
-        },
+        # 'rush_att':{
+        #     'model':RushAttModel,
+        #     'args':(
+        #         0.135, # lr
+        #         0.66, # mem
+        #         0.8, # gmem
+        #         (6.392, 0.4694) # ab0
+        #     )
+        # },
         'rush_yds':{
             'model':RushYdsModel,
             'args':(
-                (0.04,0.002), # learn rate
-                0.83, # mem (season)
-                0.99, # game mem
-                1.15*0, # skew # possibly not implemented correctly - any nonzero value worsens KLD
+                (0.012,0.00068), # learn rate # small values w/ full memory # actually not that small since they are scaled up by the # of attempts
+                (1.0,), # mem (season) # full memories w/ low learning rates seems to work well
+                (1.0,), # game mem
+                1.15, # skew # with a lower mu, a higher skew can be used
                 (mu0*nu0, nu0, a0, b0) # beta (stddev = 1.78)
             )
         },
@@ -243,13 +240,11 @@ def get_model_df(fname = 'rush_model_cache.csv', savemodels=True):
                         rbdf.loc[index,'{}_res'.format(mname)] = res
                         rbdf.loc[index,'{}_kld'.format(mname)] = kld
                         rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
-                    if kld > 14:
-                        logging.warning('large KL divergence: {}'.format(kld))
-                        logging.warning('{} = {}'.format(model.pred_var,data))
-                        logging.warning(model)
-                        logging.warning(rbdf.loc[index])
-                        if pname == 'Ray Rice':
-                            exit(1)
+                    # if kld > 15:
+                    #     logging.warning('large KL divergence: {}'.format(kld))
+                    #     logging.warning('{} = {}'.format(model.pred_var,data))
+                    #     logging.warning(model)
+                    #     logging.warning(rbdf.loc[index])
                     model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
             for _,mod in plmodels.items():
                 mod.new_season()
