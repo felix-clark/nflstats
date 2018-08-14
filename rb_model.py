@@ -65,6 +65,11 @@ class RushAttModel:
             return RushAttModel(
                 2.807, 0.244,
                 0.121, 0.677, 0.782)
+        if pos.upper() == 'WR':
+            return RushAttModel(
+                0.182, 0.761,
+                0.327, 0.598, 0.969
+                )
         logging.error( 'positional defaults not implemented' )
 
     @property
@@ -95,7 +100,7 @@ class RushAttModel:
         # we could accumulate a KLD to diagnose when the model has been very off recently
 
     def new_season(self):
-        assert(0 < self.season_mem <= 1.0)
+        # assert(0 < self.season_mem <= 1.0)
         self.ab *= self.season_mem
         
     def gen_game(self):
@@ -113,6 +118,10 @@ class RushAttModel:
     def scale(self):
         return np.sqrt(self.var())
 
+    def cdf(self, rush_att):
+        cdf = st.nbinom.cdf(rush_att, self.ab[0], self._p())
+        return cdf
+    
     # we may be able to make this more general, and not have to implement it for every model
     # remember that we don't want to minimize the chi-sq, we want to minimize the KLD
     def chi_sq(self, rush_att):
@@ -126,8 +135,10 @@ class RushAttModel:
     def __str__(self):
         # assert (abs(st.nbinom.mean(self.alpha, p) - mu) < 0.001)
         std = st.nbinom.std(self.ab[0], self._p())
-        return u'rush_att: \u03B1={:.2f}, \u03B2={:.2f}; {:.1f} pm {:.1f}'.format(self.ab[0], self.ab[1],
-                                                                                  self.ev(), std)
+        pars = u'rush_att: \u03B1={:.2f}, \u03B2={:.2f}; {:.1f} pm {:.1f}\n'.format(self.ab[0], self.ab[1],
+                                                                                    self.ev(), std)
+        pars += 'learn rate, mem (seas/gm): {}, {}, {}\n'.format(self.game_lr, self.season_mem, self.game_mem)
+        return pars
 
 # a stochastic model doesn't work right out of the box because the gradients can easily make alpha,beta < 0
 class RushAttStochModel(RushAttModel):
@@ -278,6 +289,18 @@ class RushYdsModel:
             scale /= ( df*(1+nc**2)/(df-2) - nc**2*df/2*(gamma((df-1)/2)/gamma(df/2))**2 )
         return scale
 
+    # def std_res(self, rush_yds, rush_att):
+    def cdf(self, rush_yds, rush_att):
+        # can also just look at the CDF and check that it's flat from 0 to 1
+        # but the CDF is not easy to compute analytically
+        df,nc = rush_att,self.skew
+        cdf = st.nct.cdf(rush_yds, df, nc,
+                         loc=self.loc(rush_att),
+                         scale=self.scale(rush_att))
+        # asgauss = st.norm.ppf(cdf)
+        # return asgauss
+        return cdf
+    
     def chi_sq(self, rush_yds, rush_att):
         df = self._df(rush_att)
         # using nct.mean results in undefined when df = 1
@@ -369,6 +392,16 @@ class RushTdModel:
         var = rush_att*a*b*(apb+rush_att)/(apb**2*(apb+1))
         return var
 
+    def cdf(self, rush_tds, rush_att):
+        cdf = 0.
+        checktd = 0
+        while checktd < rush_tds:
+            cdf += dist_fit.beta_binomial(checktd, rush_att, *self.ab)
+            checktd += 1
+        # asgaussian = st.norm.ppf(cdf)
+        # return asgaussian
+        return cdf
+        
     def scale(self, rush_att):
         return np.sqrt(var(rush_att))
 

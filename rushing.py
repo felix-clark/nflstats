@@ -19,14 +19,18 @@ def main():
     all_models = ['rush_att', 'rush_yds', 'rush_tds']
     
     parser = argparse.ArgumentParser(description='optimize and analyze bayesian models')
+    parser.add_argument('position',type=str,choices=['RB', 'QB', 'WR', 'TE'],help='which position to analyze')
     parser.add_argument('--opt-hyper',nargs='?',type=str,choices=all_models,help='try to improve hyperparameters for this model')
 
     args = parser.parse_args()
+
+    position = args.position
+    logging.info('working with {}s'.format(position))
     
     if args.opt_hyper:
-        hps = minimize_model_hyperparameters(args.opt_hyper)
+        hps = minimize_model_hyperparameters(position, args.opt_hyper)
     
-    rbdf = get_model_df()
+    rbdf = get_model_df(position)
     rbdf = rbdf[rbdf['week'] < 17].dropna() # somehow dropna=True doesn't remove these
     
     models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
@@ -38,7 +42,7 @@ def main():
                      .format(model, klds.sum(), chisqs.sum(),
                              klds.size, klds.mean(), chisqs.mean()))
         # print(rbdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
-        plot_vars = ['kld', 'res']
+        plot_vars = ['kld', 'cdf']
         for pname in plot_vars:
             plt.figure()
             year_plt = sns.boxenplot(data=rbdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
@@ -46,7 +50,7 @@ def main():
 
         
     for model in models:
-        residuals = rbdf['{}_res'.format(model)]
+        residuals = rbdf['{}_cdf'.format(model)]
         residuals = residuals[residuals.notnull()]
         plt_res = sns.distplot(residuals,
                                hist_kws={'log':False, 'align':'left'})
@@ -149,34 +153,56 @@ def main():
     # print 'rushing yards:'
     # dist_fit.plot_counts( rush_yds, label='rushing yards' )
 
-def get_rb_df(fname = None):
+def get_pos_df(pos='RB', fname = None):
+    pos = pos.upper()
     if fname is None:
-        fname = 'data_rb_cache.csv'
+        fname = 'data_{}_cache.csv'.format(pos.lower())
     if os.path.isfile(fname):
         return pd.read_csv(fname, index_col=0)
-    logging.info('will compile and cache RB data')
+    logging.info('will compile and cache {} data'.format(pos))
     rbdf = pd.DataFrame()
 
+    
+    adpfunc = None
+    if pos == 'RB': adpfunc = top_rb_names
+    if pos == 'WR': adpfunc = top_wr_names
+    # ...
+    
     firstyear,lastyear = 2009,2017 # 2009 seems to have very limited stats
     for year in range(firstyear,lastyear+1):
         yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year), index_col=0)
+        
+        mask = None
         # filtering by position alone rules out e.g. Fred Jackson in 2009 because of an error in the data
-        yrdf = yrdf[(yrdf['pos'] == 'RB') | (yrdf['rushing_att'] > 100)]
-        good_col = lambda col: 'passing' not in col and 'kicking' not in col
+        # ... but this data is weekly. it'd be more messiness to correct that here.
+        # if pos == 'RB': mask = (yrdf['pos'] == 'RB') | (yrdf['rushing_att'] > 100) .. else
+        mask = (yrdf['pos'] == pos) # we may have to use more custom workarounds
+        # to be included each week, they need to have been a good [RB] and also have actually played:
+        if pos == 'QB': mask &= (yrdf['passing_cmp'] > 0)
+        if pos == 'RB': mask &= (yrdf['rushing_att'] > 0)
+        if pos in ['WR', 'TE']: mask &= ((yrdf['receiving_rec'] > 0) | (yrdf['rushing_att'] > 0))
+        if pos == 'K': mask &= ((yrdf['kicking_xpa'] > 0) | (yrdf['kicking_fga'] > 0))
+        yrdf = yrdf[mask]
+        
+        # we won't try to model passing for non-QBs; it's too rare to be meaningful
+        # similarly we won't track QB receptions
+        good_col = None
+        if pos == 'QB': good_col = lambda col: 'receiving' not in col and 'kicking' not in col
+        if pos == 'K': good_col = lambda col: 'passing' not in col and 'rushing' not in col and 'receiving' not in col
+        if pos in ['RB', 'WR', 'TE']: good_col = lambda col: 'passing' not in col and 'kicking' not in col
         columns = [col for col in yrdf.columns if good_col(col)]
         yrdf = yrdf[columns].fillna(0)
+        
         yrdf['year'] = year
-        # could also provide a weight based on ADP?
-        good_rb_names = top_rb_names(year)
-        # good_rb_names = good_rb_names.tail(8) # we got the defaults from the top 16. we'll refine them later.
-        # to be included each week, they need to have been a good RB and also have actually played:
-        good_rbs = yrdf['name'].isin(good_rb_names) & (yrdf['rushing_att'] > 0)
-        yrdf = yrdf[good_rbs]        
+        # could also provide a weight based on ADP or production?
+        good_pos_names = adpfunc(year)
+        good_pos = yrdf['name'].isin(good_pos_names)
+        yrdf = yrdf[good_pos]
         rbdf = rbdf.append(yrdf)
     
     # they should already be sorted properly, but let's check.
     rbdf = rbdf.sort_values(['year', 'week']).reset_index(drop=True)
-    logging.info('saving relevant RB data to {}'.format(fname))
+    logging.info('saving relevant {} data to {}'.format(pos, fname))
     rbdf.to_csv(fname)
     return rbdf
 
@@ -187,7 +213,7 @@ def get_model_df( pos='RB', fname = None):
     if os.path.isfile(fname):
         return pd.read_csv(fname)
 
-    rbdf = get_rb_df()    
+    rbdf = get_pos_df(pos)
     playerids = rbdf['playerid'].unique()
     years = rbdf['year'].unique()    
 
@@ -230,12 +256,12 @@ def get_model_df( pos='RB', fname = None):
                     depvars = [row[v] for v in model.dep_vars]
                     ev = model.ev(*depvars)
                     var = model.var(*depvars)
-                    res = (data-ev)/np.sqrt(var)
-                    # res = (data-ev)/model.scale(*depvars)
+                    cdf = model.cdf(*mvars) # standardized to look like a gaussian
+                    # res = (data-ev)/np.sqrt(var)
                     # if mname == 'rush_tds':
                     #     print('rush_att, ev, var, res = {}, {}, {}, {}'.format(row['rushing_att'], ev, var, res))
                     rbdf.loc[index,'{}_ev'.format(mname)] = ev
-                    rbdf.loc[index,'{}_res'.format(mname)] = res
+                    rbdf.loc[index,'{}_cdf'.format(mname)] = cdf
                     rbdf.loc[index,'{}_kld'.format(mname)] = kld
                     rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
                     # if kld > 15:
@@ -253,11 +279,11 @@ def get_model_df( pos='RB', fname = None):
     rbdf.to_csv(fname)
     return rbdf
 
-def minimize_model_hyperparameters(model_name='rush_att'):
+def minimize_model_hyperparameters(pos, model_name='rush_att'):
     logging.info('will search for good hyperparameters for {}'.format(model_name))
-    rbdf = get_rb_df()    
+    rbdf = get_pos_df(pos)
     playerids = rbdf['playerid'].unique()
-    years = rbdf['year'].unique()    
+    years = rbdf['year'].unique()
 
     model_defs = {
         'rush_att':{
@@ -372,13 +398,14 @@ def minimize_model_hyperparameters(model_name='rush_att'):
     return minpars
 
 # returns a list of the top N rbs by ADP in a given year
-def top_rb_names(year, nadp=32, pos='RB', n1=4, n2=12):
+def top_rb_names(year, nadp=32, n1=4, n2=12):
     """
     nadp: top number to choose from ADP
     n1: number of times as a POS1 *on their team* to trigger inclusion
     n2: number of times as a POS2 on their team to be included
     """
     
+    pos = 'RB'
     adpfname = 'adp_historical/adp_{}_{}.csv'.format(pos.lower(), year)
     if not os.path.isfile(adpfname):
         logging.error('cannot find ADP file. try running get_historical_adp.py')
@@ -386,10 +413,7 @@ def top_rb_names(year, nadp=32, pos='RB', n1=4, n2=12):
     # this should already be sorted
     topdf = topdf.head(nadp)
     topnames = topdf['name']
-    
-    if pos != 'RB': # we might just want a different function for each position
-        raise NotImplementedError
-    
+
     # note that some of the fantasy data is incorrect, e.g. 2009 Fred Jackson is listed as a WR
     # toppldf = pd.DataFrame(['name', 'playerid', 'year', pos+'1', pos+'2']) # will hold how many times each player was an RB1
     # print (toppldf)
@@ -413,6 +437,56 @@ def top_rb_names(year, nadp=32, pos='RB', n1=4, n2=12):
         toprsh = relpos.iloc[1]
         if toprsh['rushing_yds'] >= 10:
             t2name = toprsh['name']
+            top2[t2name] = top2.get(t2name, 0) + 1
+
+    pretop = topnames.copy()
+    topnames = topnames.append(pd.Series([name for name,ntop in top1.items() if ntop >= n1]))
+    topnames = topnames.append(pd.Series([name for name,ntop in top2.items() if ntop >= n2]))
+
+    topnames = topnames.unique()
+    return topnames
+
+# returns a list of the top N receivers (tight ends or wideouts) by ADP in a given year, plus some that may become relevant
+def top_wr_names(year, nadp=36, n1=4, n2=12):
+    """
+    nadp: top number to choose from ADP
+    n1: number of times as a POS1 *on their team* to trigger inclusion
+    n2: number of times as a POS2 on their team to be included
+    """
+
+    pos = 'WR'
+    adpfname = 'adp_historical/adp_{}_{}.csv'.format(pos.lower(), year)
+    if not os.path.isfile(adpfname):
+        logging.error('cannot find ADP file. try running get_historical_adp.py')
+    topdf = pd.read_csv(adpfname)
+    # this should already be sorted
+    topdf = topdf.head(nadp)
+    topnames = topdf['name']
+    
+    # note that some of the fantasy data is incorrect, e.g. 2009 Fred Jackson is listed as a WR
+    # toppldf = pd.DataFrame(['name', 'playerid', 'year', pos+'1', pos+'2']) # will hold how many times each player was an RB1
+    # print (toppldf)
+
+    yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year))
+    # manually remove QBs from here
+    # actually we need to rely on this in order to distinguish from TEs
+    yrdf = yrdf[(yrdf['pos'] == 'WR')]
+    teams = yrdf['team'].unique()
+    weeks = yrdf['week'].unique()
+    top1,top2 = {},{}
+    for week,team in itertools.product(weeks, teams):
+        relpos = yrdf[(yrdf['week'] == week) & (yrdf['team'] == team)]
+        relpos = relpos.assign(fp = relpos['receiving_rec'] + 0.1*relpos['receiving_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
+        if len(relpos) == 0: continue # then it's probably a bye week
+        toprec = relpos.iloc[0]
+        if toprec['receiving_yds'] >= 10:
+            t1name = toprec['name']
+            top1[t1name] = top1.get(t1name, 0) + 1
+            top2[t1name] = top2.get(t1name, 0) + 1
+        if len(relpos) < 2: continue
+        toprec = relpos.iloc[1]
+        if toprec['receiving_yds'] >= 10:
+            t2name = toprec['name']
             top2[t2name] = top2.get(t2name, 0) + 1
 
     pretop = topnames.copy()
