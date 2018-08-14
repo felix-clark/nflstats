@@ -2,6 +2,7 @@ import dist_fit
 import numpy as np
 import scipy.stats as st
 from scipy.special import gamma, digamma
+import logging
 
 # we'll want to split this up into a few types
 class RbModel:
@@ -17,14 +18,14 @@ class RbModel:
         game['rushing_att'] = rush_att
         return game
 
-    def bayes_update_game(self, game):
+    def update_game(self, game):
         """
         update the stats based on the results of 1 game
         we can either do this stochastically using the KLD gradient and a variable learn rate, or using bayesian models
         """
         self.rushatt.bayes_update_game(game['rushing_att'])
 
-    def bayes_new_season(self):
+    def new_season(self):
         """
         decay some parameters to account for uncertainty between seasons
         """
@@ -39,8 +40,7 @@ class RushAttModel:
     this could be extended to other positions, with different defaults
     """
     # TODO: make these defaults a function of whether this is expected to be an RB1 or RB2/3
-    def __init__(self, lr=0.135, mem=0.66, gmem=0.8, ab0=(6.392,0.4694)):
-        # self.__pred_var=('rushing_att',)
+    def __init__(self, a0, b0, lr, mem, gmem):
         
         # these defaults are gotten from top 16 (by ADP) RBs.
         # they won't be good for general RBs down the line.
@@ -52,12 +52,20 @@ class RushAttModel:
         # beta = p/(1-p)
         # EV = alpha/beta
         # self.alpha,self.beta = ab0
-        self.ab = np.array(ab0)
+        self.ab = np.array((a0,b0))
 
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.game_mem = gmem
         self.season_mem = mem
+
+    @classmethod
+    def for_position(self, pos):
+        if pos.upper() == 'RB':
+            return RushAttModel(
+                2.807, 0.244,
+                0.121, 0.677, 0.782)
+        logging.error( 'positional defaults not implemented' )
 
     @property
     def var_names(self):
@@ -81,7 +89,7 @@ class RushAttModel:
         return beta/(1.+beta)
 
     def update_game(self, rush_att):
-        assert(0 < self.game_mem <= 1.0)
+        # assert(0 < self.game_mem <= 1.0)
         self.ab *= self.game_mem
         self.ab += self.game_lr * np.array((rush_att, 1.))
         # we could accumulate a KLD to diagnose when the model has been very off recently
@@ -150,19 +158,42 @@ class RushYdsModel:
     this model will assume a symmetry that isn't there at low attempts.
       (e.g. some might have a 40 yd/att on 1-2 rushes but -40 yd/att is impossible)
     """
-    def __init__(self, lr=(0.04,0.002), mem=(0.83,0.8), gmem=(0.99,0.99), skew=1.1, mnab0=(49.8,12.0,2.0,5.35)):
+    def __init__(self,
+                 mn0, n0, a0, b0,
+                 lr1, lr2,
+                 skew,
+                 # mem1=1.0, mem2=1.0, gmem1=0.99, gmem2=0.99, # these memory parameters seem set to 1
+                 # mnmem,
+                 abmem # additional decay parameter for alpha, between seasons
+    ):
         # this represents (mu*nu, nu, alpha, beta). note that we save only mu*nu, for simpler decay.
-        self.mnab = np.array(mnab0)
+        self.mnab = np.array((mn0, n0, a0, b0))
         # the skewness will be a constant hyperparameter for now (not clear how to do bayesian updating w/ non-centrality)
         # to get a good value for skewness directly, we'd need play-by-play data
         self.skew = skew
 
         # we might want game_lr to be a function of the season?
-        # for this we might have different learn rates for mu/nu and alpha/beta.
-        self.game_lr = np.repeat(lr, 4//len(lr))
-        self.game_mem = np.repeat(gmem, 4//len(gmem))
-        self.season_mem = np.repeat(mem, 4//len(mem))
+        # using different learn rates for mu/nu and alpha/beta (i.e. 1 and 2 moments)
+        # possibly different learn rates for all of them? tie to memory?
+        self.game_lr = np.repeat((lr1,lr2), 2)
+        self.game_mem = np.repeat(1., 4) # keep these variable
+        self.season_mem = np.repeat((1.0, abmem), 2)
 
+    @classmethod
+    def for_position(self, pos):
+        if pos.upper() == 'RB':
+            # return RushYdsModel(
+            #     116.30, 43.77, 5.54, 12.80, # initial bayes parameters
+            #     0.003187, 8.87e-5, # learn rates
+            #     2.026, # skew
+            #     0.867) # alpha/beta mem
+            return RushYdsModel(
+                122.26, 36.39, 8.87, 40.09, # initial bayes parameters
+                0.00237, 0.0239, # learn rates
+                0.81, # skew
+                0.613) # alpha/beta mem
+        logging.error( 'positional defaults not implemented for {}'.format(pos) )
+        
     @property
     def var_names(self):
         var_names = [self.pred_var] + list(self.dep_vars)
@@ -178,16 +209,20 @@ class RushYdsModel:
         return ('rushing_att',)# self.__dep_vars
     
     def update_game(self, rush_yds, rush_att):
-        assert((0 < self.game_mem).all() and (self.game_mem <= 1.0).all())
+        # assert((0 < self.game_mem).all() and (self.game_mem <= 1.0).all())
         # mu does not decay simply like the others, but mu*nu does
         ev = self.ev(rush_att)
         self.mnab *= self.game_mem
-        self.mnab += self.game_lr * np.array((rush_yds, rush_att, 0.5*rush_att,
-                                                  0.5*(rush_yds-ev)**2/rush_att))
+        self.mnab += self.game_lr * np.array((rush_yds, rush_att,
+                                              0.5*rush_att,
+                                              0.5*(rush_yds-ev)**2/rush_att))
+                                              # 0.5,
+                                              # 0.5*(rush_yds-ev)**2/rush_att**2))
         # we could accumulate a KLD to diagnose when the model has been very wrong recently
 
     def new_season(self):
-        assert((0 < self.season_mem).all() and (self.season_mem <= 1.0).all())
+        # if not((0 < self.season_mem).all() and (self.season_mem <= 1.0).all()):
+        #     logging.warning('season mem = {}'.format(self.season_mem))
         self.mnab *= self.season_mem
 
     def _df(self, rush_att):
@@ -203,7 +238,10 @@ class RushYdsModel:
         
     def gen_game(self, rush_att):
         df = self._df(rush_att) # if we do this approach, we don't use our alpha at all?
-        loc = (self.mnab[0] / self.mnab[1] - st.nct.mean(df, self.skew)) * rush_att # can't use ev since that includes skew
+        # ncmean = st.nct.mean(df, self.skew) # possibly use this for df > 1?
+        pass # we need to do whatever standard we chose for ncmean
+        ncmean = self.skew
+        loc = (self.mnab[0] / self.mnab[1] - ncmean) * rush_att # can't use ev since that includes skew
         return st.nct.rvs(df, self.skew, loc=loc, scale=rush_att*np.sqrt(self._sigma2()))
 
     def ev(self, rush_att):
@@ -226,35 +264,49 @@ class RushYdsModel:
             return np.inf
         return st.nct.var(df, nc, scale=self.scale(rush_att))
 
+    def loc(self, rush_att):
+        df = self._df(rush_att)
+        nc = self.skew
+        ncmean = st.nct.mean(df, nc) if df > 1 else nc
+        return (self.mnab[0] / self.mnab[1] - ncmean) * rush_att
+    
     def scale(self, rush_att):
-        return rush_att*np.sqrt(self._sigma2())
+        df = self._df(rush_att)
+        scale = rush_att*np.sqrt(self._sigma2())
+        if df > 2:
+            nc = self.skew
+            scale /= ( df*(1+nc**2)/(df-2) - nc**2*df/2*(gamma((df-1)/2)/gamma(df/2))**2 )
+        return scale
 
     def chi_sq(self, rush_yds, rush_att):
         df = self._df(rush_att)
-        nu = self.mnab[1]
-        # ev = self.ev(1) + self.skew*np.sqrt(nu/2.)*gamma(0.5*(nu-1))/gamma(0.5*nu)
-        # ev = self.ev(rush_att) # should be converging to the mean
-        norm = st.nct.logpdf( st.nct.mean(df, self.skew), df, self.skew, loc=0., scale=self.scale(rush_att) )
-        # kld_calc = st.nct.logpdf(rush_yds, df, self.skew,
-        #                          loc=(self.mnab[0] / self.mnab[1] - st.nct.mean(df, self.skew)) * rush_att,
-        #                          scale=self.scale(rush_att))
-        # print(norm, kld_calc)
+        # using nct.mean results in undefined when df = 1
+        # norm = st.nct.logpdf( st.nct.mean(df, self.skew), df, self.skew, loc=0., scale=self.scale(rush_att) )
+        nc = self.skew
+        ncmean = st.nct.mean(df, nc) if df > 1 else nc
+        norm = st.nct.logpdf( ncmean, df, self.skew, loc=0., scale=self.scale(rush_att) )
+        
         return 2.*(self.kld(rush_yds, rush_att) + norm)
     
     def kld(self, rush_yds, rush_att):
         df = self._df(rush_att)
         nc = self.skew
-        # ncmean = nc * np.sqrt(df/2)*gamma((df-1)/2)/gamma(df/2)
-        ncmean = st.nct.mean(df, nc) # get the unscaled contribution to the mean from the skew
         # print(ncmean, st.nct.mean(df, nc)) # these are the same
-        loc = (self.mnab[0] / self.mnab[1] - ncmean) * rush_att # can't use ev since that includes skew
+        # the problem w/ using the mean for the offset is that this blows up for df = 1
+        # the skew parameter is in between the mode and mean, so let's just use this
+        # ncmean = st.nct.mean(df, nc) if df > 1 else nc
+        loc = self.loc(rush_att)
         scale = self.scale(rush_att) # /( df*(1+nc**2)/(df-2) - nc**2*df/2*(gamma((df-1)/2)/gamma(df/2))**2 )
         result = - st.nct.logpdf(rush_yds, df, nc, loc=loc,
                                  scale=scale)
         return result
 
     def __str__(self):
-        return u'rush_yds: \u03BC={:.2f}, \u03BD={:.2f}, \u03B1={:.2f}, \u03B2={:.2f}'.format(self.mnab[0]/self.mnab[1], *self.mnab[1:])
+        parstr = u'rush_yds: \u03BC={:.2f}, \u03BD={:.2f}, \u03B1={:.2f}, \u03B2={:.2f}\n'.format(self.mnab[0]/self.mnab[1], *self.mnab[1:])
+        hparstr = 'skew: {}\n'.format(self.skew)
+        hparstr += 'learn rate, game mem = {}, {}\n'.format(self.game_lr, self.game_mem)
+        hparstr += 'season memory = {}'.format(self.season_mem)
+        return parstr + hparstr
 
 
 class RushTdModel:
@@ -262,17 +314,26 @@ class RushTdModel:
     statistical model for TDs per rush
     this could again be extended to other positions, with different defaults
     """
-    def __init__(self, lr=1.0, mem=0.77, gmem=1.0, ab0=(42.0,1400.)):
-        # self.__var_names = ('rushing_tds', 'rushing_att')
-        # self.__dep_vars = ('rushing_att',)
-    
-        self.ab = np.array(ab0)
-
+    def __init__(self, a0, b0,
+                 lr,
+                 mem,
+                 gmem):    
+        self.ab = np.array((a0,b0))
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.game_mem = gmem
         self.season_mem = mem
 
+    @classmethod
+    def for_position(self, pos):
+        if pos.upper() == 'RB':
+            return RushTdModel(
+                19.07, 684.7, # initial bayes parameters
+                1.84, # learn rate
+                0.775, # season memory
+                1.0) # game mem
+        logging.error( 'positional defaults not implemented for {}'.format(pos) )
+        
     @property
     def var_names(self):
         var_names = [self.pred_var] + list(self.dep_vars)
@@ -288,15 +349,10 @@ class RushTdModel:
         return ('rushing_att',)# self.__dep_vars
     
     def update_game(self, rush_td, rush_att):
-        assert(0 < self.game_mem <= 1.0)
         self.ab *= self.game_mem
         self.ab += self.game_lr * np.array((rush_td, rush_att - rush_td))
-        # print(self.ab)
-        # exit(1)
-        # we could accumulate a KLD to diagnose when the model has been very off recently
 
     def new_season(self):
-        assert(0 < self.season_mem <= 1.0)
         self.ab *= self.season_mem
         
     def gen_game(self, rush_att):
@@ -304,7 +360,7 @@ class RushTdModel:
         return st.binom.rvs(rush_att, p)
 
     def ev(self, rush_att):
-        ev = self.ab[0] / self.ab[1] * rush_att
+        ev = self.ab[0] / (self.ab[0] + self.ab[1]) * rush_att
         return ev
 
     def var(self, rush_att):
@@ -317,18 +373,16 @@ class RushTdModel:
         return np.sqrt(var(rush_att))
 
     def chi_sq(self, rush_td, rush_att):
-        norm = dist_fit.log_beta_binomial( self.ev(rush_att), rush_att, self.ab[0], self.ab[1])
+        norm = dist_fit.log_beta_binomial( self.ev(rush_att), rush_att, *self.ab)
         return 2.*(self.kld(rush_td, rush_att) + norm)
     
     def kld(self, rush_td, rush_att):
-        alpha,beta = self.ab[0],self.ab[1]
-        result = - dist_fit.log_beta_binomial( rush_td, rush_att, alpha, beta)
+        result = - dist_fit.log_beta_binomial( rush_td, rush_att, *self.ab)
         return result
 
     def __str__(self):
-        mu = self.alpha / (self.alpha + self.beta)
-        # p = self.beta/(1.+self.beta)
-        # we can't get the variance for this distribtion w/out the rush attempts
-        # we could compute it by compounding variance, but that's not too necessary rn
-        # std = st.nbinom.std(self.alpha, p)
-        return u'rush_td: \u03B1={:.2f}, \u03B2={:.2f}; {:.2f}%'.format(self.alpha, self.beta, mu*100)
+        mu = self.ev(100) # % percent of rushes that end in TD
+        pars = u'rush_td: \u03B1={:.2f}, \u03B2={:.2f}; {:.2f}%\n'.format(*self.ab, mu)
+        hpars = 'learn rate = {}\n'.format(self.game_lr)
+        hpars += 'memory (season/game): {:.3f} / {:.3f}\n'.format(self.season_mem, self.game_mem)
+        return pars + hpars

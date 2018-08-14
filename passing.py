@@ -354,7 +354,7 @@ if __name__ == '__main__':
     for st in plt_structs:
         for var in plot_vars:
             plt.figure()
-            varplt = sns.lvplot(data=st['df'], x='career_year', y=var, hue='model')
+            varplt = sns.boxenplot(data=st['df'], x='career_year', y=var, hue='model')
             plt.title(st['desc'])
 
     plt.show(block=True)
