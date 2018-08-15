@@ -10,7 +10,7 @@ import logging
 import os.path
 import argparse
 
-from rb_model import *
+from playermodels.rb import *
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
@@ -30,67 +30,71 @@ def main():
     if args.opt_hyper:
         hps = minimize_model_hyperparameters(position, args.opt_hyper)
     
-    rbdf = get_model_df(position)
-    rbdf = rbdf[rbdf['week'] < 17].dropna() # somehow dropna=True doesn't remove these
-    
-    models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
+    posdf = get_model_df(position)
+    posdf = posdf[posdf['week'] < 17]# .dropna() # don't necessarily remove nans; we need these for QBs
+
+    # models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
     # models = ['rush_yds'] # edit this to suppress info we've already looked at
+    models = []
     for model in models:
-        klds = rbdf[model+'_kld']
-        chisqs = rbdf[model+'_chisq']
+        klds = posdf[model+'_kld']
+        chisqs = posdf[model+'_chisq']
         logging.info('{} kld = {:.6f}, chisq = {:.4f} out of {} weeks (avg {:.6f}, {:.3f})'
                      .format(model, klds.sum(), chisqs.sum(),
                              klds.size, klds.mean(), chisqs.mean()))
-        # print(rbdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
+        # print(posdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
         plot_vars = ['kld', 'cdf']
         for pname in plot_vars:
+            pass
             # plt.figure()
-            # year_plt = sns.boxenplot(data=rbdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
-            # year_plt = sns.lvplot(data=rbdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
+            # year_plt = sns.boxenplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
+            # year_plt = sns.lvplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
         # plt.show(block=True)
 
+    # print(posdf[posdf['rushing_att'] == 0])
+    # TODO: we should be able to split the dataset in half randomly and see flat CDFs in both samples
+    # pltvar = sns.distplot(posdf['rush_yds_cdf'])
+    # pltvar.figure.show()
+    # plt.show(block=True)
+    # cdf_plt = sns.pairplot(posdf, #height = 4,
+    #                        vars=['rush_yds_cdf', 'rushing_att', 'rushing_yds'],
+    #                        hue='career_year',
+    # )
+    # plt.show(block=True)
+    
+    # the pearson correlation of the CDFs should be the spearman correlation of the data. (though it's not really)
+    # note that our models for yards are *given* the attempt, so when parameterizing them
+    # we should use the correlations in these cdfs.
+    # we should probably use the raw spearman correlation from the data
+    corrdf = posdf[['rushing_att', 'rushing_yds', 'rushing_tds', 'rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].copy()
+    corrdf['rushing_ypa'] = corrdf['rushing_yds'] / corrdf['rushing_att']
+    corrdf['rushing_tdpa'] = corrdf['rushing_tds'] / corrdf['rushing_att']
+    rush_corr = corrdf[['rushing_att', 'rushing_ypa', 'rushing_tdpa']].corr(method='spearman')
+    print(rush_corr)
+    # # spearman and pearson are quite similar for the cdf, at least when the models are working decently
+    # rush_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
+    # print(rush_corr)
+    
+    plt_corr = sns.pairplot(corrdf, #height = 4,
+                            vars=['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf'],
+                            dropna=True,
+                            # kind='reg', # do linear regression to look for correlations
+                            # hue='career_year'
+    )
+    plt.show(block=True)
+
+    exit(1)
         
-    for model in ['rush_att']: # models:
-        residuals = rbdf['{}_cdf'.format(model)]
-        residuals = residuals[residuals.notnull()]
-        plt_res = sns.distplot(residuals,
+    for model in models:
+        cdf = posdf['{}_cdf'.format(model)]
+        # cdf = cdf[cdf.notna()] # drops zeros?
+        plt_cdf = sns.distplot(cdf,
                                hist_kws={'log':False, 'align':'left'})
-        # plt_rar.figure.savefig('rush_att_res')
-        plt_res.figure.show()
-
+        # plt_cdf.figure.savefig('rush_att_res')
+        plt_cdf.figure.show()
     plt.show(block=True)
-    exit(0)
 
-    ra_bins = np.arange(0,45,10)
-    for low,up in zip(ra_bins[:-1], ra_bins[1:]):
-        res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_yds_res']
-        # res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_tds_kld']
-        # res = rbdf[(low <= rbdf['rushing_att']) & (rbdf['rushing_att'] < up)]['rush_att_kld']
-        res = res[res.notnull()]
-        plt_res = sns.distplot(res,
-                               hist_kws={'log':False, 'align':'left'})
-        # plt_rar.figure.savefig('rush_att_res')
-        plt_res.figure.show()
-    plt.show(block=True)
-    
-    
-    # print (rbdf.columns)
-    # plt.figure()
-    
-    # plt_corr = sns.pairplot(resdf, #height = 4,
-    #                         vars=['rushing_att', 'rush_att_res', 'rush_att_chisq', 'rush_att_kld'],
-    #                         dropna=True,
-    #                         kind='reg' # do linear regression to look for correlations
-    # )
-    # plt.show(block=True)
-    # plt_corr = sns.pairplot(resdf, #height = 4,
-    #                         vars=['rushing_att', 'rushing_yds', 'rush_yds_res', 'rush_yds_kld', 'rushing_tds'],
-    #                         dropna=True,
-    #                         kind='reg' # do linear regression to look for correlations
-    # )
-    # plt.show(block=True)
-
-    # resnames = ['{}_res'.format(m) for m in models]
+    # resnames = ['{}_cdf'.format(m) for m in models] # we could take the ppf of this to look at standardized residuals
     # plt_corr = sns.pairplot(resdf, height = 4,
     #                         vars=resnames,
     #                         kind='reg' # do linear regression to look for correlations
@@ -100,25 +104,33 @@ def main():
     # logging.warning('exiting early')
     # exit(0)
     
-    rush_att = rbdf['rushing_att']
-    rush_yds = rbdf['rushing_yds']
-    rush_tds = rbdf['rushing_tds']
-    good_rbs = rush_att > 0
-    # print(rbdf[good_rbs][display_cols])
+    good_pos = True
+    if position == 'RB': good_pos = posdf['rushing_att'] > 0
+    if position == 'QB': good_pos = posdf['passing_cmp'] > 0
+    if position in ['WR', 'TE']:
+         # not clear we should filter these. include zero for now
+        good_pos = posdf['receiving_rec'] >= 0
+    rec_rec = posdf[good_pos]['receiving_rec']
     
-    # print(rbdf[~good_rushers])
+    # print(posdf[~good_rushers])
     # print(rush_att[~good_rushers])
     
     # print('rushing attempts:')
-    # # negative binomial does quite well here for single year, but only for top players.
-    # # note p~0.5 ... more like 0.7 w/ all seasons
-    # # poisson is under-dispersed.
-    # # neg bin doesn't do as well w/ all years, but still better than poisson
-    # # beta-negative binomial should have the extra dispersion to capture this
-    # rush_att_fits = ['neg_binomial'
-    #                  , 'beta_neg_binomial' # beta-negative is not really an improvement - we don't need more variance
-    # ]
-    # dist_fit.plot_counts( rush_att[good_rbs], label='rushing attempts per game' ,fits=rush_att_fits)
+    print('receptions')
+    # negative binomial does quite well here for single year, but only for top players.
+    # note p~0.5 ... more like 0.7 w/ all seasons
+    # poisson is under-dispersed.
+    # neg bin doesn't do as well w/ all years, but still better than poisson
+    # beta-negative binomial should have the extra dispersion to capture this
+    rush_att_fits = [
+        'geometric',
+        'poisson',
+        'neg_binomial',
+        'beta_neg_binomial' # beta-negative does well overall for QBs (accounting for extra variance)
+    ]
+    # dist_fit.plot_counts( rush_att[good_pos], label='rushing attempts per game' ,fits=rush_att_fits)
+    dist_fit.plot_counts( rec_rec, label='receptions per game' ,fits=rush_att_fits)
+    print((rec_rec == 0).any())
 
     # print('rushing yards per attempt:')
     # # in a single game
@@ -140,7 +152,7 @@ def main():
 
     pass
     
-def get_pos_df(pos='RB', fname = None):
+def get_pos_df(pos, fname = None):
     pos = pos.upper()
     if fname is None:
         fname = 'data_{}_cache.csv'.format(pos.lower())
@@ -247,17 +259,10 @@ def get_model_df( pos='RB', fname = None):
                     var = model.var(*depvars)
                     cdf = model.cdf(*mvars) # standardized to look like a gaussian
                     # res = (data-ev)/np.sqrt(var)
-                    # if mname == 'rush_tds':
-                    #     print('rush_att, ev, var, res = {}, {}, {}, {}'.format(row['rushing_att'], ev, var, res))
                     rbdf.loc[index,'{}_ev'.format(mname)] = ev
                     rbdf.loc[index,'{}_cdf'.format(mname)] = cdf
                     rbdf.loc[index,'{}_kld'.format(mname)] = kld
                     rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
-                    # if kld > 15:
-                    #     logging.warning('large KL divergence: {}'.format(kld))
-                    #     logging.warning('{} = {}'.format(model.pred_var,data))
-                    #     logging.warning(model)
-                    #     logging.warning(rbdf.loc[index])
                     model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
             for _,mod in plmodels.items():
                 mod.new_season()
@@ -277,95 +282,39 @@ def minimize_model_hyperparameters(pos, model_name='rush_att'):
     model_defs = {
         'rush_att':{
             'model':RushAttModel,
-            # 'start_pars':( # this is the RB one
-            #     2.807, # alpha0
-            #     0.244, # beta0
-            #     0.121, # lr
-            #     0.677, # mem
-            #     0.782, # gmem
-            # ),
-            'start_pars':( # for QBs
-                2.61,0.840, # ab0
-                0.241, # lr
-                0.703,0.954, # mem,gmem
-            ),
-            # 'start_pars':( # this is the WR one (used to start TEs)
-            #     0.182,0.761, # alpha0, beta0
-            #     0.327, # lr
-            #     0.598,0.969, # mem, gmem
-            # ),
-            'par_bounds':[
-                (0,None),
-                (0,None),
+            'par_bounds':[ # we could consider including parameter bounds in a class method of the models
+                (0,None),(0,None),
                 (0.,1.0),
-                (0.1,1.0),
-                (0.5,1.0),
+                (0.1,1.0),(0.5,1.0),
             ],
             
         },
         'rush_yds':{
             'model':RushYdsModel,
-            # 'start_pars':( # now w/ a version that scales the variance for df
-            #     122.26, # mu*nu
-            #     36.39, # nu
-            #     8.87, # alpha
-            #     40.09, # beta 
-            #     0.00237, # mean learn rate
-            #     0.0239, # learn rate for variance # small values w/ full memory 
-            #     0.81, # skew # with a lower mu, a higher skew can be used
-            #     1.0, # seasonal memory decay for munu/nu
-            #     0.613 # seasonal memory decay, for alpha/beta
-            #     # 1.0,1.0, # game mem
-            # ),
-            'start_pars':( # try w/ the QB
-                112.8,48.99, # munu,nu
-                2.49,44.05, # alpha,beta 
-                6.28, # mean learn rate
-                0.0243, # learn rate for variance # small values w/ full memory 
-                0.0567, # skew # with a lower mu, a higher skew can be used
-                0.669, # seasonal memory decay for munu/nu
-                0.773 # seasonal memory decay, for alpha/beta
-                # 1.0,1.0, # game mem
-            ),
-            # 'start_pars':( # now w/ a version that does not scale alpha and beta learning by rush_att
-            #     116.30, # mu*nu
-            #     43.77, # nu
-            #     5.54, # alpha
-            #     12.80, # beta (stddev = 1.78)
-            #     0.003187, # mean learn rate
-            #     8.87e-5, # learn rate for variance # small values w/ full memory 
-            #     2.026, # skew # with a lower mu, a higher skew can be used
-            #     # 1.0, # seasonal memory decay for munu/nu
-            #     0.867 # seasonal memory decay, for alpha/beta
-            #     # 1.0,1.0, # game mem
-            # ),
             'par_bounds':[
                 (0,None),(0,None),(0,None),(0,None),
-                (1e-6,10.0),
-                (0.0,2.0),
+                (0.0,10.0),
+                (0.0,1.0),
                 (0.0,5.0), # skew
-                (0.2,1.0),
+                (0.2,1.0), # season memory
+                (0.4,1.0),
+                (0.2,1.0), # game memory - doesn't help much
                 (0.4,1.0),
             ],
         },
         'rush_tds':{ # this default one has very poor residuals, or there is some other problem
             'model':RushTdModel,
-            'start_pars':(
-                12.33,330.27, # ab0
-                1.76, # lr
-                1.0,0.980 # mem,gmem
-            ),
             'par_bounds':[
-                (0,None),(0,None),
-                (0.1,10.0),# let's uncap learn rate
-                (0.2,1.0),
-                (0.5,1.0)
+                (1e-5,None),(1e-5,None),
+                (0.0,10.0),# let's uncap learn rate
+                (0.2,1.0),(0.5,1.0)
                 ]
         }
     }
+    learn = True
     mdef = model_defs[model_name]
     mdtype = mdef['model']
-    pars0 = mdef['start_pars']
+    pars0 = mdtype._default_hyperpars(pos)
     logging.info('starting with parameters {}'.format(pars0))
 
     def tot_kld(hparams):
@@ -374,7 +323,7 @@ def minimize_model_hyperparameters(pos, model_name='rush_att'):
         for pid in playerids:
             pdf = rbdf[rbdf['playerid'] == pid]
             pname = pdf['name'].unique()[0]
-            plmodel = mdtype(*hparams)
+            plmodel = mdtype(*hparams, learn=learn)
             years = pdf['year'].unique()
             # we could skip single-year seasons
             for icareer,year in enumerate(years):

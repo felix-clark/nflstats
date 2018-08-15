@@ -92,7 +92,9 @@ def grad_sum_log_neg_binomial( ks, r, p ):
 
 def sum_log_beta_neg_binomial( ks, r, a, b ):
     N = len(ks)
-    return sum(gammaln(r+ks) - log(factorial(ks)) + betaln(a+r,b+ks)) - N*(betaln(a,b) + gammaln(r))
+    norm = N*(betaln(a,b) + gammaln(r))
+    terms = gammaln(r+ks) - log(factorial(ks)) + betaln(a+r,b+ks) 
+    return sum(terms) - norm
 
 def grad_sum_log_beta_neg_binomial( ks, r, a, b):
     N = len(ks)
@@ -215,10 +217,7 @@ def to_poisson( data ):
                     - sum( gammaln( np.asarray(data)+1 ) ) / (n-1)
     return (mu, err_mu), log_L_per_ndf
 
-def to_geometric( data=[] ):
-    if not data:
-        logging.error('empty data set')
-        exit(1)
+def to_geometric( data ):
     n = len( data )
     p = float(n) / ( n + sum( data ) )
     err_p = sqrt( p**2 * (1-p) / n )
@@ -233,20 +232,23 @@ def to_neg_binomial( data ):
     #     logging.error('empty data set')
     #     exit(1)
     log = logging.getLogger(__name__)
-    for x in data:
-        if x < 0:
-            log.warning('negative value in data set. negative binomial may not be appropriate.')
     arr_ks = np.asarray( data )
+    if (arr_ks < 0).any():
+            log.warning('negative value in data set. negative binomial may not be appropriate.')
     n = len( arr_ks )
-    mean = float( sum( arr_ks ) ) / n
-    rp0 = (mean, 0.5) # initial guess. r > 0 and 0 < p < 1
+    mean = arr_ks.mean()
+    var = arr_ks.var()
+    p0 = mean/var
+    r0 = mean**2/(var-mean) # initial guess. r > 0 and 0 < p < 1
+    logging.info('r0,p0 = {:.3f}, {:.3f}'.format(r0,p0))
+    assert((r0 > 0) and p0 < 1)
     allowed_methods = ['L-BFGS-B', 'TNC', 'SLSQP'] # these are the only ones that can handle bounds. they can also all handle jacobians. none of them can handle hessians.
     # only LBFGS returns Hessian, in form of "LbjgsInvHessProduct"
     method = allowed_methods[0]
     
     func = lambda pars: - sum_log_neg_binomial( arr_ks, *pars )
     grad = lambda pars: - grad_sum_log_neg_binomial( arr_ks, *pars )
-    opt_result = opt.minimize( func, rp0, method=method, jac=grad, bounds=[(0,None),(0,1)] )
+    opt_result = opt.minimize( func, (r0,p0), method=method, jac=grad, bounds=[(0,None),(0,1)] )
     isSuccess = opt_result.success
     if not isSuccess:
         log.error('negative binomial fit did not succeed.')
@@ -259,11 +261,13 @@ def to_neg_binomial( data ):
 
 def to_beta_neg_binomial( data ):
     arr_ks = np.asarray( data, dtype=float )
-    if np.any(arr_ks == 0):
+    if np.any(arr_ks < 0):
         logging.warning('negative value in data set. beta negative binomial may not be appropriate.')
     n = len( arr_ks )
-    mean = sum( arr_ks ) / n
-    a0,b0 = (20., 10.) # start w/ low variance. make sure a > 1
+    mean = arr_ks.mean()
+    var = arr_ks.var()
+    # p0 = mean/var # the EV for a/(a+b)
+    a0,b0 = (mean, var-mean) # start w/ low variance. make sure a > 1
     r0 = mean*(a0-1)/b0 # initial guess for r,a,b # mean = r*b/(a-1) for a > 1
     allowed_methods = ['L-BFGS-B', 'TNC', 'SLSQP'] # these are the only ones that can handle bounds. they can also all handle jacobians. none of them can handle hessians.
     # only LBFGS returns Hessian, in form of "LbjgsInvHessProduct"
@@ -271,13 +275,18 @@ def to_beta_neg_binomial( data ):
     
     func = lambda pars: - sum_log_beta_neg_binomial( arr_ks, *pars )
     grad = lambda pars: - grad_sum_log_beta_neg_binomial( arr_ks, *pars )
-    opt_result = opt.minimize( func, (r0,a0,b0), method=method, jac=grad, bounds=[(0,None),(0,None),(0,None)] )
+    opt_result = opt.minimize( func, (r0,a0,b0), method=method, jac=grad, bounds=[(1e-6,None),(0,None),(0,None)],
+                               options={'disp':False, # print convergence message
+                                        'ftol':1e-12, # get better tolerance
+                                        'gtol':1e-10 # these don't seem to help
+                               }
+    )
     isSuccess = opt_result.success
     if not isSuccess:
         logging.error('beta negative binomial fit did not succeed.')
     r,a,b = opt_result.x
     logging.debug('jacobian for beta-neg-binomial = {}'.format(opt_result.jac)) # should be zero, or close to it
-    cov = opt_result.hess_inv
+    cov = opt_result.hess_inv # seems to just return 1 here...
     cov_array = cov.todense()  # dense array
     neg_ll = opt_result.fun
     return isSuccess,(r,a,b),cov_array,-neg_ll/(n-3)
@@ -472,7 +481,7 @@ def plot_counts( data, label='', norm=False, fits=None ):
         plt.subplot(121)
         plt.plot(xfvals, ndata*poisson( xfvals, mu ), 'r-', lw=2)
         plt.subplot(122)
-        plt.plot(xfvals, ndata*geometric( xfvals, mu ), 'r-', lw=2)
+        plt.plot(xfvals, ndata*poisson( xfvals, mu ), 'r-', lw=2)
         plt.yscale('log')
 
     if 'neg_binomial' in fits:
@@ -508,7 +517,7 @@ def plot_counts( data, label='', norm=False, fits=None ):
         plt.plot(xfvals, ndata*beta_neg_binomial( xfvals, r, a, b ), '--', lw=2, color='blue' )
         plt.subplot(122)
         plt.plot(xfvals, ndata*beta_neg_binomial( xfvals, r, a, b ), '--', lw=2, color='blue' )
-        plt.yscale('log')
+        plt.yscale('log', nonposy='clip')
 
     plt.show()
 
