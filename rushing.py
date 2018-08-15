@@ -44,12 +44,13 @@ def main():
         # print(rbdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
         plot_vars = ['kld', 'cdf']
         for pname in plot_vars:
-            plt.figure()
-            year_plt = sns.boxenplot(data=rbdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
-        plt.show(block=True)
+            # plt.figure()
+            # year_plt = sns.boxenplot(data=rbdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
+            # year_plt = sns.lvplot(data=rbdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
+        # plt.show(block=True)
 
         
-    for model in models:
+    for model in ['rush_att']: # models:
         residuals = rbdf['{}_cdf'.format(model)]
         residuals = residuals[residuals.notnull()]
         plt_res = sns.distplot(residuals,
@@ -96,20 +97,12 @@ def main():
     # )        
     # plt.show(block=True)
         
-    # pd.options.display.max_rows=10    
-    # ra_chisqs = rbdf.groupby('playerid')['rush_att_chisq'].mean()
-    # print(ra_chisqs[ra_chisqs > 1.5].index)
-    # print( rbdf[rbdf['playerid'].isin(ra_chisqs[ra_chisqs > 1.5].index)][['name','year','week','rushing_att','rush_att_ev','rush_att_chisq']])
-    
-    # print(rbdf.groupby('year')['rush_att_chisq'].mean())    
-            
     # logging.warning('exiting early')
     # exit(0)
     
     rush_att = rbdf['rushing_att']
     rush_yds = rbdf['rushing_yds']
     rush_tds = rbdf['rushing_tds']
-    # good_rbs = (rush_att > 4) # need a better way to select players of interest
     good_rbs = rush_att > 0
     # print(rbdf[good_rbs][display_cols])
     
@@ -132,10 +125,6 @@ def main():
     # dist_fit.plot_avg_per( rush_yds[good_rbs]/rush_att[good_rbs], weights=rush_att[good_rbs],
     #                        label='rush yds per attempt', bounds=(-10,50))
     
-    # negative binomial is redundant w/ poisson here. TDs are rare, and relatively independent.
-    # geometric does OK, but is clearly inferior w/ high stats
-    # poisson does quite well even when all years are combined : -logL/N ~ 1
-    # for a collection of rushers, we should use NB which gets updated to converge to the rusher's poisson w/ infinite data
     # dist_fit.plot_counts( all_td, label='touchdowns', fits=['poisson', 'neg_binomial'] )
     
     # # the direct ratio fit doesn't do so well. TDs are farely rare overall, and the alpha/beta parameters tend to blow up in the fit.
@@ -148,11 +137,9 @@ def main():
     # # neg binomial is not perfect, -logL/N ~ 2. doesn't quite capture shape
     # # get p~0.5... coincidence?
     # dist_fit.plot_counts( rec_rec, label='receptions', fits=['neg_binomial'] )
-    
-    # there are games with negative yards so counts are not appropriate
-    # print 'rushing yards:'
-    # dist_fit.plot_counts( rush_yds, label='rushing yards' )
 
+    pass
+    
 def get_pos_df(pos='RB', fname = None):
     pos = pos.upper()
     if fname is None:
@@ -164,8 +151,10 @@ def get_pos_df(pos='RB', fname = None):
 
     
     adpfunc = None
+    if pos == 'QB': adpfunc = top_qb_names
     if pos == 'RB': adpfunc = top_rb_names
     if pos == 'WR': adpfunc = top_wr_names
+    if pos == 'TE': adpfunc = top_te_names
     # ...
     
     firstyear,lastyear = 2009,2017 # 2009 seems to have very limited stats
@@ -288,13 +277,23 @@ def minimize_model_hyperparameters(pos, model_name='rush_att'):
     model_defs = {
         'rush_att':{
             'model':RushAttModel,
-            'start_pars':(
-                2.807, # alpha0
-                0.244, # beta0
-                0.121, # lr
-                0.677, # mem
-                0.782, # gmem
+            # 'start_pars':( # this is the RB one
+            #     2.807, # alpha0
+            #     0.244, # beta0
+            #     0.121, # lr
+            #     0.677, # mem
+            #     0.782, # gmem
+            # ),
+            'start_pars':( # for QBs
+                2.61,0.840, # ab0
+                0.241, # lr
+                0.703,0.954, # mem,gmem
             ),
+            # 'start_pars':( # this is the WR one (used to start TEs)
+            #     0.182,0.761, # alpha0, beta0
+            #     0.327, # lr
+            #     0.598,0.969, # mem, gmem
+            # ),
             'par_bounds':[
                 (0,None),
                 (0,None),
@@ -306,16 +305,26 @@ def minimize_model_hyperparameters(pos, model_name='rush_att'):
         },
         'rush_yds':{
             'model':RushYdsModel,
-            'start_pars':( # now w/ a version that scales the variance for df
-                122.26, # mu*nu
-                36.39, # nu
-                8.87, # alpha
-                40.09, # beta 
-                0.00237, # mean learn rate
-                0.0239, # learn rate for variance # small values w/ full memory 
-                0.81, # skew # with a lower mu, a higher skew can be used
-                # 1.0, # seasonal memory decay for munu/nu
-                0.613 # seasonal memory decay, for alpha/beta
+            # 'start_pars':( # now w/ a version that scales the variance for df
+            #     122.26, # mu*nu
+            #     36.39, # nu
+            #     8.87, # alpha
+            #     40.09, # beta 
+            #     0.00237, # mean learn rate
+            #     0.0239, # learn rate for variance # small values w/ full memory 
+            #     0.81, # skew # with a lower mu, a higher skew can be used
+            #     1.0, # seasonal memory decay for munu/nu
+            #     0.613 # seasonal memory decay, for alpha/beta
+            #     # 1.0,1.0, # game mem
+            # ),
+            'start_pars':( # try w/ the QB
+                112.8,48.99, # munu,nu
+                2.49,44.05, # alpha,beta 
+                6.28, # mean learn rate
+                0.0243, # learn rate for variance # small values w/ full memory 
+                0.0567, # skew # with a lower mu, a higher skew can be used
+                0.669, # seasonal memory decay for munu/nu
+                0.773 # seasonal memory decay, for alpha/beta
                 # 1.0,1.0, # game mem
             ),
             # 'start_pars':( # now w/ a version that does not scale alpha and beta learning by rush_att
@@ -332,21 +341,19 @@ def minimize_model_hyperparameters(pos, model_name='rush_att'):
             # ),
             'par_bounds':[
                 (0,None),(0,None),(0,None),(0,None),
-                (1e-6,1.0),
-                (0.0,1.0),
-                (0.1,10.0), # skew
-                (0.5,1.0),
-                (0.5,1.0),
+                (1e-6,10.0),
+                (0.0,2.0),
+                (0.0,5.0), # skew
+                (0.2,1.0),
+                (0.4,1.0),
             ],
         },
         'rush_tds':{ # this default one has very poor residuals, or there is some other problem
             'model':RushTdModel,
             'start_pars':(
-                19.07,
-                684.7, # ab0
-                1.84, # lr
-                0.775, # mem
-                1.0, # gmem
+                12.33,330.27, # ab0
+                1.76, # lr
+                1.0,0.980 # mem,gmem
             ),
             'par_bounds':[
                 (0,None),(0,None),
@@ -494,6 +501,102 @@ def top_wr_names(year, nadp=36, n1=4, n2=12):
     topnames = topnames.append(pd.Series([name for name,ntop in top2.items() if ntop >= n2]))
 
     topnames = topnames.unique()
+    return topnames
+
+# returns a list of the top tight ends by ADP and performance in a given year
+# is separate from WRs for convenience, since we'd like the parameters to be different (and 2nd place doesn't cut it)
+# TODO: should probably rank TEs with how they stack up with other receivers on each team
+# for TEs, ADP might just be enough...
+def top_te_names(year, nadp=18,
+                 # n1=8, n2=18
+):
+    """
+    nadp: top number to choose from ADP
+    n1: number of times as a POS1 *on their team* to trigger inclusion
+    # n2: number of times as a POS2 on their team to be included
+    """
+
+    pos = 'TE'
+    adpfname = 'adp_historical/adp_{}_{}.csv'.format(pos.lower(), year)
+    if not os.path.isfile(adpfname):
+        logging.error('cannot find ADP file. try running get_historical_adp.py')
+    topdf = pd.read_csv(adpfname)
+    # this should already be sorted
+    topdf = topdf.head(nadp)
+    topnames = topdf['name']
+    
+    # yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year))
+    # yrdf = yrdf[yrdf['pos'].isin(['TE', 'WR'])]
+    # teams = yrdf['team'].unique()
+    # weeks = yrdf['week'].unique()
+    # top1,top2 = {},{}
+    # for week,team in itertools.product(weeks, teams):
+    #     relpos = yrdf[(yrdf['week'] == week) & (yrdf['team'] == team)]
+    #     relpos = relpos.assign(fp = relpos['receiving_rec'] + 0.1*relpos['receiving_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
+    #     if len(relpos) == 0: continue # then it's probably a bye week
+    #     toprec = relpos.iloc[0]
+    #     if toprec['receiving_yds'] >= 10:
+    #         t1name = toprec['name']
+    #         top1[t1name] = top1.get(t1name, 0) + 1
+    #         # top2[t1name] = top2.get(t1name, 0) + 1
+    #     if len(relpos) < 2: continue
+    #     toprec = relpos.iloc[1]
+    #     if toprec['receiving_yds'] >= 10:
+    #         t2name = toprec['name']
+    #         top2[t2name] = top2.get(t2name, 0) + 1
+
+    # pretop = topnames.copy()
+    # topnames = topnames.append(pd.Series([name for name,ntop in top1.items() if ntop >= n1]))
+    # topnames = topnames.append(pd.Series([name for name,ntop in top2.items() if ntop >= n2]))
+    # topnames = topnames.unique()
+    
+    return topnames
+
+# for QBs just go by ADP right now.
+# TODO: put more effort into validating that this gives us a good sample
+def top_qb_names(year, nadp=18,
+                 # n1=12
+):
+    """
+    nadp: top number to choose from ADP
+    n1: number of times as a POS1 *on their team* to trigger inclusion
+    # n2: number of times as a POS2 on their team to be included
+    """
+
+    pos = 'QB'
+    adpfname = 'adp_historical/adp_{}_{}.csv'.format(pos.lower(), year)
+    if not os.path.isfile(adpfname):
+        logging.error('cannot find ADP file. try running get_historical_adp.py')
+    topdf = pd.read_csv(adpfname)
+    # this should already be sorted
+    topdf = topdf.head(nadp)
+    topnames = topdf['name']
+    
+    # yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year))
+    # yrdf = yrdf[yrdf['pos'].isin(['TE', 'WR'])]
+    # teams = yrdf['team'].unique()
+    # weeks = yrdf['week'].unique()
+    # top1,top2 = {},{}
+    # for week,team in itertools.product(weeks, teams):
+    #     relpos = yrdf[(yrdf['week'] == week) & (yrdf['team'] == team)]
+    #     relpos = relpos.assign(fp = relpos['receiving_rec'] + 0.1*relpos['receiving_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
+    #     if len(relpos) == 0: continue # then it's probably a bye week
+    #     toprec = relpos.iloc[0]
+    #     if toprec['receiving_yds'] >= 10:
+    #         t1name = toprec['name']
+    #         top1[t1name] = top1.get(t1name, 0) + 1
+    #         # top2[t1name] = top2.get(t1name, 0) + 1
+    #     if len(relpos) < 2: continue
+    #     toprec = relpos.iloc[1]
+    #     if toprec['receiving_yds'] >= 10:
+    #         t2name = toprec['name']
+    #         top2[t2name] = top2.get(t2name, 0) + 1
+
+    # pretop = topnames.copy()
+    # topnames = topnames.append(pd.Series([name for name,ntop in top1.items() if ntop >= n1]))
+    # topnames = topnames.append(pd.Series([name for name,ntop in top2.items() if ntop >= n2]))
+    # topnames = topnames.unique()
+    
     return topnames
 
 if __name__ == '__main__':

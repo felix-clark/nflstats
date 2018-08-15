@@ -65,10 +65,19 @@ class RushAttModel:
             return RushAttModel(
                 2.807, 0.244,
                 0.121, 0.677, 0.782)
+        if pos.upper() == 'QB':
+            return RushAttModel(
+                2.61, 0.840,
+                0.241, 0.703, 0.954)
         if pos.upper() == 'WR':
             return RushAttModel(
                 0.182, 0.761,
                 0.327, 0.598, 0.969
+                )
+        if pos.upper() == 'TE':
+            return RushAttModel(
+                0.181, 8.831,
+                0.222, 0.670, 1.0
                 )
         logging.error( 'positional defaults not implemented' )
 
@@ -140,28 +149,6 @@ class RushAttModel:
         pars += 'learn rate, mem (seas/gm): {}, {}, {}\n'.format(self.game_lr, self.season_mem, self.game_mem)
         return pars
 
-# a stochastic model doesn't work right out of the box because the gradients can easily make alpha,beta < 0
-class RushAttStochModel(RushAttModel):
-    """
-    stochiastic model that updates via gradient descent instead of bayes
-    """
-    def __init__(self, *args):
-        # RushAttModel.__init__(self, *args)
-        super(RushAttStochModel, self).__init__(*args)
-    
-    def update_game(self, rush_att):
-        self.ab *= self.game_mem
-        self.ab += - self.game_lr * self._grad_kld(rush_att)
-        if (self.ab <= 0).any():
-            logging.error('alpha and beta must be > 0')
-        
-    def _grad_kld(self, rush_att):
-        # could use dist_fit.grad_sum_log_neg_binomial,
-        # but we don't need the sum and it uses a different change of variables.
-        dlda = digamma(rush_att + self.ab[0]) - digamma(self.ab[0]) + np.log(self.ab[1]/(1.+self.ab[1]))
-        dldb = (self.ab[0]/self.ab[1] - rush_att)/(1.+self.ab[1])
-        return np.array((dlda, dldb))
-
 class RushYdsModel:
     """
     statistical model for yards per rush
@@ -174,7 +161,7 @@ class RushYdsModel:
                  lr1, lr2,
                  skew,
                  # mem1=1.0, mem2=1.0, gmem1=0.99, gmem2=0.99, # these memory parameters seem set to 1
-                 # mnmem,
+                 mnmem,
                  abmem # additional decay parameter for alpha, between seasons
     ):
         # this represents (mu*nu, nu, alpha, beta). note that we save only mu*nu, for simpler decay.
@@ -188,21 +175,24 @@ class RushYdsModel:
         # possibly different learn rates for all of them? tie to memory?
         self.game_lr = np.repeat((lr1,lr2), 2)
         self.game_mem = np.repeat(1., 4) # keep these variable
-        self.season_mem = np.repeat((1.0, abmem), 2)
+        self.season_mem = np.repeat((mnmem, abmem), 2)
 
     @classmethod
     def for_position(self, pos):
         if pos.upper() == 'RB':
-            # return RushYdsModel(
-            #     116.30, 43.77, 5.54, 12.80, # initial bayes parameters
-            #     0.003187, 8.87e-5, # learn rates
-            #     2.026, # skew
-            #     0.867) # alpha/beta mem
             return RushYdsModel(
                 122.26, 36.39, 8.87, 40.09, # initial bayes parameters
                 0.00237, 0.0239, # learn rates
                 0.81, # skew
+                1.0, # munu/nu memory; might end up
                 0.613) # alpha/beta mem
+        if pos.upper() == 'QB':
+            return RushYdsModel(
+                112.75, 48.99, 2.49, 44.05, # initial bayes parameters
+                6.28, 0.0243, # learn rates
+                0.0567, # skew
+                0.669, # munu/nu memory; might end up
+                0.773) # alpha/beta mem
         logging.error( 'positional defaults not implemented for {}'.format(pos) )
         
     @property
@@ -226,7 +216,7 @@ class RushYdsModel:
         self.mnab *= self.game_mem
         self.mnab += self.game_lr * np.array((rush_yds, rush_att,
                                               0.5*rush_att,
-                                              0.5*(rush_yds-ev)**2/rush_att))
+                                              0.5*(rush_yds-ev)**2/max(1,rush_att)))
                                               # 0.5,
                                               # 0.5*(rush_yds-ev)**2/rush_att**2))
         # we could accumulate a KLD to diagnose when the model has been very wrong recently
@@ -313,6 +303,10 @@ class RushYdsModel:
     
     def kld(self, rush_yds, rush_att):
         df = self._df(rush_att)
+        if df == 0:
+            # the pdf is undefined, but there is no information lost so just return 0
+            # i.e. the data and model are both distributed as a delta function at 0.
+            return 0.
         nc = self.skew
         # print(ncmean, st.nct.mean(df, nc)) # these are the same
         # the problem w/ using the mean for the offset is that this blows up for df = 1
@@ -355,6 +349,12 @@ class RushTdModel:
                 1.84, # learn rate
                 0.775, # season memory
                 1.0) # game mem
+        if pos.upper() == 'QB':
+            return RushTdModel(
+                12.33, 330.27, # initial bayes parameters
+                1.76, # learn rate
+                1.0, # season memory
+                0.980) # game mem
         logging.error( 'positional defaults not implemented for {}'.format(pos) )
         
     @property
