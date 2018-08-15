@@ -17,7 +17,9 @@ def main():
         logging.info('creating directory weekly_stats')
         os.mkdir('weekly_stats')
         
-    dict_id_pos = {}
+    # Fred Jackson, Danny Woodhead, and Marcel Reece are listed as WRs in yearly data
+    # they've been fixed locally at the time of writing, but re-scraping would put the same error back
+    dict_id_pos = {'00-0024204':'RB', '00-0026019':'RB', '00-0026393':'RB'}
     
     firstyear,lastyear = 2009,2017 # 2009 # full range of available data is from 2009, though 2009 is not complete
     for year in range(firstyear, lastyear+1):
@@ -51,10 +53,6 @@ def main():
                     print(pstat.stats)
                     continue
                 pos = pstat.player.position 
-                # Fred Jackson, Danny Woodhead, and Marcel Reece are listed as WRs
-                actually_rbs = ['00-0024204', '00-0026019', '00-0026393']
-                if pos == 'WR' and pstat.playerid in actually_rbs:
-                    pos = 'RB'
                 if not pos:
                     pos = get_position(pstat, dict_id_pos, year)
                 if pos not in off_pos:
