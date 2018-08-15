@@ -50,7 +50,11 @@ def main():
                     print(pstat)
                     print(pstat.stats)
                     continue
-                pos = pstat.player.position
+                pos = pstat.player.position 
+                # Fred Jackson, Danny Woodhead, and Marcel Reece are listed as WRs
+                actually_rbs = ['00-0024204', '00-0026019', '00-0026393']
+                if pos == 'WR' and pstat.playerid in actually_rbs:
+                    pos = 'RB'
                 if not pos:
                     pos = get_position(pstat, dict_id_pos, year)
                 if pos not in off_pos:
