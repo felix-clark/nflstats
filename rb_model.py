@@ -40,24 +40,15 @@ class RushAttModel:
     this could be extended to other positions, with different defaults
     """
     # TODO: make these defaults a function of whether this is expected to be an RB1 or RB2/3
-    def __init__(self, a0, b0, lr, mem, gmem):
-        
-        # these defaults are gotten from top 16 (by ADP) RBs.
-        # they won't be good for general RBs down the line.
-        # r and p for negative binomial distribution (scipy convention, not wikipedia)
-        # self.rusha_r = 10.
-        # self.rusha_p = 0.375
-
-        # alpha and beta, using gamma prior for neg.binom. predictive
-        # beta = p/(1-p)
-        # EV = alpha/beta
-        # self.alpha,self.beta = ab0
+    def __init__(self, a0, b0, lr, mem, gmem,
+                 learn=True
+    ):
         self.ab = np.array((a0,b0))
 
         # we might want game_lr to be a function of the season?
-        self.game_lr = lr
-        self.game_mem = gmem
-        self.season_mem = mem
+        self.game_lr = lr if learn else 0.0
+        self.game_mem = gmem if learn else 1.0
+        self.season_mem = mem if learn else 1.0
 
     @classmethod
     def for_position(self, pos):
@@ -71,14 +62,14 @@ class RushAttModel:
                 0.241, 0.703, 0.954)
         if pos.upper() == 'WR':
             return RushAttModel(
-                0.182, 0.761,
-                0.327, 0.598, 0.969
+                0.516, 3.65,
+                0.646, 0.523, 0.972
                 )
         if pos.upper() == 'TE':
-            return RushAttModel(
-                0.181, 8.831,
-                0.222, 0.670, 1.0
-                )
+            # TEs don't rush enough. we might get a decent model for attempts,
+            # but anything relative to attempts could be overfit. (e.g. Gronk's 1 rushing TD)
+            # return RushAttModel(0.181, 8.831, 0.222, 0.670, 1.0)
+            logging.error('TEs do not rush enough to try to predict them')
         logging.error( 'positional defaults not implemented' )
 
     @property
@@ -128,7 +119,9 @@ class RushAttModel:
         return np.sqrt(self.var())
 
     def cdf(self, rush_att):
-        cdf = st.nbinom.cdf(rush_att, self.ab[0], self._p())
+        # cdf = st.nbinom.cdf(rush_att, self.ab[0], self._p())
+        # this isn't quite the CDF, but we want to distinguish the zeros
+        cdf = st.nbinom.cdf(rush_att-1, self.ab[0], self._p())
         return cdf
     
     # we may be able to make this more general, and not have to implement it for every model
@@ -153,19 +146,21 @@ class RushYdsModel:
     """
     statistical model for yards per rush
     this could again be extended to other positions, with different defaults
-    this model will assume a symmetry that isn't there at low attempts.
-      (e.g. some might have a 40 yd/att on 1-2 rushes but -40 yd/att is impossible)
+    it uses a non-central student-t distribution to allow positive skew
     """
     def __init__(self,
                  mn0, n0, a0, b0,
                  lr1, lr2,
                  skew,
-                 # mem1=1.0, mem2=1.0, gmem1=0.99, gmem2=0.99, # these memory parameters seem set to 1
-                 mnmem,
-                 abmem # additional decay parameter for alpha, between seasons
+                 mnmem, # memory decay per season for munu / nu
+                 abmem, # seasonal parameter decay for a/b
+                 # mngmem, # game memory for munu/nu. doesn't seem to help much.
+                 # abgmem, # game memory for a/b
+                 learn=True # can turn this false to shortcut other settings
     ):
         # this represents (mu*nu, nu, alpha, beta). note that we save only mu*nu, for simpler decay.
-        self.mnab = np.array((mn0, n0, a0, b0))
+        # self.mnab = np.array((mn0, n0, a0, b0))
+        self.mnab = np.array((112.9, 48.41, 2.85, 50.35)) # initial bayes parameters
         # the skewness will be a constant hyperparameter for now (not clear how to do bayesian updating w/ non-centrality)
         # to get a good value for skewness directly, we'd need play-by-play data
         self.skew = skew
@@ -173,9 +168,10 @@ class RushYdsModel:
         # we might want game_lr to be a function of the season?
         # using different learn rates for mu/nu and alpha/beta (i.e. 1 and 2 moments)
         # possibly different learn rates for all of them? tie to memory?
-        self.game_lr = np.repeat((lr1,lr2), 2)
+        self.game_lr = np.repeat((lr1,lr2), 2) if learn else 0.
         self.game_mem = np.repeat(1., 4) # keep these variable
-        self.season_mem = np.repeat((mnmem, abmem), 2)
+        self.season_mem = np.repeat((mnmem, abmem), 2) if learn else 1.0
+        # self.game_mem = np.repeat((mngmem, abgmem), 2)
 
     @classmethod
     def for_position(self, pos):
@@ -184,15 +180,26 @@ class RushYdsModel:
                 122.26, 36.39, 8.87, 40.09, # initial bayes parameters
                 0.00237, 0.0239, # learn rates
                 0.81, # skew
-                1.0, # munu/nu memory; might end up
+                1.0, # munu/nu memory; might end up fixing these (or use game memory?)
                 0.613) # alpha/beta mem
         if pos.upper() == 'QB':
             return RushYdsModel(
-                112.75, 48.99, 2.49, 44.05, # initial bayes parameters
-                6.28, 0.0243, # learn rates
-                0.0567, # skew
-                0.669, # munu/nu memory; might end up
-                0.773) # alpha/beta mem
+                112.9, 48.51, 2.85, 50.35, # initial bayes parameters
+                6.266, 0.0272, # learn rates
+                0.0552, # skew# possibly low due to sacks?
+                0.667, # munu/nu memory
+                0.769) # alpha/beta mem
+        if pos.upper() == 'WR':
+            # this has a reasonable flat CDF
+            # interesting that there is no memory
+            return RushYdsModel(
+                116.3, 41.28, 3.46, 45.64, # initial bayes parameters
+                0.563, 0.0, # learn rates
+                0.457, # skew
+                1.0, # munu/nu memory
+                1.0) # alpha/beta mem
+        if pos.upper() == 'TE': # TEs rush so rarely we shouldn't even include them
+            logging.error('TEs do not run enough to try to predict their rushes')
         logging.error( 'positional defaults not implemented for {}'.format(pos) )
         
     @property
@@ -284,11 +291,13 @@ class RushYdsModel:
         # can also just look at the CDF and check that it's flat from 0 to 1
         # but the CDF is not easy to compute analytically
         df,nc = rush_att,self.skew
+        if df == 0:
+            # there can be nonzero rushing yards w/out an attempt due to laterals. just skip these.
+            return 0.
         cdf = st.nct.cdf(rush_yds, df, nc,
                          loc=self.loc(rush_att),
                          scale=self.scale(rush_att))
-        # asgauss = st.norm.ppf(cdf)
-        # return asgauss
+        assert(not np.isnan(cdf))
         return cdf
     
     def chi_sq(self, rush_yds, rush_att):
@@ -321,8 +330,7 @@ class RushYdsModel:
     def __str__(self):
         parstr = u'rush_yds: \u03BC={:.2f}, \u03BD={:.2f}, \u03B1={:.2f}, \u03B2={:.2f}\n'.format(self.mnab[0]/self.mnab[1], *self.mnab[1:])
         hparstr = 'skew: {}\n'.format(self.skew)
-        hparstr += 'learn rate, game mem = {}, {}\n'.format(self.game_lr, self.game_mem)
-        hparstr += 'season memory = {}'.format(self.season_mem)
+        hparstr += 'learn rate, game/season mem = {}, {} / {}\n'.format(self.game_lr, self.game_mem, self.season_mem)
         return parstr + hparstr
 
 
@@ -334,12 +342,13 @@ class RushTdModel:
     def __init__(self, a0, b0,
                  lr,
                  mem,
-                 gmem):    
+                 gmem,
+                 learn=True):
         self.ab = np.array((a0,b0))
         # we might want game_lr to be a function of the season?
-        self.game_lr = lr
-        self.game_mem = gmem
-        self.season_mem = mem
+        self.game_lr = lr if learn else 0. #lr
+        self.game_mem = gmem if learn else 1.0 #gmem
+        self.season_mem = mem if learn else 1.0 #mem
 
     @classmethod
     def for_position(self, pos):
@@ -355,6 +364,15 @@ class RushTdModel:
                 1.76, # learn rate
                 1.0, # season memory
                 0.980) # game mem
+        if pos.upper() == 'WR':
+            # rushing TDs are rare enough for WRs that there's no reason to update a model from an event
+            return RushTdModel(
+                1.97, 60.4, # initial bayes parameters
+                0.0, # learn rate
+                1.0, # season memory
+                1.0) # game mem
+        if pos.upper() == 'TE':
+            logging.error('TEs do not rush enough')
         logging.error( 'positional defaults not implemented for {}'.format(pos) )
         
     @property
