@@ -24,7 +24,7 @@ class CountsModel:
 
     @classmethod
     def _hyperpar_bounds(self):
-        return [(0,None),(0,None),(0,1),(0.1,1.0),(0.5,1.0)]
+        return [(1e-6,None),(1e-6,None),(0,1),(0.1,1.0),(0.5,1.0)]
     
     @property
     def var_names(self):
@@ -46,7 +46,6 @@ class CountsModel:
         self.ab *= self.season_mem
         
     def ppf(self, uni):
-        # assert(0 < uni < 1)
         # this yields a gamma convoluted w/ a poisson
         att = st.nbinom.ppf(uni, self.ab[0], self._p())
         return att
@@ -97,7 +96,7 @@ class TrialModel:
     @classmethod
     def _hyperpar_bounds(self):
         return [
-            (1e-5,None),(1e-5,None), # small positive lower bounds can prevent the fitter from going to invalid locations
+            (1e-6,None),(1e-6,None), # small positive lower bounds can prevent the fitter from going to invalid locations
             (0.0,20.0), # uncap the learn rate
             (0.2,1.0),(0.5,1.0)
         ]
@@ -166,8 +165,8 @@ class YdsPerAttModel:
     """
     def __init__(self,
                  mn0, n0, a0, b0,
-                 lr1, lr2,
                  skew,
+                 lr1, lr2,
                  mnmem, # memory decay per season for munu / nu
                  abmem, # seasonal parameter decay for a/b
                  mngmem, # game memory for munu/nu. doesn't seem to help much.
@@ -188,14 +187,18 @@ class YdsPerAttModel:
         self.game_mem = np.repeat((mngmem, abgmem), 2)
 
     @classmethod
-    def _hyperpar_bounds(self, pos):
+    def for_position(self, pos):
+        return self(*self._default_hyperpars(pos))
+        
+    @classmethod
+    def _hyperpar_bounds(self):
         return [
-            (0,None),(0,None),(0,None),(0,None),
-            (0.0,10.0),(0.0,1.0), # learn rates. lr for mean is actually much > 1 for QBs
+            (1e-6,None),(1e-6,None),(1e-6,None),(1e-6,None),
             (0.0,8.0), # skew
+            (0.0,10.0),(0.0,1.0), # learn rates. lr for mean is actually much > 1 for QBs;
             (0.2,1.0),(0.4,1.0), # season memory
             (0.5,1.0),(0.5,1.0), # game memory - doesn't help much
-        ],
+        ]
         
     @property
     def var_names(self):
@@ -308,8 +311,8 @@ class YdsPerAttModel:
         return result
 
     def __str__(self):
-        parstr = u'\u03BC\t= {:.2f}\n\u03BD\t= {:.2f}\n\u03B1\t= {:.2f}\n\u03B2\t={:.2f}\n'.format(self.mnab[0]/self.mnab[1], *self.mnab[1:])
-        hparstr = 'skew: {:.4}\n'.format(self.skew)
-        hparstr += 'learn rate: {:.4f}\n'.format(self.game_lr)
-        hparstr += 'mem\t= {:.3f}\ngmem\t= {:.3f}\n'.format(self.season_mem, self.game_mem)
+        parstr = u'\u03BC\t= {:.2f}\n\u03BD\t= {:.2f}\n\u03B1\t= {:.2f}\n\u03B2\t= {:.2f}\n'.format(self.mnab[0]/self.mnab[1], *self.mnab[1:])
+        hparstr = 'skew\t= {:.4}\n'.format(self.skew)
+        hparstr += 'lr\t= {}\n'.format(self.game_lr) # just print out whole array
+        hparstr += 'mem\t= {}\ngmem\t= {}\n'.format(self.season_mem, self.game_mem)
         return parstr + hparstr

@@ -69,8 +69,8 @@ class RushYdsModel(YdsPerAttModel):
         if pos == 'RB':
             return np.array((
                 122.3, 36.26, 8.89, 40.08, # initial bayes parameters
-                0.00259, 0.0191, # learn rates
                 0.793, # skew
+                0.00259, 0.0191, # learn rates
                 1.0, # munu/nu memory
                 0.979,# alpha/beta mem
                 1.0,0.966, # game memories
@@ -78,8 +78,8 @@ class RushYdsModel(YdsPerAttModel):
         if pos == 'QB':
             return np.array((
                 112.9, 48.51, 2.85, 50.35, # initial bayes parameters
-                6.266, 0.0272, # learn rates
                 0.0552, # skew# possibly low due to sacks?
+                6.266, 0.0272, # learn rates
                 0.667, # munu/nu memory
                 0.769, # alpha/beta mem
                 1.0,1.0 # game memories don't help for QBs
@@ -89,8 +89,8 @@ class RushYdsModel(YdsPerAttModel):
             # interesting that there is no memory
             return np.array((
                 116.3, 41.28, 3.46, 45.64, # initial bayes parameters
-                0.563, 0.0, # learn rates
                 0.457, # skew
+                0.563, 0.0, # learn rates
                 1.0, # munu/nu memory
                 1.0, # alpha/beta mem
                 1.0,1.0 # game memories don't work well for WRs
@@ -108,7 +108,8 @@ class RushYdsModel(YdsPerAttModel):
     @property
     def dep_vars(self):
         return ('rushing_att',)# self.__dep_vars
-    
+
+
 class RushTdModel(TrialModel):
     """
     statistical model for TDs per rush

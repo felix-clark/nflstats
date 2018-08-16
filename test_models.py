@@ -19,7 +19,8 @@ def main():
 
     rush_models = ['rush_att', 'rush_yds', 'rush_tds']
     rec_models = ['rec_rec', 'rec_yds', 'rec_tds'] # we don't have the data for targets easily accessible yet
-    all_models = rush_models + rec_models
+    pass_models = ['pass_att', 'pass_cmp', 'pass_yds', 'pass_tds']
+    all_models = rush_models + rec_models + pass_models
     
     parser = argparse.ArgumentParser(description='optimize and analyze bayesian models')
     parser.add_argument('position',type=str,choices=['RB', 'QB', 'WR', 'TE'],help='which position to analyze')
@@ -31,6 +32,8 @@ def main():
     logging.info('working with {}s'.format(position))
     
     if args.opt_hyper:
+        # some of the learn rates may be too large because we only have weekly data back to 2009 right now.
+        # this means we're missing most of the beginnings of careers, and are starting in the middle.
         hps = find_model_hyperparameters(position, args.opt_hyper)
     
     posdf = get_model_df(position)
@@ -38,7 +41,7 @@ def main():
 
     # models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
     # models = ['rush_yds'] # edit this to suppress info we've already looked at
-    models = []
+    models = rec_models
     for model in models:
         klds = posdf[model+'_kld']
         chisqs = posdf[model+'_chisq']
@@ -47,8 +50,7 @@ def main():
                              klds.size, klds.mean(), chisqs.mean()))
         # print(posdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
         plot_vars = ['kld', 'cdf']
-        for pname in plot_vars:
-            pass
+        # for pname in plot_vars:
             # plt.figure()
             # year_plt = sns.boxenplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
             # year_plt = sns.lvplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
@@ -67,24 +69,26 @@ def main():
 
     # exit(1)
         
-    for model in models:
-        cdf = posdf['{}_cdf'.format(model)]
-        # cdf = cdf[cdf.notna()] # drops zeros?
-        plt_cdf = sns.distplot(cdf,
-                               hist_kws={'log':False, 'align':'left'})
-        # plt_cdf.figure.savefig('rush_att_res')
-        plt_cdf.figure.show()
-    plt.show(block=True)
-
-    # resnames = ['{}_cdf'.format(m) for m in models] # we could take the ppf of this to look at standardized residuals
-    # plt_corr = sns.pairplot(resdf, height = 4,
-    #                         vars=resnames,
-    #                         kind='reg' # do linear regression to look for correlations
-    # )        
+    # for model in models:
+    #     cdf = posdf['{}_cdf'.format(model)]
+    #     cdf = cdf[cdf.notna()]
+    #     plt_cdf = sns.distplot(cdf,
+    #                            hist_kws={'log':False, 'align':'left'})
+    #     # plt_cdf.figure.savefig('rush_att_res')
+    #     plt_cdf.figure.show()
     # plt.show(block=True)
+
+    resnames = ['{}_cdf'.format(m) for m in models] # we could take the ppf of this to look at standardized residuals
+    plt_corr = sns.pairplot(posdf, height = 4,
+                            dropna=True,
+                            vars=resnames,
+                            kind='reg', # do linear regression to look for correlations
+                            hue='career_year'
+    )        
+    plt.show(block=True)
         
-    # logging.warning('exiting early')
-    # exit(0)
+    logging.warning('exiting early')
+    exit(0)
     
     good_pos = True
     if position == 'RB': good_pos = posdf['rushing_att'] > 0
@@ -230,25 +234,25 @@ def get_model_df( pos='RB', fname = None):
     playerids = rbdf['playerid'].unique()
     years = rbdf['year'].unique()    
 
-    # basing rush attempts on the past is not so great.
+    # basing rush attempts soley on the past is not so great.
     # ideally we use a team-based touch model.
     # we need to look into the discrepancies more to figure out the problems
     # i suspect injuries, trades, then matchups are the big ones.
-    # many mistakes are in week 17, too, where the starters are often different
 
-    model_defs = {
-        'rush_att':RushAttModel,
-        'rush_yds':RushYdsModel,
-        'rush_tds':RushTdModel,
-    }
+    models = []
+    if pos == 'QB':
+        pass # placeholder for passing models, which will be QB-only
+    if pos in ['RB', 'QB', 'WR']:
+        models.extend([RushAttModel, RushYdsModel, RushTdModel])
+    if pos in ['WR', 'TE', 'RB']:
+        models.extend([RecRecModel, RecYdsModel, RecTdModel])
     tot_week = 0
     
     for pid in playerids:
         pdf = rbdf[rbdf['playerid'] == pid]
         pname = pdf['name'].unique()[0]
 
-        plmodels = {mname:mod.for_position(pos)
-                    for mname,mod in model_defs.items()}
+        plmodels = [mod.for_position(pos) for mod in models]
         
         years = pdf['year'].unique()
         # we could skip single-year seasons
@@ -260,24 +264,27 @@ def get_model_df( pos='RB', fname = None):
                 # assert((row[['name', 'year', 'week']] == rbdf.loc[index][['name', 'year', 'week']]).all())
                 tot_week += 1
                 rbdf.loc[index,'career_year'] = icareer+1
-                for mname,model in plmodels.items():
+                for model in plmodels:
                     mvars = [row[v] for v in model.var_names]
                     kld = model.kld(*mvars)
                     chisq = model.chi_sq(*mvars)
                     data = row[model.pred_var]
-                    # saving to the dataframe slows the process down significantly
                     depvars = [row[v] for v in model.dep_vars]
                     ev = model.ev(*depvars)
                     var = model.var(*depvars)
                     cdf = model.cdf(*mvars) # standardized to look like a gaussian
                     # res = (data-ev)/np.sqrt(var)
-                    rbdf.loc[index,'{}_ev'.format(mname)] = ev
-                    rbdf.loc[index,'{}_cdf'.format(mname)] = cdf
-                    rbdf.loc[index,'{}_kld'.format(mname)] = kld
-                    rbdf.loc[index,'{}_chisq'.format(mname)] = chisq
+                    rbdf.loc[index,'{}_ev'.format(model.name)] = ev
+                    rbdf.loc[index,'{}_cdf'.format(model.name)] = cdf
+                    rbdf.loc[index,'{}_kld'.format(model.name)] = kld
+                    rbdf.loc[index,'{}_chisq'.format(model.name)] = chisq
+                    if np.isnan(cdf):
+                        print(rbdf.loc[index])
+                        print(kld)
+                        exit(1)
                     model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
-            for _,mod in plmodels.items():
-                mod.new_season()
+            for model in plmodels:
+                model.new_season()
                 
         # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
         # logging.info('  {}'.format(plmodels['rush_yds']))
@@ -296,6 +303,7 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
     hpars0 = mdtype._default_hyperpars(pos)
     hparbounds = mdtype._hyperpar_bounds()
     logging.info('starting with parameters {}'.format(hpars0))
+    assert(len(hpars0) == len(hparbounds))
 
     def tot_kld(hparams):
         tot_week = 0

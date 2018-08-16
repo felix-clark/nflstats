@@ -48,8 +48,9 @@ def log_beta_neg_binomial( k, r, a, b ):
 
 # discrete in range [0,n]
 def beta_binomial( k, n, a, b ):
-    # return comb(n, k) * exp( betaln(k + a, n - k + b) - betaln(a,b) )
-    return comb(n, k) * beta(k + a, n - k + b) / beta(a,b)
+    return comb(n, k) * exp( betaln(k + a, n - k + b) - betaln(a,b) ) # this can avoid overflow
+    # result = comb(n, k) * beta(k + a, n - k + b) / beta(a,b)
+    # return result
 
 def log_beta_binomial( k, n, a, b ):
     # if k < 0 or k > n: return -np.inf # is this check necessary? it makes operations on arrays annoying
