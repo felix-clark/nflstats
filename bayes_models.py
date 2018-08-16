@@ -3,6 +3,9 @@ import dist_fit
 import numpy as np
 import scipy.stats as st
 
+#### at this point, these are mostly superseded by the code in playermodels,
+##   which models game-by-game.
+
 # we don't really need to define an interface
 class bayes_model:
     log = logging.getLogger(__name__)
