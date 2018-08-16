@@ -12,14 +12,15 @@ class RbModel:
         self.rushyds = RushYdsModel.for_position('RB')
         self.rushtds = RushTdModel.for_position('RB')
         # the order here is important: att, yds, tds
+        # the covariance matrix is the spearman (rank) correlations between
+        # the model's cdf values for each training data point.
+        # the correlation is computed weighting for rushing attempts, which makes the correlations smaller.
+        # in theory, this correlation matrix itself could be updated each season for each player individually.
         self.rush_gen = st.multivariate_normal(
-            # the covariance matrix is the spearman (rank) correlations between
-            # rush attempts, yds/att, and tds/att in the data
-            # i.e. they are independent of the model
         cov=[
-            [1.000, 0.200, 0.295],
-            [0.200, 1.000, 0.207],
-            [0.295, 0.207, 1.000]
+            [1.0,     0.1078, -0.1310],
+            [0.1078,  1.0,    0.1316 ],
+            [-0.1310, 0.1316, 1.0    ]
         ])
         # rushing_att  rushing_ypa  rushing_tdpa
 

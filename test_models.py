@@ -11,6 +11,7 @@ import os.path
 import argparse
 
 from playermodels.rb import *
+from tools import corr_spearman
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
@@ -61,29 +62,8 @@ def main():
     #                        hue='career_year',
     # )
     # plt.show(block=True)
-    
-    # the pearson correlation of the CDFs should be the spearman correlation of the data. (though it's not really)
-    # note that our models for yards are *given* the attempt, so when parameterizing them
-    # we should use the correlations in these cdfs.
-    # we should probably use the raw spearman correlation from the data
-    corrdf = posdf[['rushing_att', 'rushing_yds', 'rushing_tds', 'rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].copy()
-    corrdf['rushing_ypa'] = corrdf['rushing_yds'] / corrdf['rushing_att']
-    corrdf['rushing_tdpa'] = corrdf['rushing_tds'] / corrdf['rushing_att']
-    rush_corr = corrdf[['rushing_att', 'rushing_ypa', 'rushing_tdpa']].corr(method='spearman')
-    print(rush_corr)
-    # # spearman and pearson are quite similar for the cdf, at least when the models are working decently
-    # rush_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
-    # print(rush_corr)
-    
-    plt_corr = sns.pairplot(corrdf, #height = 4,
-                            vars=['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf'],
-                            dropna=True,
-                            # kind='reg', # do linear regression to look for correlations
-                            # hue='career_year'
-    )
-    plt.show(block=True)
 
-    exit(1)
+    # exit(1)
         
     for model in models:
         cdf = posdf['{}_cdf'.format(model)]
@@ -130,7 +110,7 @@ def main():
     ]
     # dist_fit.plot_counts( rush_att[good_pos], label='rushing attempts per game' ,fits=rush_att_fits)
     dist_fit.plot_counts( rec_rec, label='receptions per game' ,fits=rush_att_fits)
-    print((rec_rec == 0).any())
+    # assert(rec_rec == 0).any())
 
     # print('rushing yards per attempt:')
     # # in a single game
@@ -149,6 +129,38 @@ def main():
     # # neg binomial is not perfect, -logL/N ~ 2. doesn't quite capture shape
     # # get p~0.5... coincidence?
     # dist_fit.plot_counts( rec_rec, label='receptions', fits=['neg_binomial'] )
+
+    
+    ## # correlation calculations:
+    
+    corrdf = posdf[['rushing_att', 'rushing_yds', 'rushing_tds', 'rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].copy()
+    # corrdf['rushing_ypa'] = corrdf['rushing_yds'] / corrdf['rushing_att']
+    # corrdf['rushing_tdpa'] = corrdf['rushing_tds'] / corrdf['rushing_att']
+    # # we probably want to use the *weighted* spearman correlation of the CDF values,
+    # # since those are computed within the context of our model.
+    # # using spearman over pearson at least factorizes the effects of mis-modeling, and
+    # # accounts for the biased CDFs from integer results (which push the CDF value higher)
+    # rush_corr = corrdf[['rushing_att', 'rushing_ypa', 'rushing_tdpa']].corr(method='spearman')
+    # print(rush_corr)
+
+    # rush_att = corrdf['rushing_att']
+    # print('att, yds cdf spearman:')
+    # print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rush_yds_cdf'].values, weights=rush_att))
+    # print('att, tds cdf spearman:')
+    # print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rush_tds_cdf'].values, weights=rush_att))
+    # print('tds, yds cdf spearman:')
+    # print(corr_spearman(corrdf['rush_yds_cdf'].values, corrdf['rush_tds_cdf'].values, weights=rush_att))
+    # # # spearman and pearson are quite similar for the cdf, at least when the models are working decently
+    # rush_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
+    # print(rush_corr)
+    
+    # plt_corr = sns.pairplot(corrdf, #height = 4,
+    #                         vars=['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf'],
+    #                         dropna=True,
+    #                         # kind='reg', # do linear regression to look for correlations
+    #                         # hue='career_year'
+    # )
+    # plt.show(block=True)
 
     pass
     
