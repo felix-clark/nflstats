@@ -22,6 +22,15 @@ class CountsModel:
         self.season_mem = mem
         self.game_mem = gmem
 
+    @classmethod
+    def _hyperpar_bounds(self):
+        return [(0,None),(0,None),(0,1),(0.1,1.0),(0.5,1.0)]
+    
+    @property
+    def var_names(self):
+        var_names = [self.pred_var] + list(self.dep_vars)
+        return var_names
+    
     # a shortcut for a re-mapping of beta that comes up a lot due to the common convention for negative binomial
     def _p(self):
         # scipy convention for p (not wiki)
@@ -62,10 +71,8 @@ class CountsModel:
         return - st.nbinom.logpmf(att, self.ab[0], self._p())
 
     def __str__(self):
-        std = st.nbinom.std(self.ab[0], self._p())
-        pars = u'\u03B1:\t{:.2f}\n\u03B2=\t{:.2f}\nEV: {:.1f} pm {:.1f}\n'.format(self.ab[0], self.ab[1],
-                                                                                    self.ev(), std)
-        pars += 'lr:\t{:.3f}\nmem (seas/gm):\t{:.3f}, {:.3f}\n'.format(self.game_lr, self.season_mem, self.game_mem)
+        pars = u'\u03B1\t= {:.2f}\n\u03B2\t= {:.2f}\n'.format(*self.ab)
+        pars += 'lr\t= {:.3f}\nmem\t= {:.3f}\ngmem\t= {:.3f}\n'.format(self.game_lr, self.season_mem, self.game_mem)
         return pars
 
 
@@ -85,6 +92,20 @@ class TrialModel:
         self.game_lr = lr
         self.season_mem = mem
         self.game_mem = gmem
+
+
+    @classmethod
+    def _hyperpar_bounds(self):
+        return [
+            (1e-5,None),(1e-5,None), # small positive lower bounds can prevent the fitter from going to invalid locations
+            (0.0,20.0), # uncap the learn rate
+            (0.2,1.0),(0.5,1.0)
+        ]
+
+    @property
+    def var_names(self):
+        var_names = [self.pred_var] + list(self.dep_vars)
+        return var_names
 
     def _p(self):
         return self.ab[0] / self.ab.sum()
@@ -129,12 +150,13 @@ class TrialModel:
         return 2.*(self.kld(succ, att) + norm)
     
     def kld(self, succ, att):
+        # if att == 0: return 0.
         return - dist_fit.log_beta_binomial( succ, att, *self.ab)
 
     def __str__(self):
-        pars = u'\u03B1\t={:.2f},\n\u03B2\t= {:.2f};\n{:.2f}%\n'.format(*self.ab, 100*self._p())
+        pars = u'{:.2f}% rate\n\u03B1\t={:.2f}\n\u03B2\t= {:.2f}\n'.format(100*self._p(), *self.ab)
         hpars = 'lr\t= {:.3f}\n'.format(self.game_lr)
-        hpars += 'smem\t={:.3f}\ngmem\t={:.3f}\n'.format(self.season_mem, self.game_mem)
+        hpars += 'smem\t= {:.3f}\ngmem\t= {:.3f}\n'.format(self.season_mem, self.game_mem)
         return pars + hpars
 
 class YdsPerAttModel:
@@ -165,6 +187,21 @@ class YdsPerAttModel:
         self.season_mem = np.repeat((mnmem, abmem), 2)
         self.game_mem = np.repeat((mngmem, abgmem), 2)
 
+    @classmethod
+    def _hyperpar_bounds(self, pos):
+        return [
+            (0,None),(0,None),(0,None),(0,None),
+            (0.0,10.0),(0.0,1.0), # learn rates. lr for mean is actually much > 1 for QBs
+            (0.0,8.0), # skew
+            (0.2,1.0),(0.4,1.0), # season memory
+            (0.5,1.0),(0.5,1.0), # game memory - doesn't help much
+        ],
+        
+    @property
+    def var_names(self):
+        var_names = [self.pred_var] + list(self.dep_vars)
+        return var_names
+
     def update_game(self, rush_yds, att):
         # assert((0 < self.game_mem).all() and (self.game_mem <= 1.0).all())
         # mu does not decay simply like the others, but mu*nu does
@@ -173,19 +210,14 @@ class YdsPerAttModel:
         self.mnab += self.game_lr * np.array((rush_yds, att,
                                               0.5*att,
                                               0.5*(rush_yds-ev)**2/max(1,att)))
-                                              # 0.5,
-                                              # 0.5*(rush_yds-ev)**2/att**2))
+        # the max() function is just to avoid a divide-by-zero error when everything is zero
         # we could accumulate a KLD to diagnose when the model has been very wrong recently
 
     def new_season(self):
-        # if not((0 < self.season_mem).all() and (self.season_mem <= 1.0).all()):
-        #     logging.warning('season mem = {}'.format(self.season_mem))
         self.mnab *= self.season_mem
 
     def _df(self, att):
-        # we should either use the # of attempts, or twice alpha.
-        # if using att, alpha is not used at all.
-        # return 2.0*self.mnab[2]
+        # we should probably use the # of attempts, but this choice can be overridden
         return att
         
     # helper function for common parameter

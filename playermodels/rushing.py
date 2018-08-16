@@ -7,6 +7,8 @@ class RushAttModel(CountsModel):
     """
     statistical model for rushing attempts by RBs, QBs, and WRs.
     """
+    name = 'rush_att'
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -15,7 +17,7 @@ class RushAttModel(CountsModel):
         """
         provides an instance of the model with default hyperparameters
         """
-        return RushAttModel(*self._default_hyperpars(pos))
+        return self(*self._default_hyperpars(pos))
 
     @classmethod
     def _default_hyperpars(self, pos):
@@ -38,11 +40,6 @@ class RushAttModel(CountsModel):
         logging.error( 'positional defaults not implemented for {}'.format(pos) )
         pass
 
-    @property
-    def var_names(self):
-        var_names = [self.pred_var] + list(self.dep_vars)
-        return var_names
-
     # the variable we're predicting
     @property
     def pred_var(self):
@@ -51,20 +48,20 @@ class RushAttModel(CountsModel):
     @property
     def dep_vars(self):
         return ()
-        
-    # def scale(self):
-    #     return np.sqrt(self.var())
+
 
 class RushYdsModel(YdsPerAttModel):
     """
     statistical model for yards per rush attempt
     """
+    name = 'rush_yds'
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
     @classmethod
     def for_position(self, pos):
-        return RushYdsModel(*self._default_hyperpars(pos))
+        return self(*self._default_hyperpars(pos))
     
     @classmethod
     def _default_hyperpars(self, pos):
@@ -102,11 +99,6 @@ class RushYdsModel(YdsPerAttModel):
             logging.error('TEs do not run enough to try to predict their rushes')
         logging.error('no default hyperparameters are implemented for {}'.format(pos))
         pass
-        
-    @property
-    def var_names(self):
-        var_names = [self.pred_var] + list(self.dep_vars)
-        return var_names
 
     @property
     def pred_var(self):
@@ -121,13 +113,15 @@ class RushTdModel(TrialModel):
     """
     statistical model for TDs per rush
     """
+    name = 'rush_tds'
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     @classmethod
     def for_position(self, pos):
-        return self(*self._default_hyperpars(pos)) # why do we need double self?
-
+        return self(*self._default_hyperpars(pos))
+    
     @classmethod
     def _default_hyperpars(self, pos):
         pos = pos.upper()
@@ -153,11 +147,6 @@ class RushTdModel(TrialModel):
         if pos == 'TE':
             logging.error('TEs do not rush enough')
         logging.error( 'rushing TD positional defaults not implemented for {}'.format(pos) )
-        
-    @property
-    def var_names(self):
-        var_names = [self.pred_var] + list(self.dep_vars)
-        return var_names
 
     @property
     def pred_var(self):

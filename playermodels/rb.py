@@ -1,6 +1,7 @@
 import numpy as np
 
 from playermodels.rushing import *
+from playermodels.receiving import *
 
 # we'll want to split this up into a few types
 class RbModel:

@@ -10,14 +10,16 @@ import logging
 import os.path
 import argparse
 
-from playermodels.rb import *
+from playermodels.positions import *
 from tools import corr_spearman
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
     sns.set()
 
-    all_models = ['rush_att', 'rush_yds', 'rush_tds']
+    rush_models = ['rush_att', 'rush_yds', 'rush_tds']
+    rec_models = ['rec_rec', 'rec_yds', 'rec_tds'] # we don't have the data for targets easily accessible yet
+    all_models = rush_models + rec_models
     
     parser = argparse.ArgumentParser(description='optimize and analyze bayesian models')
     parser.add_argument('position',type=str,choices=['RB', 'QB', 'WR', 'TE'],help='which position to analyze')
@@ -29,7 +31,7 @@ def main():
     logging.info('working with {}s'.format(position))
     
     if args.opt_hyper:
-        hps = minimize_model_hyperparameters(position, args.opt_hyper)
+        hps = find_model_hyperparameters(position, args.opt_hyper)
     
     posdf = get_model_df(position)
     posdf = posdf[posdf['week'] < 17]# .dropna() # don't necessarily remove nans; we need these for QBs
@@ -94,23 +96,21 @@ def main():
     
     # print(posdf[~good_rushers])
     # print(rush_att[~good_rushers])
-    
-    # print('rushing attempts:')
-    print('receptions')
-    # negative binomial does quite well here for single year, but only for top players.
-    # note p~0.5 ... more like 0.7 w/ all seasons
-    # poisson is under-dispersed.
-    # neg bin doesn't do as well w/ all years, but still better than poisson
-    # beta-negative binomial should have the extra dispersion to capture this
-    rush_att_fits = [
-        'geometric',
-        'poisson',
-        'neg_binomial',
-        'beta_neg_binomial' # beta-negative does well overall for QBs (accounting for extra variance)
-    ]
-    # dist_fit.plot_counts( rush_att[good_pos], label='rushing attempts per game' ,fits=rush_att_fits)
-    dist_fit.plot_counts( rec_rec, label='receptions per game' ,fits=rush_att_fits)
-    # assert(rec_rec == 0).any())
+    # print('receptions')
+    # # negative binomial does quite well here for single year, but only for top players.
+    # # note p~0.5 ... more like 0.7 w/ all seasons
+    # # poisson is under-dispersed.
+    # # neg bin doesn't do as well w/ all years, but still better than poisson
+    # # beta-negative binomial should have the extra dispersion to capture this
+    # rush_att_fits = [
+    #     # 'geometric',
+    #     'poisson',
+    #     'neg_binomial',
+    #     'beta_neg_binomial' # beta-negative does well overall for QBs (accounting for extra variance)
+    # ]
+    # # dist_fit.plot_counts( rush_att[good_pos], label='rushing attempts per game' ,fits=rush_att_fits)
+    # dist_fit.plot_counts( rec_rec, label='receptions per game' ,fits=rush_att_fits)
+    # # assert(rec_rec == 0).any())
 
     # print('rushing yards per attempt:')
     # # in a single game
@@ -285,57 +285,24 @@ def get_model_df( pos='RB', fname = None):
     rbdf.to_csv(fname)
     return rbdf
 
-def minimize_model_hyperparameters(pos, model_name='rush_att'):
+def find_model_hyperparameters(pos, model_name='rush_att'):
     logging.info('will search for good hyperparameters for {}'.format(model_name))
     rbdf = get_pos_df(pos)
     playerids = rbdf['playerid'].unique()
     years = rbdf['year'].unique()
 
-    model_defs = {
-        'rush_att':{
-            'model':RushAttModel,
-            'par_bounds':[ # we could consider including parameter bounds in a class method of the models
-                (0,None),(0,None),
-                (0.,1.0),
-                (0.1,1.0),(0.5,1.0),
-            ],
-            
-        },
-        'rush_yds':{
-            'model':RushYdsModel,
-            'par_bounds':[
-                (0,None),(0,None),(0,None),(0,None),
-                (0.0,10.0),
-                (0.0,1.0),
-                (0.0,5.0), # skew
-                (0.2,1.0), # season memory
-                (0.4,1.0),
-                (0.2,1.0), # game memory - doesn't help much
-                (0.4,1.0),
-            ],
-        },
-        'rush_tds':{ # this default one has very poor residuals, or there is some other problem
-            'model':RushTdModel,
-            'par_bounds':[
-                (1e-5,None),(1e-5,None),
-                (0.0,10.0),# let's uncap learn rate
-                (0.2,1.0),(0.5,1.0)
-                ]
-        }
-    }
-    learn = True
-    mdef = model_defs[model_name]
-    mdtype = mdef['model']
-    pars0 = mdtype._default_hyperpars(pos)
-    logging.info('starting with parameters {}'.format(pars0))
+    # learn = True
+    mdtype = get_model_class(model_name)
+    hpars0 = mdtype._default_hyperpars(pos)
+    hparbounds = mdtype._hyperpar_bounds()
+    logging.info('starting with parameters {}'.format(hpars0))
 
     def tot_kld(hparams):
         tot_week = 0
         tot_kld = 0
         for pid in playerids:
             pdf = rbdf[rbdf['playerid'] == pid]
-            pname = pdf['name'].unique()[0]
-            plmodel = mdtype(*hparams, learn=learn)
+            plmodel = mdtype(*hparams)
             years = pdf['year'].unique()
             # we could skip single-year seasons
             for icareer,year in enumerate(years):
@@ -345,6 +312,10 @@ def minimize_model_hyperparameters(pos, model_name='rush_att'):
                     tot_week += 1
                     mvars = [row[v] for v in plmodel.var_names]
                     kld = plmodel.kld(*mvars)
+                    # if np.isnan(kld):
+                    #     print(plmodel.var_names)
+                    #     print(mvars)
+                    #     exit(1)
                     tot_kld += kld
                     # it's important that updating is done after computing KLD
                     plmodel.update_game(*mvars)
@@ -352,9 +323,9 @@ def minimize_model_hyperparameters(pos, model_name='rush_att'):
         print('kld = {}'.format(tot_kld))
         return tot_kld
 
-    minned = opt.minimize(tot_kld, x0=pars0,
+    minned = opt.minimize(tot_kld, x0=hpars0,
                           # method='Nelder-Mead', # N-M can't deal w/ bounds
-                          bounds=mdef['par_bounds'],
+                          bounds=hparbounds,
                           # it'll take several iterations to start going in the right direction w/ the default algorithm
                           # tho there are several function calls per "iteration" w/ default
                           options={'maxiter':32,
