@@ -110,11 +110,11 @@ class RecYdsModel(YdsPerAttModel):
             ))            
         if pos == 'RB':
             return np.array(( # TODO? check and/or refine? full memory is weirdish, but rest seems fine
-                12.27/2, 1.92/2, 0.30/2, 4.99/2, # initial bayes parameters
-                0.2601, # skew
-                0.2, 0.02, # learn rates
-                0.9,0.98, # season memory
-                0.99,0.99 # game memories don't work well for WRs
+                12.01, 1.89, 152.6, 2650., # initial bayes parameters
+                0.2635, # skew
+                0.00262, 0.0184, # learn rates
+                1.0,0.985, # season memory
+                1.0,0.999 # game memories don't work well for WRs
             ))
         logging.error('no default hyperparameters are implemented for {}'.format(pos))
         pass

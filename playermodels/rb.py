@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.stats as st
 
 from playermodels.rushing import *
 from playermodels.receiving import *
@@ -12,6 +13,9 @@ class RbModel:
         self.rushatt = RushAttModel.for_position('RB')
         self.rushyds = RushYdsModel.for_position('RB')
         self.rushtds = RushTdModel.for_position('RB')
+        self.recrec = RecRecModel.for_position('RB')
+        self.recyds = RecYdsModel.for_position('RB')
+        self.rectds = RecTdModel.for_position('RB')
         # the order here is important: att, yds, tds
         # the covariance matrix is the spearman (rank) correlations between
         # the model's cdf values for each training data point.
@@ -23,7 +27,7 @@ class RbModel:
             [0.1078,  1.0,    0.1316 ],
             [-0.1310, 0.1316, 1.0    ]
         ])
-        # rushing_att  rushing_ypa  rushing_tdpa
+        self.rec_gen = st.multivariate_normal() # TODO: check correlations within these, and between receptions and rush attempts
 
     def gen_game(self):
         game = {}
@@ -46,9 +50,15 @@ class RbModel:
         rush_att = game['rushing_att']
         rush_yds = game['rushing_yds']
         rush_tds = game['rushing_tds']
+        rec_rec = game['receiving_rec']
+        rec_yds = game['receiving_yds']
+        rec_tds = game['receiving_tds']
         self.rushatt.update_game(rush_att)
         self.rushyds.update_game(rush_yds, rush_att)
         self.rushtds.update_game(rush_tds, rush_att)
+        self.recrec.update_game(rec_rec)
+        self.recyds.update_game(rec_yds, rec_rec)
+        self.rectds.update_game(rec_tds, rec_rec)
 
     def new_season(self):
         """
@@ -59,4 +69,7 @@ class RbModel:
         self.rushatt.new_season()
         self.rushyds.new_season()
         self.rushtds.new_season()
+        self.recrec.new_season()
+        self.recyds.new_season()
+        self.rectds.new_season()
 

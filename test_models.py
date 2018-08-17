@@ -310,7 +310,10 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
     logging.info('starting with parameters {}'.format(hpars0))
     assert(len(hpars0) == len(hparbounds))
 
+    newmin = np.inf
+    
     def tot_kld(hparams):
+        nonlocal newmin
         tot_week = 0
         tot_kld = 0
         for pid in playerids:
@@ -333,7 +336,9 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
                     # it's important that updating is done after computing KLD
                     plmodel.update_game(*mvars)
                 plmodel.new_season()
-        print('kld = {}'.format(tot_kld))
+        if tot_kld < newmin:
+            newmin = tot_kld
+            print('kld = {} at {}'.format(tot_kld, hparams))
         return tot_kld
 
     minned = opt.minimize(tot_kld, x0=hpars0,
