@@ -195,7 +195,7 @@ class YdsPerAttModel:
         return [
             (1e-6,None),(1e-6,None),(1e-6,None),(1e-6,None),
             (0.0,8.0), # skew
-            (0.0,10.0),(0.0,1.0), # learn rates. lr for mean is actually much > 1 for QBs;
+            (0.0,1.0),(0.0,1.0), # learn rates. lr for mean is actually much > 1 for QBs;
             (0.2,1.0),(0.4,1.0), # season memory
             (0.5,1.0),(0.5,1.0), # game memory - doesn't help much
         ]

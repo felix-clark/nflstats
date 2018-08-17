@@ -101,15 +101,14 @@ class RecYdsModel(YdsPerAttModel):
     @classmethod
     def _default_hyperpars(self, pos):
         pos = pos.upper()
-        if pos == 'WR': # TODO: check this again; probably need to cap the variance learn rate
-            # this seems like a very low learn rate for the mean and a very high learn rate for the variance...
+        if pos == 'WR': # TODO: check again; these parameters are reasonable but the fit quit early
             return np.array((
-                128.54, 11.94, 0.978, 55.77, # initial bayes parameters
-                0.432, # skew
-                0.00516, 8.89, # learn rates
+                128.51, 12.15, 1.004, 55.83, # initial bayes parameters
+                0.411, # skew
+                0.0253, 0.0133, # learn rates
                 1.0, # munu/nu memory
-                0.617, # alpha/beta mem
-                0.971,1.0, # game memories
+                0.929, # alpha/beta mem
+                1.0,1.0, # game memories
             ))
         if pos.upper() == 'TE': # TODO - refine? it ran out of iterations but didn't change much and the parameters don't seem crazy
             return np.array((
@@ -122,9 +121,9 @@ class RecYdsModel(YdsPerAttModel):
             ))            
         if pos == 'RB':
             return np.array(( # TODO? check and/or refine? full memory is weirdish, but rest seems fine
-                116.3, 41.28, 3.46, 45.64, # initial bayes parameters
-                0.457, # skew
-                0.563, 0.1, # learn rates
+                122.7, 19.29, 2.09, 49.91, # initial bayes parameters
+                0.2622, # skew
+                0.0265, 0.003, # learn rates
                 1.0, # munu/nu memory
                 1.0, # alpha/beta mem
                 1.0,1.0 # game memories don't work well for WRs

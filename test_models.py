@@ -79,7 +79,7 @@ def main():
     # plt.show(block=True)
 
     resnames = ['{}_cdf'.format(m) for m in models] # we could take the ppf of this to look at standardized residuals
-    plt_corr = sns.pairplot(posdf, height = 4,
+    plt_corr = sns.pairplot(posdf, # height = 4,
                             dropna=True,
                             vars=resnames,
                             kind='reg', # do linear regression to look for correlations
