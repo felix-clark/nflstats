@@ -17,13 +17,6 @@ class RecRecModel(CountsModel):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def for_position(self, pos):
-        """
-        provides an instance of the model with default hyperparameters
-        """
-        return self(*self._default_hyperpars(pos))
-
-    @classmethod
     def _default_hyperpars(self, pos):
         pos = pos.upper()
         if pos == 'WR':
@@ -59,31 +52,27 @@ class RecTdModel(TrialModel):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def for_position(self, pos):
-        return self(*self._default_hyperpars(pos))
-
-    @classmethod
     def _default_hyperpars(self, pos):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                36.65, 397.42, # initial bayes parameters
-                1.955, # learn rate
-                0.748, 1.0 # season,game memory
+                36.67, 397.42, # initial bayes parameters
+                1.0, # learn rate
+                1.0, 0.976 # season,game memory
             ))
         if pos == 'TE':
-            # this large learn rate with perfect memory seems strange.
+            # this large learn rate with perfect memory seems a bit strange.
             # this type of thing suggests learn rate decay would be useful.
             return np.array((
-                91.99, 979.48, # initial bayes parameters
-                9.272, # learn rate
+                9.94, 105.5, # initial bayes parameters
+                1.0, # learn rate
                 1.0, 1.0 # season,game memory
             )) # game mem
         if pos == 'RB':
             return np.array((
-                11.85, 371.78, # initial bayes parameters
-                1.221, # learn rate
-                1.0, 0.994 # season,game memory
+                11.49, 361.51, # initial bayes parameters
+                1.0, # learn rate
+                1.0, 0.989 # season,game memory
             ))
         logging.error( 'rushing TD positional defaults not implemented for {}'.format(pos) )
 
@@ -121,12 +110,11 @@ class RecYdsModel(YdsPerAttModel):
             ))            
         if pos == 'RB':
             return np.array(( # TODO? check and/or refine? full memory is weirdish, but rest seems fine
-                122.7, 19.29, 2.09, 49.91, # initial bayes parameters
-                0.2622, # skew
-                0.0265, 0.003, # learn rates
-                1.0, # munu/nu memory
-                1.0, # alpha/beta mem
-                1.0,1.0 # game memories don't work well for WRs
+                12.27/2, 1.92/2, 0.30/2, 4.99/2, # initial bayes parameters
+                0.2601, # skew
+                0.2, 0.02, # learn rates
+                0.9,0.98, # season memory
+                0.99,0.99 # game memories don't work well for WRs
             ))
         logging.error('no default hyperparameters are implemented for {}'.format(pos))
         pass

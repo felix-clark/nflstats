@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import scipy.optimize as opt
 import itertools
 import logging
+import warnings
 import os.path
 import argparse
 
@@ -15,11 +16,12 @@ from tools import corr_spearman
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
+    warnings.simplefilter('error') # quit on warnings    
     sns.set()
 
     rush_models = ['rush_att', 'rush_yds', 'rush_tds']
     rec_models = ['rec_rec', 'rec_yds', 'rec_tds'] # we don't have the data for targets easily accessible yet
-    pass_models = ['pass_att', 'pass_cmp', 'pass_yds', 'pass_tds']
+    pass_models = ['pass_att', 'pass_cmp', 'pass_yds', 'pass_tds', 'pass_int']
     all_models = rush_models + rec_models + pass_models
     
     parser = argparse.ArgumentParser(description='optimize and analyze bayesian models')
@@ -41,7 +43,7 @@ def main():
 
     # models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
     # models = ['rush_yds'] # edit this to suppress info we've already looked at
-    models = rec_models
+    models = pass_models if position == 'QB' else rush_models if position == 'RB' else rec_models
     for model in models:
         klds = posdf[model+'_kld']
         chisqs = posdf[model+'_chisq']
@@ -82,9 +84,12 @@ def main():
     plt_corr = sns.pairplot(posdf, # height = 4,
                             dropna=True,
                             vars=resnames,
-                            kind='reg', # do linear regression to look for correlations
+                            # kind='reg', # do linear regression to look for correlations
+                            # diag_kind='hist', # causes error
                             hue='career_year'
-    )        
+    )
+    plt_corr.map_diag(plt.hist)
+    plt_corr.map_offdiag(sns.kdeplot, n_levels=6)
     plt.show(block=True)
         
     logging.warning('exiting early')
@@ -241,7 +246,7 @@ def get_model_df( pos='RB', fname = None):
 
     models = []
     if pos == 'QB':
-        pass # placeholder for passing models, which will be QB-only
+        models.extend([PassAttModel, PassCmpModel, PassYdsModel, PassTdModel, PassIntModel])
     if pos in ['RB', 'QB', 'WR']:
         models.extend([RushAttModel, RushYdsModel, RushTdModel])
     if pos in ['WR', 'TE', 'RB']:
@@ -278,10 +283,10 @@ def get_model_df( pos='RB', fname = None):
                     rbdf.loc[index,'{}_cdf'.format(model.name)] = cdf
                     rbdf.loc[index,'{}_kld'.format(model.name)] = kld
                     rbdf.loc[index,'{}_chisq'.format(model.name)] = chisq
-                    if np.isnan(cdf):
-                        print(rbdf.loc[index])
-                        print(kld)
-                        exit(1)
+                    # if np.isnan(cdf):
+                    #     print(rbdf.loc[index])
+                    #     print(kld)
+                    #     exit(1)
                     model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
             for model in plmodels:
                 model.new_season()

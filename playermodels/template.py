@@ -1,7 +1,7 @@
 # will define model templates and provide some common functionality
 import numpy as np
 import scipy.stats as st
-from scipy.special import gamma, digamma
+# from scipy.special import gamma, digamma
 import dist_fit
 
 # TODO: implement scipy.stats.rv_discrete ?
@@ -22,6 +22,10 @@ class CountsModel:
         self.season_mem = mem
         self.game_mem = gmem
 
+    @classmethod
+    def for_position(self, pos):
+        return self(*self._default_hyperpars(pos))
+    
     @classmethod
     def _hyperpar_bounds(self):
         return [(1e-6,None),(1e-6,None),(0,1),(0.1,1.0),(0.5,1.0)]
@@ -92,12 +96,15 @@ class TrialModel:
         self.season_mem = mem
         self.game_mem = gmem
 
+    @classmethod
+    def for_position(self, pos):
+        return self(*self._default_hyperpars(pos))
 
     @classmethod
     def _hyperpar_bounds(self):
         return [
             (1e-6,None),(1e-6,None), # small positive lower bounds can prevent the fitter from going to invalid locations
-            (0.0,20.0), # uncap the learn rate
+            (0.0,1.0), #  should probably cap learn rate to prevent overfitting
             (0.2,1.0),(0.5,1.0)
         ]
 
@@ -153,7 +160,7 @@ class TrialModel:
         return - dist_fit.log_beta_binomial( succ, att, *self.ab)
 
     def __str__(self):
-        pars = u'{:.2f}% rate\n\u03B1\t={:.2f}\n\u03B2\t= {:.2f}\n'.format(100*self._p(), *self.ab)
+        pars = u'{:.2f}% rate\n\u03B1\t= {:.2f}\n\u03B2\t= {:.2f}\n'.format(100*self._p(), *self.ab)
         hpars = 'lr\t= {:.3f}\n'.format(self.game_lr)
         hpars += 'smem\t= {:.3f}\ngmem\t= {:.3f}\n'.format(self.season_mem, self.game_mem)
         return pars + hpars
@@ -162,6 +169,7 @@ class YdsPerAttModel:
     """
     model for yards per attempt (though it could be more general than that).
     it uses a non-central student-t distribution to allow positive skew.
+    the skewness goes to zero as the number of samples rises.
     """
     def __init__(self,
                  mn0, n0, a0, b0,
@@ -195,7 +203,7 @@ class YdsPerAttModel:
         return [
             (1e-6,None),(1e-6,None),(1e-6,None),(1e-6,None),
             (0.0,8.0), # skew
-            (0.0,1.0),(0.0,1.0), # learn rates. lr for mean is actually much > 1 for QBs;
+            (0.0,1.0),(0.0,1.0), # learn rates. lr for mean is actually much > 1 for QBs; we'll cap to avoid overfitting
             (0.2,1.0),(0.4,1.0), # season memory
             (0.5,1.0),(0.5,1.0), # game memory - doesn't help much
         ]
@@ -228,18 +236,33 @@ class YdsPerAttModel:
         nu,alpha,beta = tuple(self.mnab[1:])
         return beta*(nu+1.)/(nu*alpha)
 
-    def _loc(self, att):
+    def _ncmean(self, att):
+        # the built-in mean function calls stats, which also computes variance and gives a warning for df = 2
+        # ncmean = st.nct.mean(df, nc) if df > 1 else nc
         df = self._df(att)
         nc = self.skew
-        ncmean = st.nct.mean(df, nc) if df > 1 else nc
+        if df <= 1: return nc
+        # ncmean = nc*np.sqrt(0.5*df)*gamma(0.5*(df-1))/gamma(0.5*df)
+        # a good approximation is:
+        ncmean = nc/(1 - 3/(4*df-1))
+        return ncmean
+
+    def _loc(self, att):
+        df = self._df(att)
+        ncmean = self._ncmean(att)
         return (self.mnab[0] / self.mnab[1] - ncmean) * att
     
     def _scale(self, att):
         df = self._df(att)
-        scale = att*np.sqrt(self._sigma2())
+        sigma = np.sqrt(self._sigma2())
+         # prevent a zero to remove a warning, even tho it doesn't change any calculations:
+        if df == 0: return sigma
+        scale = att*sigma
         if df > 2:
             nc = self.skew
-            scale /= ( df*(1+nc**2)/(df-2) - nc**2*df/2*(gamma((df-1)/2)/gamma(df/2))**2 )
+            # scale /= ( df*(1+nc**2)/(df-2) - nc**2*df/2*(gamma((df-1)/2)/gamma(df/2))**2 )
+            # a good approximation:
+            scale /= ( df*(1+nc**2)/(df-2) - nc**2/(1-3/(4*df-1))**2 )
         return scale
 
     # given a uniformly distributed number 0 < uni < 1, return the yards corresponding to that point on the cdf.
@@ -257,8 +280,6 @@ class YdsPerAttModel:
         # the mean is mu*nu / nu
         munu = self.mnab[0]
         nu = self.mnab[1]
-        # ncmean = nc * np.sqrt(df/2)*gamma((df-1)/2)/gamma(df/2)
-        # ncmean=0
         ev = munu / nu * att
         return ev
 
@@ -289,8 +310,9 @@ class YdsPerAttModel:
         df = self._df(att)
         # using nct.mean results in undefined when df = 1
         nc = self.skew
-        ncmean = st.nct.mean(df, nc) if df > 1 else nc
-        norm = st.nct.logpdf( ncmean, df, self.skew, loc=0., scale=self._scale(att) )
+        ncmean = self._ncmean(att)
+        scale = self._scale(att)
+        norm = st.nct.logpdf( ncmean, df, self.skew, loc=0., scale=scale )
         
         return 2.*(self.kld(yds, att) + norm)
     

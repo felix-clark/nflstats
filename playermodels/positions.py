@@ -1,17 +1,29 @@
 import logging
-from playermodels.rb import *
-from playermodels.wr import *
-
+# from playermodels.qb import *
+# from playermodels.rb import *
+# from playermodels.wr import *
+from playermodels.passing import *
+from playermodels.rushing import *
+from playermodels.receiving import *
 
 def get_model_class(mname):
     """
     a convenience function to return a model type from its name.
     """
-    if mname == 'rush_att': return RushAttModel
-    if mname == 'rush_yds': return RushYdsModel
-    if mname == 'rush_tds': return RushTdModel
-    if mname == 'rec_rec': return RecRecModel
-    if mname == 'rec_yds': return RecYdsModel
-    if mname == 'rec_tds': return RecTdModel
-
-    logging.error('could not provide model with name {}'.format(mname))
+    models = {
+        'rush_att': RushAttModel,
+        'rush_yds': RushYdsModel,
+        'rush_tds': RushTdModel,
+        'rec_rec': RecRecModel,
+        'rec_yds': RecYdsModel,
+        'rec_tds': RecTdModel,
+        'pass_att': PassAttModel,
+        'pass_cmp': PassCmpModel,
+        'pass_yds': PassYdsModel,
+        'pass_tds': PassTdModel,
+        'pass_int': PassIntModel,
+    }
+    if mname not in models:
+        logging.error('could not provide model with name {}'.format(mname))
+    else: return models[mname]
+    

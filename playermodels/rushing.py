@@ -13,13 +13,6 @@ class RushAttModel(CountsModel):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def for_position(self, pos):
-        """
-        provides an instance of the model with default hyperparameters
-        """
-        return self(*self._default_hyperpars(pos))
-
-    @classmethod
     def _default_hyperpars(self, pos):
         pos = pos.upper()
         if pos == 'RB':
@@ -60,10 +53,6 @@ class RushYdsModel(YdsPerAttModel):
         super().__init__(*args, **kwargs)
         
     @classmethod
-    def for_position(self, pos):
-        return self(*self._default_hyperpars(pos))
-    
-    @classmethod
     def _default_hyperpars(self, pos):
         pos = pos.upper()
         if pos == 'RB':
@@ -71,18 +60,16 @@ class RushYdsModel(YdsPerAttModel):
                 122.3, 36.26, 8.89, 40.08, # initial bayes parameters
                 0.793, # skew
                 0.00259, 0.0191, # learn rates
-                1.0, # munu/nu memory
-                0.979,# alpha/beta mem
-                1.0,0.966, # game memories
+                1.0, 0.979, # munu/nu, a/b season memory
+                1.0, 0.966, # game memories
             ))
         if pos == 'QB':
             return np.array((
-                112.9, 48.51, 2.85, 50.35, # initial bayes parameters
-                0.0552, # skew# possibly low due to sacks?
-                6.266, 0.0272, # learn rates
-                0.667, # munu/nu memory
-                0.769, # alpha/beta mem
-                1.0,1.0 # game memories don't help for QBs
+                111.59, 42.14, 2.77, 50.35, # initial bayes parameters
+                0.0725, # skew # low due to sacks? and QBs don't often break away w/ big runs
+                1.0,  0.0226, # learn rates
+                0.812, 0.984, # munu/nu;a/b season memory
+                0.961, 0.978 # game memories don't help for QBs
             ))
         if pos == 'WR':
             # this has a reasonable flat CDF
@@ -119,10 +106,6 @@ class RushTdModel(TrialModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    @classmethod
-    def for_position(self, pos):
-        return self(*self._default_hyperpars(pos))
-    
     @classmethod
     def _default_hyperpars(self, pos):
         pos = pos.upper()
