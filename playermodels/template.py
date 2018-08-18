@@ -9,6 +9,7 @@ class CountsModel:
     """
     used to model a number of discrete events (like attempts per game).
     the predictive posterior is a negative binomial.
+    the learning parameters allow some variance, but it cannot describe different players having different variances.
     a generalized beta-negative binomial could be investigated, but the bayesian update rules are not so clear.
     """
     def __init__(self,

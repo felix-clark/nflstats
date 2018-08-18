@@ -90,16 +90,15 @@ class RecYdsModel(YdsPerAttModel):
     @classmethod
     def _default_hyperpars(self, pos):
         pos = pos.upper()
-        if pos == 'WR': # TODO: check again; these parameters are reasonable but the fit quit early. next fit did not converge but did not change the KLD or parameters much either.
+        if pos == 'WR':
             return np.array((
-                128.52, 12.04, 1.003, 55.83, # initial bayes parameters
-                0.3889, # skew
-                0.0257, 0.0142, # learn rates
-                1.0, # munu/nu memory
-                0.993, # alpha/beta mem
-                1.0,1.0, # game memories
+                128.52, 11.96, 1.00, 55.83, # initial bayes parameters
+                0.390, # skew
+                0.0233, 0.0138, # learn rates
+                1.0,0.994, # munu/nu, alpha/beta season memory
+                1.0,0.999, # game memories
             ))
-        if pos.upper() == 'TE': # TODO - refine? it ran out of iterations but didn't change much and the parameters don't seem crazy
+        if pos.upper() == 'TE':
             return np.array((
                 117.8, 11.54, 1.51, 47.92, # initial bayes parameters
                 0.1869, # skew
@@ -109,7 +108,7 @@ class RecYdsModel(YdsPerAttModel):
                 0.956,0.965 # game memories don't work well for WRs
             ))            
         if pos == 'RB':
-            return np.array(( # TODO? check and/or refine? full memory is weirdish, but rest seems fine
+            return np.array((
                 12.01, 1.89, 152.6, 2650., # initial bayes parameters
                 0.2635, # skew
                 0.00262, 0.0184, # learn rates

@@ -16,7 +16,8 @@ from tools import corr_spearman
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
-    warnings.simplefilter('error') # quit on warnings    
+    warnings.simplefilter('error') # quit on warnings
+    np.set_printoptions(precision=4)
     sns.set()
 
     rush_models = ['rush_att', 'rush_yds', 'rush_tds']
@@ -88,12 +89,12 @@ def main():
                             # diag_kind='hist', # causes error
                             hue='career_year'
     )
-    plt_corr.map_diag(plt.hist)
-    plt_corr.map_offdiag(sns.kdeplot, n_levels=6)
+    # plt_corr.map_diag(plt.hist)
+    # plt_corr.map_offdiag(sns.kdeplot, n_levels=6)
     plt.show(block=True)
         
-    logging.warning('exiting early')
-    exit(0)
+    # logging.warning('exiting early')
+    # exit(0)
     
     good_pos = True
     if position == 'RB': good_pos = posdf['rushing_att'] > 0
@@ -101,7 +102,6 @@ def main():
     if position in ['WR', 'TE']:
          # not clear we should filter these. include zero for now
         good_pos = posdf['receiving_rec'] >= 0
-    rec_rec = posdf[good_pos]['receiving_rec']
     
     # print(posdf[~good_rushers])
     # print(rush_att[~good_rushers])
@@ -142,15 +142,16 @@ def main():
     
     ## # correlation calculations:
     
-    corrdf = posdf[['rushing_att', 'rushing_yds', 'rushing_tds', 'rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].copy()
+    corrdf = posdf[good_pos]
     # corrdf['rushing_ypa'] = corrdf['rushing_yds'] / corrdf['rushing_att']
     # corrdf['rushing_tdpa'] = corrdf['rushing_tds'] / corrdf['rushing_att']
-    # # we probably want to use the *weighted* spearman correlation of the CDF values,
-    # # since those are computed within the context of our model.
-    # # using spearman over pearson at least factorizes the effects of mis-modeling, and
-    # # accounts for the biased CDFs from integer results (which push the CDF value higher)
+    # we probably want to use the *weighted* spearman correlation of the CDF values,
+    # since those are computed within the context of our model.
+    # using spearman over pearson at least factorizes the effects of mis-modeling, and
+    # accounts for the biased CDFs from integer results (which push the CDF value higher)
     # rush_corr = corrdf[['rushing_att', 'rushing_ypa', 'rushing_tdpa']].corr(method='spearman')
-    # print(rush_corr)
+    rec_corr = corrdf[['receiving_rec', 'receiving_yds', 'receiving_tds']].corr(method='spearman')
+    print(rec_corr)
 
     # rush_att = corrdf['rushing_att']
     # print('att, yds cdf spearman:')
@@ -159,17 +160,29 @@ def main():
     # print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rush_tds_cdf'].values, weights=rush_att))
     # print('tds, yds cdf spearman:')
     # print(corr_spearman(corrdf['rush_yds_cdf'].values, corrdf['rush_tds_cdf'].values, weights=rush_att))
-    # # # spearman and pearson are quite similar for the cdf, at least when the models are working decently
+    # # spearman and pearson are quite similar for the cdf, at least when the models are working decently
     # rush_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
     # print(rush_corr)
     
-    # plt_corr = sns.pairplot(corrdf, #height = 4,
-    #                         vars=['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf'],
-    #                         dropna=True,
-    #                         # kind='reg', # do linear regression to look for correlations
-    #                         # hue='career_year'
-    # )
-    # plt.show(block=True)
+    rec_rec = corrdf['receiving_rec']
+    print('rec, yds cdf spearman:')
+    print(corr_spearman(corrdf['rec_rec_cdf'].values, corrdf['rec_yds_cdf'].values, weights=rec_rec))
+    print('rec, tds cdf spearman:')
+    print(corr_spearman(corrdf['rec_rec_cdf'].values, corrdf['rec_tds_cdf'].values, weights=rec_rec))
+    print('tds, yds cdf spearman:')
+    print(corr_spearman(corrdf['rec_yds_cdf'].values, corrdf['rec_tds_cdf'].values, weights=rec_rec))
+    rec_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
+    print(rec_corr)
+    
+    
+    plt_corr = sns.pairplot(corrdf, #height = 4,
+                            # vars=['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf'],
+                            vars=['rec_rec_cdf', 'rec_yds_cdf', 'rec_tds_cdf'],
+                            dropna=True,
+                            # kind='reg', # do linear regression to look for correlations
+                            # hue='career_year'
+    )
+    plt.show(block=True)
 
     pass
     
@@ -246,18 +259,18 @@ def get_model_df( pos='RB', fname = None):
 
     models = []
     if pos == 'QB':
-        models.extend([PassAttModel, PassCmpModel, PassYdsModel, PassTdModel, PassIntModel])
+        models.extend(['pass_att', 'pass_cmp', 'pass_yds', 'pass_tds', 'pass_int'])
     if pos in ['RB', 'QB', 'WR']:
-        models.extend([RushAttModel, RushYdsModel, RushTdModel])
+        models.extend(['rush_att', 'rush_yds', 'rush_tds'])
     if pos in ['WR', 'TE', 'RB']:
-        models.extend([RecRecModel, RecYdsModel, RecTdModel])
+        models.extend(['rec_rec', 'rec_yds', 'rec_tds'])
     tot_week = 0
     
     for pid in playerids:
         pdf = rbdf[rbdf['playerid'] == pid]
         pname = pdf['name'].unique()[0]
 
-        plmodels = [mod.for_position(pos) for mod in models]
+        plmodels = [get_model_class(mod).for_position(pos) for mod in models]
         
         years = pdf['year'].unique()
         # we could skip single-year seasons
