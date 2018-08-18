@@ -24,6 +24,11 @@ class RecRecModel(CountsModel):
                 16.20, 4.026,
                 0.533, 0.568, 0.958
                 ))
+            # return np.array(( # this is for the moment method
+            #     2.0, 4.0, 100, # can't keep the parameters from going to invalid values
+            #     1.0,
+            #     1.0, 1.0
+            #     ))
         if pos == 'TE':
             return np.array((
                 16.18, 4.09,

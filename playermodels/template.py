@@ -4,8 +4,22 @@ import scipy.stats as st
 # from scipy.special import gamma, digamma
 import dist_fit
 
+class Model:
+    """
+    base class w/ just a bit of common and default functionality
+    """
+    @classmethod
+    def for_position(self, pos):
+        return self(*self._default_hyperpars(pos))
+
+    @property
+    def var_names(self):
+        var_names = [self.pred_var] + list(self.dep_vars)
+        return var_names
+    
+
 # TODO: implement scipy.stats.rv_discrete ?
-class CountsModel:
+class CountsModel(Model):
     """
     used to model a number of discrete events (like attempts per game).
     the predictive posterior is a negative binomial.
@@ -22,19 +36,10 @@ class CountsModel:
         self.game_lr = lr
         self.season_mem = mem
         self.game_mem = gmem
-
-    @classmethod
-    def for_position(self, pos):
-        return self(*self._default_hyperpars(pos))
     
     @classmethod
     def _hyperpar_bounds(self):
         return [(1e-6,None),(1e-6,None),(0,1),(0.1,1.0),(0.5,1.0)]
-    
-    @property
-    def var_names(self):
-        var_names = [self.pred_var] + list(self.dep_vars)
-        return var_names
     
     # a shortcut for a re-mapping of beta that comes up a lot due to the common convention for negative binomial
     def _p(self):
@@ -80,7 +85,7 @@ class CountsModel:
         return pars
 
 
-class TrialModel:
+class TrialModel(Model):
     """
     a model for a discrete number of successes given an integer number of trials.
     e.g. TDs per reception
@@ -98,21 +103,12 @@ class TrialModel:
         self.game_mem = gmem
 
     @classmethod
-    def for_position(self, pos):
-        return self(*self._default_hyperpars(pos))
-
-    @classmethod
     def _hyperpar_bounds(self):
         return [
             (1e-6,None),(1e-6,None), # small positive lower bounds can prevent the fitter from going to invalid locations
             (0.0,1.0), #  should probably cap learn rate to prevent overfitting
             (0.2,1.0),(0.5,1.0)
         ]
-
-    @property
-    def var_names(self):
-        var_names = [self.pred_var] + list(self.dep_vars)
-        return var_names
 
     def _p(self):
         return self.ab[0] / self.ab.sum()
@@ -166,7 +162,7 @@ class TrialModel:
         hpars += 'smem\t= {:.3f}\ngmem\t= {:.3f}\n'.format(self.season_mem, self.game_mem)
         return pars + hpars
 
-class YdsPerAttModel:
+class YdsPerAttModel(Model):
     """
     model for yards per attempt (though it could be more general than that).
     it uses a non-central student-t distribution to allow positive skew.
@@ -196,10 +192,6 @@ class YdsPerAttModel:
         self.game_mem = np.repeat((mngmem, abgmem), 2)
 
     @classmethod
-    def for_position(self, pos):
-        return self(*self._default_hyperpars(pos))
-        
-    @classmethod
     def _hyperpar_bounds(self):
         return [
             (1e-6,None),(1e-6,None),(1e-6,None),(1e-6,None),
@@ -209,11 +201,6 @@ class YdsPerAttModel:
             (0.5,1.0),(0.5,1.0), # game memory - doesn't help much
         ]
         
-    @property
-    def var_names(self):
-        var_names = [self.pred_var] + list(self.dep_vars)
-        return var_names
-
     def update_game(self, rush_yds, att):
         # assert((0 < self.game_mem).all() and (self.game_mem <= 1.0).all())
         # mu does not decay simply like the others, but mu*nu does
@@ -339,3 +326,83 @@ class YdsPerAttModel:
         hparstr += 'lr\t= {}\n'.format(self.game_lr) # just print out whole array
         hparstr += 'mem\t= {}\ngmem\t= {}\n'.format(self.season_mem, self.game_mem)
         return parstr + hparstr
+
+
+# can't figure out how to keep the parameters from going to invalid values, unless we turn off all memory.
+# the data may often just be under-dispersed.
+# we might be better off trying to inject extra variance into the bayes parameters when needed
+class CountsModelMM(Model):
+    """
+    uses the method of moments to model a number of discrete events (like attempts per game).
+    the predictive posterior is a negative binomial.
+    the 0-2nd moments will be saved with some memory factors, and the distribution parameters set to those.
+    this allows the variance to be learned. at least for now, the mean and variance learn rates are the same.
+    """
+    def __init__(self,
+                 m0, m1, m2, # initial moments (un-normalized: mn = sum(k**n))
+                 lr,     # learn rate per game
+                 mem, gmem, # memory per season and game
+    ):
+        # we have a constraint that m2 > m1**2/m0
+        self.mom = np.array((m0,m1,m2))
+        self.game_lr = lr
+        self.season_mem =  mem
+        self.game_mem = gmem
+    
+    @classmethod
+    def _hyperpar_bounds(self):
+        return [(1e-6,None),(1e-6,None),(1e-6,None),(0,1),
+                (0.1,1.0),(0.5,1.0)
+        ]
+    
+    def _rp(self):
+        # p = beta/(1+beta), r = alpha
+        m0,m1,m2 = self.mom[0], self.mom[1], self.mom[2]
+        r = m1**2/(m0*m2 - m0*m1 - m1**2)
+        p = m0*m1/(m2*m0 - m1**2)
+        if (r <= 0 or p <= 0):
+            print('invalid parameter space!')
+            print((r,p))
+            print(self.mom)
+            exit(1)
+        return (r,p)
+        
+    def update_game(self, att):
+        self.mom *= self.game_mem
+        self.mom += self.game_lr * np.array((1., att, att**2))
+        # we could accumulate a KLD to diagnose when the model has been very off recently
+
+    def new_season(self):
+        self.mom *= self.season_mem
+        
+    def ppf(self, uni):
+        # this yields a gamma convoluted w/ a poisson
+        att = st.nbinom.ppf(uni, *self._rp())
+        return att
+
+    def cdf(self, att):
+        cdf = st.nbinom.cdf(att, *self._rp())
+        return cdf
+    
+    def ev(self):
+        r,p = self._rp()
+        return r*(1-p)/p
+
+    def var(self):
+        r,p = self._rp()
+        return r*(1-p)/p**2
+
+    # remember that we don't want to minimize the chi-sq, we want to minimize the KLD
+    # this will attempt to normalize, but will sometimes still end up negative
+    def chi_sq(self, att):
+        norm = dist_fit.log_neg_binomial(self.ev(), *self._rp())
+        return 2.*(self.kld(att) + norm)
+    
+    def kld(self, att):
+        return - st.nbinom.logpmf(att, *self._rp())
+
+    def __str__(self):
+        pars = u'r\t= {:.2f}\np\t= {:.2f}\n'.format(*self._rp())
+        pars += 'm0\t= {:.2f}\nm1\t= {:.2f}\nm2\t= {:.2f}\n'.format(*self.mom)
+        pars += 'lr\t= {:.3f}\nmem\t= {:.3f}\ngmem\t= {:.3f}\n'.format(self.game_lr, self.season_mem, self.game_mem)
+        return pars

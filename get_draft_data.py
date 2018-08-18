@@ -24,7 +24,6 @@ def main():
         pd['year'] = year
         fout = 'data/draft/class_{year}.csv'.format(year=year)
         pd.to_csv(fout, index=False)
-    
 
 def get_players(table_rows, ignore_cols=None):
     """

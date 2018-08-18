@@ -10,6 +10,7 @@ import logging
 import warnings
 import os.path
 import argparse
+import random
 
 from playermodels.positions import *
 from tools import corr_spearman
@@ -17,7 +18,7 @@ from tools import corr_spearman
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
     warnings.simplefilter('error') # quit on warnings
-    np.set_printoptions(precision=4)
+    np.set_printoptions(precision=5)
     sns.set()
 
     rush_models = ['rush_att', 'rush_yds', 'rush_tds']
@@ -45,6 +46,7 @@ def main():
     # models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
     # models = ['rush_yds'] # edit this to suppress info we've already looked at
     models = pass_models if position == 'QB' else rush_models if position == 'RB' else rec_models
+    models = rec_models # overwrite to look at RB rec
     for model in models:
         klds = posdf[model+'_kld']
         chisqs = posdf[model+'_chisq']
@@ -163,6 +165,9 @@ def main():
     # # spearman and pearson are quite similar for the cdf, at least when the models are working decently
     # rush_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
     # print(rush_corr)
+    
+    print('rush and rec attempts cdf spearman:')
+    print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rec_rec_cdf'].values))
     
     rec_rec = corrdf['receiving_rec']
     print('rec, yds cdf spearman:')
@@ -291,6 +296,8 @@ def get_model_df( pos='RB', fname = None):
                     ev = model.ev(*depvars)
                     var = model.var(*depvars)
                     cdf = model.cdf(*mvars) # standardized to look like a gaussian
+                    if row[model.pred_var] == 0:
+                        cdf = random.uniform(0,cdf) # smear the cdf to deal with small discrete numbers
                     # res = (data-ev)/np.sqrt(var)
                     rbdf.loc[index,'{}_ev'.format(model.name)] = ev
                     rbdf.loc[index,'{}_cdf'.format(model.name)] = cdf
@@ -351,6 +358,8 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
                 plmodel.new_season()
         if tot_kld < newmin:
             newmin = tot_kld
+            print('kld = {} at {}'.format(tot_kld, hparams))
+        if not np.isfinite(tot_kld):
             print('kld = {} at {}'.format(tot_kld, hparams))
         return tot_kld
 
