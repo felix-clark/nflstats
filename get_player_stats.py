@@ -52,7 +52,6 @@ def _make_cache(pfrid, years):
         stats['year'] = year
         # sort=False because we've already ordered the columns how we want
         df = df.append(stats, ignore_index=True, sort=False)
-    logging.info('past year iteration')
     f = 'data/players/{id}.csv'.format(id=pfrid)
     df.to_csv(f, index=False)
     return df
