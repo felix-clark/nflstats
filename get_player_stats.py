@@ -135,8 +135,9 @@ def get_fantasy_player_dict(startyear=1992):
         keepix = (draftdf['pos'].isin(positions)) & (draftdf['years_as_primary_starter'] > 0)
         draftdf = draftdf[keepix]
         # filter out players who have been around but usually just as backups
+        # we could consider a more refined cutoff
         years_in_league = draftdf['year_max']+1 - draftdf['year']
-        keepix = draftdf['years_as_primary_starter'] > years_in_league // 2
+        keepix = draftdf['years_as_primary_starter'] >= years_in_league // 2
         draftdf = draftdf[keepix]
         df = df.append(draftdf[keepcols])
     df.to_csv(fname, index=False)
