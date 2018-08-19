@@ -26,13 +26,17 @@ def get_player_stats(pfrid, years):
         
     return df
 
-def _make_cache(pfrid, years):
+
+def _make_dirs():
     if not os.path.isdir('data'):
         logging.info('creating data/')
         os.mkdir('data')
     if not os.path.isdir('data/players'):
         logging.info('creating data/players/')
         os.mkdir('data/players')
+
+def _make_cache(pfrid, years):
+    _make_dirs()
 
     # don't save some useless or redundant data
     ignore_cols = ['game_date', 'age',
@@ -121,8 +125,7 @@ def get_fantasy_player_dict(startyear=1992):
     if os.path.isfile(fname):
         return pd.read_csv(fname)
     logging.info('generating relevant player index file')
-    if not os.path.isdir('data/players'):
-        os.mkdir('data/players')
+    _make_dirs()
     positions = ['QB', 'RB', 'WR', 'TE', 'K']
     df = _undrafted_players()
     df = df[df['pos'].isin(positions)]
