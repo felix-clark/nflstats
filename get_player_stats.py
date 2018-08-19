@@ -6,7 +6,16 @@ import pandas as pd
 import logging
 import os
 
-def get_player_stats(pfrid, years):
+
+def _make_dirs():
+    if not os.path.isdir('data'):
+        logging.info('creating data/')
+        os.mkdir('data')
+    if not os.path.isdir('data/players'):
+        logging.info('creating data/players/')
+        os.mkdir('data/players')
+
+def get_player_stats(pfrid):
     """
     get the dataframe of the player's weekly stats
     pfrid: pro-football-reference id (e.g. GurlTo01)
@@ -20,22 +29,38 @@ def get_player_stats(pfrid, years):
             logging.error('could not read {}: {}'.format(f, e))
     if df is None:
         logging.info('making cache for {}'.format(pfrid))
-        df = _make_cache(pfrid, years)
+        df = _make_cache(pfrid)
         
     return df
 
 
-def _make_dirs():
-    if not os.path.isdir('data'):
-        logging.info('creating data/')
-        os.mkdir('data')
-    if not os.path.isdir('data/players'):
-        logging.info('creating data/players/')
-        os.mkdir('data/players')
-
-def _make_cache(pfrid, years):
+def _make_cache(pfrid):
     _make_dirs()
 
+    years = None # need to find player career years
+    firstyear, lastyear = 1992, 2018
+
+    # get the years
+    for year in range(lastyear, firstyear-1, -1):
+        draftdf = pd.read_csv('data/draft/class_{}.csv'.format(year))
+        pl = draftdf[draftdf['pfr_id'] == pfrid]
+        if len(pl) > 0:
+            assert(len(pl) == 1)
+            years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max']))
+            break
+
+    # if we can't find them, they might be undrafted
+    if years is None:
+        undrafted = _undrafted_players()
+        pl = undrafted[undrafted['pfr_id'] == pfrid]
+        if len(pl) > 0:
+            assert(len(pl) == 1)
+            years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max']))
+    
+    if years is None:
+        logging.error('Could not find years for {}'.format(pfrid))
+        exit(1)
+        
     # don't save some useless or redundant data
     ignore_cols = ['game_date', 'age',
                    'pass_cmp_perc',

@@ -20,10 +20,11 @@ def main():
         pos = argv[1]
         players = get_pos_players(pos.upper())
         for _,player in players.iterrows():
-            # print(player)
-            years = int(player['year']), int(player['year_max'])+1
             logging.info('scraping for player {}'.format(player['player']))
-            get_player_stats(player['pfr_id'], range(*years))
+            # print(player)
+            # years = int(player['year']), int(player['year_max'])+1
+            # get_player_stats(player['pfr_id'], range(*years))
+            get_player_stats(player['pfr_id'])
     else:
         logging.info('usage: {} <position>'.format(argv[0].split('/')[-1]))
 
