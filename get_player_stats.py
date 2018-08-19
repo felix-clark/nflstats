@@ -148,17 +148,3 @@ def get_pos_players(pos, startyear=1992):
     plls = pd.read_csv('data/players/index.csv')
     return plls[plls.pos == pos]
 
-# we can just let main download all the data for the position
-if __name__ == '__main__':
-    logging.getLogger().setLevel(logging.DEBUG)
-    players = get_fantasy_player_dict()
-    if len(argv) > 1:
-        pos = argv[1]
-        players = get_pos_players(pos.upper())
-        for _,player in players.iterrows():
-            # print(player)
-            years = int(player['year']), int(player['year_max'])+1
-            logging.info('scraping for player {}'.format(player['player']))
-            get_player_stats(player['pfr_id'], range(*years))
-    else:
-        logging.info('usage: {} <position>'.format(argv[0].split('/')[-1]))
