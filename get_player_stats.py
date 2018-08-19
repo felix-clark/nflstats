@@ -25,7 +25,7 @@ def get_player_stats(pfrid):
     if os.path.isfile(f):
         try:
             df = pd.read_csv(f)
-        except e:
+        except Exception as e:
             logging.error('could not read {}: {}'.format(f, e))
     if df is None:
         logging.info('making cache for {}'.format(pfrid))
