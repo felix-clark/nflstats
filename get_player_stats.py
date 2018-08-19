@@ -27,6 +27,7 @@ def get_player_stats(pfrid):
             df = pd.read_csv(f)
         except Exception as e:
             logging.error('could not read {}: {}'.format(f, e))
+            os.remove(f)
     if df is None:
         logging.info('making cache for {}'.format(pfrid))
         df = _make_cache(pfrid)
@@ -46,7 +47,7 @@ def _make_cache(pfrid):
         pl = draftdf[draftdf['pfr_id'] == pfrid]
         if len(pl) > 0:
             assert(len(pl) == 1)
-            years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max']))
+            years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max'])+1)
             break
 
     # if we can't find them, they might be undrafted
@@ -55,7 +56,7 @@ def _make_cache(pfrid):
         pl = undrafted[undrafted['pfr_id'] == pfrid]
         if len(pl) > 0:
             assert(len(pl) == 1)
-            years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max']))
+            years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max'])+1)
     
     if years is None:
         logging.error('Could not find years for {}'.format(pfrid))
@@ -142,7 +143,7 @@ def _undrafted_players():
 
 # assuming all the draft data is there, make a file that lists names, ids, positions, and years active
 def get_fantasy_player_dict(startyear=1992):
-    logging.info('in get_fantasy_player_dict')
+    # logging.info('in get_fantasy_player_dict')
     lastyear = 2018
     fname = 'data/players/index.csv'
     if os.path.isfile(fname):

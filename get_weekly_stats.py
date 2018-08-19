@@ -18,15 +18,19 @@ def main():
     players = get_fantasy_player_dict()
     if len(argv) > 1:
         pos = argv[1]
-        players = get_pos_players(pos.upper())
-        for _,player in players.iterrows():
-            logging.info('scraping for player {}'.format(player['player']))
-            # print(player)
-            # years = int(player['year']), int(player['year_max'])+1
-            # get_player_stats(player['pfr_id'], range(*years))
-            get_player_stats(player['pfr_id'])
+        if pos.upper() in off_pos:
+            players = get_pos_players(pos.upper())
+            for _,player in players.iterrows():
+                logging.info('scraping for player {}'.format(player['player']))
+                # print(player)
+                # years = int(player['year']), int(player['year_max'])+1
+                # get_player_stats(player['pfr_id'], range(*years))
+                get_player_stats(player['pfr_id'])
+        else:
+            pfr_id = argv[1]
+            get_player_stats(pfr_id)
     else:
-        logging.info('usage: {} <position>'.format(argv[0].split('/')[-1]))
+        logging.info('usage: {} <position or id>'.format(argv[0].split('/')[-1]))
 
     # the rest of this code relied on nflgame, which we don't really need now that we've got weekly scraping
         
@@ -88,9 +92,9 @@ def main():
     #                 statdict['passing_int'] = statdict.pop('passing_ints') # rename this for consistency
     #             except:
     #                 pass
-    #             statdict['twoptm'] = pstat.rushing_twoptm + pstat.receiving_twoptm
+    #             statdict['twoptm'] = pstat.rushing_twoptm + pstat.rec_twoptm
     #             # unfortunately receiving targets are not recorded in the weekly stats... TODO: scrape play-by-play?
-    #             # it does seem to be in nfldb, under receiving_tar
+    #             # it does seem to be in nfldb, under rec_tar
     #             dict_list.append(statdict)
 
     #         df = df.append(dict_list)
@@ -100,7 +104,7 @@ def main():
     #     df = df[['name','team','pos','playerid','week',
     #              'passing_att','passing_cmp','passing_yds','passing_tds','passing_int',
     #              'rushing_att','rushing_yds','rushing_tds',
-    #              'receiving_rec','receiving_yds','receiving_tds', # add 'receiving_tgt' in here once we get it
+    #              'rec','rec_yds','rec_tds', # add 'rec_tgt' in here once we get it
     #              'kicking_xpa', 'kicking_xpmade', 'kicking_fga', 'kicking_fgm', 'kicking_fgyds',
     #              'twoptm', 'passing_twoptm', 'fumbles_lost']]
     #      # for kickers, just keep attempts and successes?
@@ -111,7 +115,7 @@ def main():
 # def get_position(pstat, dict_id_pos, year):
 #     pid = pstat.playerid
 #     if pid not in dict_id_pos:    
-#         # if pstat.passing_att == 0 and pstat.rushing_att == 0 and pstat.receiving_rec ==0:
+#         # if pstat.passing_att == 0 and pstat.rushing_att == 0 and pstat.rec ==0:
 #         #     # probably defensive
 #             # dict_id_pos[pid] = 'def'
 #         checkdf = pd.read_csv('yearly_stats/fantasy_{}.csv'.format(year))
