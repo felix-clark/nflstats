@@ -36,7 +36,7 @@ class RushAttModel(CountsModel):
     # the variable we're predicting
     @property
     def pred_var(self):
-        return 'rushing_att'
+        return 'rush_att'
     
     @property
     def dep_vars(self):
@@ -89,19 +89,19 @@ class RushYdsModel(YdsPerAttModel):
 
     @property
     def pred_var(self):
-        return 'rushing_yds'
+        return 'rush_yds'
     
     # dependent variables i.e. those required for prediction
     @property
     def dep_vars(self):
-        return ('rushing_att',)# self.__dep_vars
+        return ('rush_att',)# self.__dep_vars
 
 
 class RushTdModel(TrialModel):
     """
     statistical model for TDs per rush
     """
-    name = 'rush_tds'
+    name = 'rush_td'
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -134,10 +134,10 @@ class RushTdModel(TrialModel):
 
     @property
     def pred_var(self):
-        return 'rushing_tds'
+        return 'rush_td'
     
     # dependent variables i.e. those required for prediction
     @property
     def dep_vars(self):
-        return ('rushing_att',)# self.__dep_vars
+        return ('rush_att',)# self.__dep_vars
     

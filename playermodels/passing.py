@@ -4,7 +4,7 @@ import logging
 
 class PassAttModel(CountsModel):
     name = 'pass_att'
-    pred_var = 'passing_att'
+    pred_var = 'pass_att'
     dep_vars = ()
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -23,8 +23,8 @@ class PassAttModel(CountsModel):
 
 class PassCmpModel(TrialModel):
     name = 'pass_cmp'
-    pred_var = 'passing_cmp'
-    dep_vars = ('passing_att',)
+    pred_var = 'pass_cmp'
+    dep_vars = ('pass_att',)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
@@ -46,8 +46,8 @@ class PassYdsModel(YdsPerAttModel):
     receiving yards per catch
     """
     name = 'pass_yds'
-    pred_var = 'passing_yds'
-    dep_vars = ('passing_cmp',)
+    pred_var = 'pass_yds'
+    dep_vars = ('pass_cmp',)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -68,8 +68,8 @@ class PassYdsModel(YdsPerAttModel):
 
 class PassTdModel(TrialModel):
     name = 'pass_tds'
-    pred_var = 'passing_tds'
-    dep_vars = ('passing_cmp',)
+    pred_var = 'pass_tds'
+    dep_vars = ('pass_cmp',)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
@@ -88,8 +88,8 @@ class PassTdModel(TrialModel):
 
 class PassIntModel(TrialModel):
     name = 'pass_int'
-    pred_var = 'passing_int'
-    dep_vars = ('passing_att',)
+    pred_var = 'pass_int'
+    dep_vars = ('pass_att',)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     

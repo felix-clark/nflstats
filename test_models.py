@@ -12,6 +12,7 @@ import os.path
 import argparse
 import random
 
+from get_player_stats import *
 from playermodels.positions import *
 from tools import corr_spearman
 
@@ -21,9 +22,9 @@ def main():
     np.set_printoptions(precision=5)
     sns.set()
 
-    rush_models = ['rush_att', 'rush_yds', 'rush_tds']
-    rec_models = ['rec_rec', 'rec_yds', 'rec_tds'] # we don't have the data for targets easily accessible yet
-    pass_models = ['pass_att', 'pass_cmp', 'pass_yds', 'pass_tds', 'pass_int']
+    rush_models = ['rush_att', 'rush_yds', 'rush_td']
+    rec_models = ['rec', 'rec_yds', 'rec_td'] # we don't have the data for targets easily accessible yet
+    pass_models = ['pass_att', 'pass_cmp', 'pass_yds', 'pass_td', 'pass_int']
     all_models = rush_models + rec_models + pass_models
     
     parser = argparse.ArgumentParser(description='optimize and analyze bayesian models')
@@ -41,7 +42,7 @@ def main():
         hps = find_model_hyperparameters(position, args.opt_hyper)
     
     posdf = get_model_df(position)
-    posdf = posdf[posdf['week'] < 17]# .dropna() # don't necessarily remove nans; we need these for QBs
+    posdf = posdf[posdf['game_num'] < 16]# .dropna() # don't necessarily remove nans
 
     # models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
     # models = ['rush_yds'] # edit this to suppress info we've already looked at
@@ -99,11 +100,11 @@ def main():
     # exit(0)
     
     good_pos = True
-    if position == 'RB': good_pos = posdf['rushing_att'] > 0
-    if position == 'QB': good_pos = posdf['passing_cmp'] > 0
+    if position == 'RB': good_pos = posdf['rush_att'] > 0
+    if position == 'QB': good_pos = posdf['pass_cmp'] > 0
     if position in ['WR', 'TE']:
          # not clear we should filter these. include zero for now
-        good_pos = posdf['receiving_rec'] >= 0
+        good_pos = posdf['rec'] >= 0
     
     # print(posdf[~good_rushers])
     # print(rush_att[~good_rushers])
@@ -190,61 +191,84 @@ def main():
     plt.show(block=True)
 
     pass
-    
-def get_pos_df(pos, fname = None):
-    pos = pos.upper()
-    if fname is None:
-        fname = 'data_{}_cache.csv'.format(pos.lower())
-    if os.path.isfile(fname):
-        return pd.read_csv(fname, index_col=0)
-    logging.info('will compile and cache {} data'.format(pos))
-    rbdf = pd.DataFrame()
 
-    
-    adpfunc = None
-    if pos == 'QB': adpfunc = top_qb_names
-    if pos == 'RB': adpfunc = top_rb_names
-    if pos == 'WR': adpfunc = top_wr_names
-    if pos == 'TE': adpfunc = top_te_names
-    # ...
-    
-    firstyear,lastyear = 2009,2017 # 2009 seems to have very limited stats
-    for year in range(firstyear,lastyear+1):
-        yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year), index_col=0)
-        
-        mask = None
-        # filtering by position alone rules out e.g. Fred Jackson in 2009 because of an error in the data
-        # ... but this data is weekly. it'd be more messiness to correct that here.
-        # if pos == 'RB': mask = (yrdf['pos'] == 'RB') | (yrdf['rushing_att'] > 100) .. else
-        mask = (yrdf['pos'] == pos) # we may have to use more custom workarounds
-        # to be included each week, they need to have been a good [RB] and also have actually played:
-        if pos == 'QB': mask &= (yrdf['passing_cmp'] > 0)
-        if pos == 'RB': mask &= (yrdf['rushing_att'] > 0)
-        if pos in ['WR', 'TE']: mask &= ((yrdf['receiving_rec'] > 0) | (yrdf['rushing_att'] > 0))
-        if pos == 'K': mask &= ((yrdf['kicking_xpa'] > 0) | (yrdf['kicking_fga'] > 0))
-        yrdf = yrdf[mask]
-        
-        # we won't try to model passing for non-QBs; it's too rare to be meaningful
-        # similarly we won't track QB receptions
-        good_col = None
-        if pos == 'QB': good_col = lambda col: 'receiving' not in col and 'kicking' not in col
-        if pos == 'K': good_col = lambda col: 'passing' not in col and 'rushing' not in col and 'receiving' not in col
-        if pos in ['RB', 'WR', 'TE']: good_col = lambda col: 'passing' not in col and 'kicking' not in col
+
+def get_pos_dfs(pos, fname = None):
+    pos = pos.upper()
+    # no longer caching...
+    # if fname is None:
+    #     fname = 'data_{}_cache.csv'.format(pos.lower())
+    # if os.path.isfile(fname):
+    #     return pd.read_csv(fname, index_col=0)
+    # logging.info('will compile and cache {} data'.format(pos))
+    pldfs = [] # pd.DataFrame()
+
+    good_col = None
+    if pos == 'QB': good_col = lambda col: 'rec' not in col and 'kick' not in col
+    if pos == 'K': good_col = lambda col: 'pass' not in col and 'rush' not in col and 'rec' not in col
+    if pos in ['RB', 'WR', 'TE']: good_col = lambda col: 'pass' not in col and 'kick' not in col
+    players = get_pos_players(pos)
+    pfrids = players['pfr_id']
+    for pid in pfrids:
+        pdf = get_player_stats(pid)
+        pdf.loc['pfr_id'] = pid
+        pdlf.append(pdf, ignore_index=True, sort=False)
+
         columns = [col for col in yrdf.columns if good_col(col)]
-        yrdf = yrdf[columns].fillna(0)
+        columns.remove('game_location')
+        columns.remove('opp')
+        columns.remove('game_result')
+        pldf = pldf[columns].fillna(0)
         
-        yrdf['year'] = year
-        # could also provide a weight based on ADP or production?
-        good_pos_names = adpfunc(year)
-        good_pos = yrdf['name'].isin(good_pos_names)
-        yrdf = yrdf[good_pos]
-        rbdf = rbdf.append(yrdf)
+        # they should already be sorted properly, but let's check.
+        pldf = rbdf.sort_values(['year', 'game_num']).reset_index(drop=True)
+        pldfs.append(pldf)
+
+    return pldfs
+        
+    # adpfunc = None
+    # if pos == 'QB': adpfunc = top_qb_names
+    # if pos == 'RB': adpfunc = top_rb_names
+    # if pos == 'WR': adpfunc = top_wr_names
+    # if pos == 'TE': adpfunc = top_te_names
+    # # ...
     
-    # they should already be sorted properly, but let's check.
-    rbdf = rbdf.sort_values(['year', 'week']).reset_index(drop=True)
-    logging.info('saving relevant {} data to {}'.format(pos, fname))
-    rbdf.to_csv(fname)
-    return rbdf
+    
+    # firstyear,lastyear = 2009,2017 # 2009 seems to have very limited stats
+    # for year in range(firstyear,lastyear+1):
+    #     yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year), index_col=0)
+        
+    #     mask = None
+    #     # filtering by position alone rules out e.g. Fred Jackson in 2009 because of an error in the data
+    #     # ... but this data is weekly. it'd be more messiness to correct that here.
+    #     # if pos == 'RB': mask = (yrdf['pos'] == 'RB') | (yrdf['rushing_att'] > 100) .. else
+    #     mask = (yrdf['pos'] == pos) # we may have to use more custom workarounds
+    #     # to be included each week, they need to have been a good [RB] and also have actually played:
+    #     if pos == 'QB': mask &= (yrdf['passing_cmp'] > 0)
+    #     if pos == 'RB': mask &= (yrdf['rushing_att'] > 0)
+    #     if pos in ['WR', 'TE']: mask &= ((yrdf['receiving_rec'] > 0) | (yrdf['rushing_att'] > 0))
+    #     if pos == 'K': mask &= ((yrdf['kicking_xpa'] > 0) | (yrdf['kicking_fga'] > 0))
+    #     yrdf = yrdf[mask]
+        
+    #     # we won't try to model passing for non-QBs; it's too rare to be meaningful
+    #     # similarly we won't track QB receptions
+    #     good_col = None
+    #     if pos == 'QB': good_col = lambda col: 'receiving' not in col and 'kicking' not in col
+    #     if pos == 'K': good_col = lambda col: 'passing' not in col and 'rushing' not in col and 'receiving' not in col
+    #     if pos in ['RB', 'WR', 'TE']: good_col = lambda col: 'passing' not in col and 'kicking' not in col
+    #     columns = [col for col in yrdf.columns if good_col(col)]
+    #     yrdf = yrdf[columns].fillna(0)
+        
+    #     yrdf['year'] = year
+    #     # could also provide a weight based on ADP or production?
+    #     good_pos_names = adpfunc(year)
+    #     good_pos = yrdf['name'].isin(good_pos_names)
+    #     yrdf = yrdf[good_pos]
+    #     rbdf = rbdf.append(yrdf)
+        
+    # logging.info('saving relevant {} data to {}'.format(pos, fname))
+    # pldf.to_csv(fname)
+    # return pldf
 
     
 def get_model_df( pos='RB', fname = None):
@@ -253,7 +277,7 @@ def get_model_df( pos='RB', fname = None):
     if os.path.isfile(fname):
         return pd.read_csv(fname)
 
-    rbdf = get_pos_df(pos)
+    rbdf = get_pos_dfs(pos)
     playerids = rbdf['playerid'].unique()
     years = rbdf['year'].unique()    
 
@@ -319,7 +343,7 @@ def get_model_df( pos='RB', fname = None):
 
 def find_model_hyperparameters(pos, model_name='rush_att'):
     logging.info('will search for good hyperparameters for {}'.format(model_name))
-    rbdf = get_pos_df(pos)
+    rbdf = get_pos_dfs(pos)
     playerids = rbdf['playerid'].unique()
     years = rbdf['year'].unique()
 

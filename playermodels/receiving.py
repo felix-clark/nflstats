@@ -9,9 +9,9 @@ class RecRecModel(CountsModel):
     this should be split into targets first, but targets weekly data isn't currently part of our scraping.
     we should be able to get it from pro-football-reference's game logs but that'll take some messing.
     """
-    name = 'rec_rec' # do we actually need this?
-    pred_var = 'receiving_rec' # the variable we're predicting
-    dep_vars = () # variables this prediction depends on
+    name = 'rec' # do we actually need this?
+    pred_var = 'rec' # the variable we're predicting
+    dep_vars = ('targets') # variables this prediction depends on
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -49,9 +49,9 @@ class RecTdModel(TrialModel):
     """
     TD rate per reception
     """
-    name = 'rec_tds'
-    pred_var = 'receiving_tds'
-    dep_vars = ('receiving_rec',)
+    name = 'rec_td'
+    pred_var = 'rec_td'
+    dep_vars = ('rec',)
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -87,8 +87,8 @@ class RecYdsModel(YdsPerAttModel):
     receiving yards per catch
     """
     name = 'rec_yds'
-    pred_var = 'receiving_yds'
-    dep_vars = ('receiving_rec',)
+    pred_var = 'rec_yds'
+    dep_vars = ('rec',)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
