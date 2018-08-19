@@ -11,8 +11,6 @@ def get_player_stats(pfrid, years):
     get the dataframe of the player's weekly stats
     pfrid: pro-football-reference id (e.g. GurlTo01)
     """
-    logging.getLogger().setLevel(logging.DEBUG)
-    
     f = 'data/players/{id}.csv'.format(id=pfrid)
     df = None
     if os.path.isfile(f):
@@ -152,6 +150,7 @@ def get_pos_players(pos, startyear=1992):
 
 # we can just let main download all the data for the position
 if __name__ == '__main__':
+    logging.getLogger().setLevel(logging.DEBUG)
     players = get_fantasy_player_dict()
     if len(argv) > 1:
         pos = argv[1]
@@ -161,3 +160,5 @@ if __name__ == '__main__':
             years = int(player['year']), int(player['year_max'])+1
             logging.info('scraping for player {}'.format(player['player']))
             get_player_stats(player['pfr_id'], range(*years))
+    else:
+        logging.info('usage: {} <position>'.format(argv[0].split('/')[-1]))
