@@ -149,11 +149,13 @@ class TrialModel(Model):
         return cdf
         
     def chi_sq(self, succ, att):
+        # if att == 0: return 0.
         norm = dist_fit.log_beta_binomial( self.ev(att), att, *self.ab)
         return 2.*(self.kld(succ, att) + norm)
     
     def kld(self, succ, att):
-        # if att == 0: return 0.
+        if att == 0: return 0.
+        if succ > att: att = succ
         return - dist_fit.log_beta_binomial( succ, att, *self.ab)
 
     def __str__(self):

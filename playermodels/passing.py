@@ -14,8 +14,10 @@ class PassAttModel(CountsModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                22.20, 0.656,
-                0.0550, 0.839, 0.956))
+                0.817, 0.033, # bayes parameters
+                0.080, # learn rate
+                0.257, 0.857 # memories
+            ))
         else:
             logging.error('no passing models for {}'.format(pos))
         pass
@@ -33,9 +35,9 @@ class PassCmpModel(TrialModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                93.07, 55.72, # initial bayes parameters
-                0.218, # learn rate
-                0.966, 0.964 # season,game memory
+                88.88, 62.28, # initial bayes parameters
+                0.361, # learn rate
+                0.853, 0.964 # season,game memory
             ))
         else:
             logging.error('only QBs have passing models (not {}s)'.format(pos))
@@ -56,19 +58,19 @@ class PassYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array(( #TODO: run this
-                60.09, 5.39, 9.08, 55.51, # initial bayes parameters
-                0.396, # skew
-                0.00145, 0.00296, # learn rates
-                1.0,0.964, # munu/nu, alpha/beta season memory
-                1.0,0.963, # game memories
+                60.16, 5.28, 7.30, 56.09, # initial bayes parameters
+                0.0494, # skew
+                0.0210, 0.00885, # learn rates
+                0.678,0.923, # munu/nu, alpha/beta season memory
+                0.982,0.994, # game memories
                 ))
         else:
             logging.error('only QBs will have passing models (not {}s)'.format(pos))
         pass
 
 class PassTdModel(TrialModel):
-    name = 'pass_tds'
-    pred_var = 'pass_tds'
+    name = 'pass_td'
+    pred_var = 'pass_td'
     dep_vars = ('pass_cmp',)
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -78,9 +80,9 @@ class PassTdModel(TrialModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                98.06, 1209.5, # initial bayes parameters
+                71.15, 962.47, # initial bayes parameters
                 1.0, # learn rate
-                1.0, 0.988 # season,game memory
+                0.905, 1.0 # season,game memory
             ))
         else:
             logging.error('only QBs have passing models (not {}s)'.format(pos))
@@ -98,9 +100,9 @@ class PassIntModel(TrialModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                15.81, 630.0, # initial bayes parameters
-                0.271, # learn rate
-                1.0, 0.987 # season,game memory
+                18.75, 629.9, # initial bayes parameters
+                0.400, # learn rate
+                0.796, 1.0 # season,game memory
             ))
         else:
             logging.error('only QBs have passing models (not {}s)'.format(pos))

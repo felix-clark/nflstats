@@ -13,14 +13,15 @@ def get_model_class(mname):
     models = {
         'rush_att': RushAttModel,
         'rush_yds': RushYdsModel,
-        'rush_tds': RushTdModel,
-        'rec_rec': RecRecModel,
+        'rush_td': RushTdModel,
+        'targets': RecTgtModel,
+        'rec': RecModel,
         'rec_yds': RecYdsModel,
-        'rec_tds': RecTdModel,
+        'rec_td': RecTdModel,
         'pass_att': PassAttModel,
         'pass_cmp': PassCmpModel,
         'pass_yds': PassYdsModel,
-        'pass_tds': PassTdModel,
+        'pass_td': PassTdModel,
         'pass_int': PassIntModel,
     }
     if mname not in models:

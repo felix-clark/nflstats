@@ -55,6 +55,7 @@ def beta_binomial( k, n, a, b ):
 def log_beta_binomial( k, n, a, b ):
     # if k < 0 or k > n: return -np.inf # is this check necessary? it makes operations on arrays annoying
     # if k == 0: return r*log(1-p)
+    # print(n,k)
     return log( comb(n,k) ) + betaln(k+a, n-k+b) - betaln(a,b)
 
 # discrete (can be non-negative)

@@ -6,7 +6,7 @@ import os.path
 import itertools
 import random
 
-from draftStrategies import *
+from draft_strategies import *
 
 VERBOSE = False
 
