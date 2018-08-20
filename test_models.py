@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 import dist_fit
+from get_player_stats import *
+from playermodels.positions import *
+from tools import corr_spearman
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -11,10 +15,6 @@ import warnings
 import os.path
 import argparse
 import random
-
-from get_player_stats import *
-from playermodels.positions import *
-from tools import corr_spearman
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
@@ -110,7 +110,7 @@ def main():
     # exit(0)
     
     ## # correlation calculations:
-    plmodel = get_player_model(position)()
+    plmodel = gen_player_model(position)
     stats = plmodel.stats
     print(stats)
     corr_mat = np.ones(shape=(len(stats), len(stats)))
