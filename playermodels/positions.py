@@ -28,16 +28,16 @@ def get_stat_model(mname):
         logging.error('could not provide model with name {}'.format(mname))
     else: return models[mname]
     
-def get_player_model(pos):
+def gen_player_model(pos):
     pm = {
         'QB': QbModel,
         'RB': RbModel,
         'WR': WrModel,
         'TE': TeModel,
         }
-    if pos.upper not in pm:
+    if pos.upper() not in pm:
         logging.error('no model for position {}'.format(pos))
-    return pm[pos.upper()]
+    return pm[pos.upper()]()
 
 
 class PosModel:
@@ -56,7 +56,7 @@ class PosModel:
         game = {}
         # call the ppf of each member model
         # the generator should handle the correlations
-        urvs = self.stat_gen.rvs()
+        urvs = st.norm.cdf(self.stat_gen.rvs())
         for rv,model in zip(urvs, self.models):
             depvars = [game[dv] for dv in model.dep_vars] # get previously generated stats needed for this one
             game[model.pred_var] = model.ppf(*depvars, rv)
@@ -77,6 +77,13 @@ class PosModel:
         """
         for model in self.models:
             model.new_season()
+
+    def evs(self):
+        evs = {}
+        for model in self.models:
+            depvars = [evs[dv] for dv in model.dep_vars]
+            evs[model.pred_var] = model.ev(*depvars)
+        return evs
 
 class QbModel(PosModel):
     """
