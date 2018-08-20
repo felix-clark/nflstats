@@ -128,28 +128,27 @@ class RecYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                33.13, 3.07, 0.35, 13.95, # initial bayes parameters
+                33.13, 3.07, 0.35, 13.95, # initial bayes parameters -- consider reducing and re-fitting
                 0.408, # skew
                 0.0021, 0.0018, # learn rates
                 1.0,0.991, # munu/nu, alpha/beta season memory
                 1.0,0.995, # game memories
             ))
-        if pos.upper() == 'TE': # TODO: HERE and beyond
+        if pos.upper() == 'TE':
             return np.array((
-                117.8/5, 11.54/5, 1.51/5, 47.92/5, # initial bayes parameters
-                0.1869, # skew
-                0.0172, 0.000808, # learn rates
-                0.920, # munu/nu memory
-                1.0, # alpha/beta mem
-                0.956,0.965 # game memories don't work well for WRs
-            ))            
+                5.88, 0.675, 0.184, 2.40, # initial bayes parameters -- not much sensitivity to these!
+                0.206, # skew
+                0.00333, 0.000899, # learn rates
+                1.0, 1.0, # munu/nu memory, alpha/beta mem
+                1.0, 1.0
+            ))
         if pos == 'RB':
             return np.array((
-                12.01, 1.89, 152.6/20, 2650./20, # initial bayes parameters
-                0.2635, # skew
-                0.00262, 0.0184, # learn rates
-                1.0,0.985, # season memory
-                1.0,0.999 # game memories don't work well for WRs
+                12.12, 1.93, 8.16, 132.47, # initial bayes parameters
+                0.256, # skew
+                0.0017, 0.0060, # learn rates
+                1.0, 0.964, # season memory
+                1.0, 1.0 # game memory
             ))
-        logging.error('no default hyperparameters are implemented for {}'.format(pos))
+        logging.error('no default {} hyperparameters are implemented for {}'.format(self.name, pos))
         pass

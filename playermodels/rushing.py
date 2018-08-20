@@ -8,6 +8,8 @@ class RushAttModel(CountsModel):
     statistical model for rushing attempts by RBs, QBs, and WRs.
     """
     name = 'rush_att'
+    pred_var = 'rush_att'
+    dep_vars = ()
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -17,30 +19,23 @@ class RushAttModel(CountsModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                2.807, 0.244,
-                0.121, 0.677, 0.782))
+                0.756, 0.0756,
+                0.133,
+                0.503, 0.752))
         if pos == 'QB':
             return np.array((
-                2.61, 0.840,
-                0.241, 0.703, 0.954))
+                1.76, 0.58,
+                0.238,
+                0.494, 0.963))
         if pos == 'WR':
             return np.array((
-                0.516, 3.65,
-                0.646, 0.523, 0.972
+                1.17, 7.03,
+                1.0,
+                0.545, 0.982
                 ))
         if pos == 'TE':
             logging.error('TEs do not rush enough to try to predict them')
         logging.error( 'positional defaults not implemented for {}'.format(pos) )
-        pass
-
-    # the variable we're predicting
-    @property
-    def pred_var(self):
-        return 'rush_att'
-    
-    @property
-    def dep_vars(self):
-        return ()
 
 
 class RushYdsModel(YdsPerAttModel):
@@ -48,6 +43,8 @@ class RushYdsModel(YdsPerAttModel):
     statistical model for yards per rush attempt
     """
     name = 'rush_yds'
+    pred_var = 'rush_yds'
+    dep_vars = ('rush_att',)
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -57,44 +54,33 @@ class RushYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                122.3, 36.26, 8.89, 40.08, # initial bayes parameters
-                0.793, # skew
-                0.00259, 0.0191, # learn rates
-                1.0, 0.979, # munu/nu, a/b season memory
-                1.0, 0.966, # game memories
+                121.8, 38.06, 9.76, 39.91, # initial bayes parameters
+                0.878, # skew
+                0.0059, 0.0101, # learn rates
+                1.0, 0.987, # munu/nu, a/b season memory
+                1.0, 0.973, # game memories
             ))
         if pos == 'QB':
             return np.array((
-                111.59, 42.14, 2.77, 50.35, # initial bayes parameters
-                0.0725, # skew # low due to sacks? and QBs don't often break away w/ big runs
-                1.0,  0.0226, # learn rates
-                0.812, 0.984, # munu/nu;a/b season memory
-                0.961, 0.978 # game memories don't help for QBs
+                111.59, 42.13, 2.82, 50.32, # initial bayes parameters
+                0.0472, # skew # low due to sacks? and QBs don't often break away w/ big runs
+                0.940,  4.2e-5, # learn rates
+                0.805, 0.985, # munu/nu;a/b season memory
+                0.972, 0.942
             ))
         if pos == 'WR':
             # this has a reasonable flat CDF
             # interesting that there is no memory
             return np.array((
-                116.3, 41.28, 3.46, 45.64, # initial bayes parameters
-                0.457, # skew
-                0.563, 0.0, # learn rates
-                1.0, # munu/nu memory
-                1.0, # alpha/beta mem
+                116.2, 41.84, 2.45, 46.42, # initial bayes parameters
+                0.348, # skew
+                0.332, 0.00092, # learn rates
+                1.0,1.0, # munu/nu alpha/beta mem
                 1.0,1.0 # game memories don't work well for WRs
             ))
         if pos.upper() == 'TE': # TEs rush so rarely we shouldn't even include them
             logging.error('TEs do not run enough to try to predict their rushes')
         logging.error('no default hyperparameters are implemented for {}'.format(pos))
-        pass
-
-    @property
-    def pred_var(self):
-        return 'rush_yds'
-    
-    # dependent variables i.e. those required for prediction
-    @property
-    def dep_vars(self):
-        return ('rush_att',)# self.__dep_vars
 
 
 class RushTdModel(TrialModel):
@@ -102,6 +88,8 @@ class RushTdModel(TrialModel):
     statistical model for TDs per rush
     """
     name = 'rush_td'
+    pred_var = 'rush_td'
+    dep_vars = ('rush_att',)# self.__dep_vars
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -111,33 +99,23 @@ class RushTdModel(TrialModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                19.07, 684.7, # initial bayes parameters
-                1.84, # learn rate
-                0.775, # season memory
+                20.90, 684.65, # initial bayes parameters
+                1.0, # learn rate
+                0.569, # season memory
                 1.0)) # game mem
         if pos == 'QB':
             return np.array((
-                12.33, 330.27, # initial bayes parameters
-                1.76, # learn rate
+                12.95, 330.25, # initial bayes parameters
+                1.0, # learn rate
                 1.0, # season memory
-                0.980)) # game mem
+                0.991)) # game mem
         if pos == 'WR':
-            # rushing TDs are rare enough for WRs that there's no reason to update a model from an event
             return np.array((
-                1.97, 60.4, # initial bayes parameters
-                0.0, # learn rate
-                1.0, # season memory
-                1.0)) # game mem
+                1.14, 60.63, # initial bayes parameters
+                0.413, # learn rate
+                0.997, # season memory
+                0.989)) # game mem
         if pos == 'TE':
             logging.error('TEs do not rush enough')
         logging.error( 'rushing TD positional defaults not implemented for {}'.format(pos) )
 
-    @property
-    def pred_var(self):
-        return 'rush_td'
-    
-    # dependent variables i.e. those required for prediction
-    @property
-    def dep_vars(self):
-        return ('rush_att',)# self.__dep_vars
-    
