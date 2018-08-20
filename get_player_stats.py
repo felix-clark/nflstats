@@ -170,7 +170,7 @@ def get_fantasy_player_dict(startyear=1992):
     return df
     
 def get_pos_players(pos, startyear=1992):
-    logging.info('in get_pos_players')
+    # logging.info('in get_pos_players')
     plls = pd.read_csv('data/players/index.csv')
     return plls[plls.pos == pos]
 
