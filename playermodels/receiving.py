@@ -1,17 +1,15 @@
 from playermodels.template import *
 import numpy as np
 import logging
-
+    
 # a model rush attempts per game.
-class RecRecModel(CountsModel):
+class RecTgtModel(CountsModel):
     """
-    statistical model for receptions.
-    this should be split into targets first, but targets weekly data isn't currently part of our scraping.
-    we should be able to get it from pro-football-reference's game logs but that'll take some messing.
+    statistical model for targets
     """
-    name = 'rec' # do we actually need this?
-    pred_var = 'rec' # the variable we're predicting
-    dep_vars = ('targets') # variables this prediction depends on
+    name = 'targets' # do we actually need this?
+    pred_var = 'targets' # the variable we're predicting
+    dep_vars = () # variables this prediction depends on
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -21,29 +19,62 @@ class RecRecModel(CountsModel):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                16.20, 4.026,
-                0.533, 0.568, 0.958
+                1.42, 0.315,
+                0.305,
+                0.421, 0.865
                 ))
-            # return np.array(( # this is for the moment method
-            #     2.0, 4.0, 100, # can't keep the parameters from going to invalid values
-            #     1.0,
-            #     1.0, 1.0
-            #     ))
         if pos == 'TE':
             return np.array((
-                16.18, 4.09,
-                0.673, 0.935, 0.938
+                1.03, 0.443,
+                0.339,
+                0.375, 0.889
                 ))
         if pos == 'RB':
             return np.array((
-                1.71, 0.84,
-                0.263, 0.603, 0.914))
+                1.05, 0.457,
+                0.279,
+                0.442, 0.891
+            ))
         if pos == 'QB':
             logging.error('we aren\'t modeling receptions for QBs')
             logging.error(' since not even Tom Brady can catch a pass.')
         logging.error( 'positional defaults not implemented for {}'.format(pos) )
         pass
 
+
+class RecModel(TrialModel):
+    """
+    model for receptions
+    """
+    name = 'rec' # do we actually need this?
+    pred_var = 'rec' # the variable we're predicting
+    dep_vars = ('targets',) # variables this prediction depends on
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @classmethod
+    def _default_hyperpars(self, pos):
+        pos = pos.upper()
+        if pos == 'WR':
+            return np.array((
+                30.10, 23.88, # initial bayes parameters
+                0.400, # learn rate
+                0.660, 0.998 # season,game memory
+            ))
+        if pos == 'TE':
+            return np.array((
+                33.47, 19.39, # initial bayes parameters
+                0.245, # learn rate
+                0.900, 1.0 # season,game memory
+            ))
+        if pos == 'RB':
+            return np.array((
+                37.55, 13.71, # initial bayes parameters
+                0.173, # learn rate
+                0.941, 1.0 # season,game memory
+            ))
+        logging.error( 'rushing TD positional defaults not implemented for {}'.format(pos) )
     
 class RecTdModel(TrialModel):
     """
@@ -61,23 +92,23 @@ class RecTdModel(TrialModel):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                36.67, 397.42, # initial bayes parameters
-                1.0, # learn rate
-                1.0, 0.976 # season,game memory
+                9.22, 100.15, # initial bayes parameters
+                0.476, # learn rate
+                0.918, 1.0 # season,game memory
             ))
         if pos == 'TE':
             # this large learn rate with perfect memory seems a bit strange.
             # this type of thing suggests learn rate decay would be useful.
             return np.array((
-                9.94, 105.5, # initial bayes parameters
-                1.0, # learn rate
+                4.92, 52.78, # initial bayes parameters
+                0.464, # learn rate
                 1.0, 1.0 # season,game memory
             )) # game mem
         if pos == 'RB':
             return np.array((
-                11.49, 361.51, # initial bayes parameters
-                1.0, # learn rate
-                1.0, 0.989 # season,game memory
+                11.22, 361.5, # initial bayes parameters
+                0.582, # learn rate
+                0.975, 0.988 # season,game memory
             ))
         logging.error( 'rushing TD positional defaults not implemented for {}'.format(pos) )
 
@@ -97,15 +128,15 @@ class RecYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                128.52, 11.96, 1.00, 55.83, # initial bayes parameters
-                0.390, # skew
-                0.0233, 0.0138, # learn rates
-                1.0,0.994, # munu/nu, alpha/beta season memory
-                1.0,0.999, # game memories
+                33.13, 3.07, 0.35, 13.95, # initial bayes parameters
+                0.408, # skew
+                0.0021, 0.0018, # learn rates
+                1.0,0.991, # munu/nu, alpha/beta season memory
+                1.0,0.995, # game memories
             ))
-        if pos.upper() == 'TE':
+        if pos.upper() == 'TE': # TODO: HERE and beyond
             return np.array((
-                117.8, 11.54, 1.51, 47.92, # initial bayes parameters
+                117.8/5, 11.54/5, 1.51/5, 47.92/5, # initial bayes parameters
                 0.1869, # skew
                 0.0172, 0.000808, # learn rates
                 0.920, # munu/nu memory
@@ -114,7 +145,7 @@ class RecYdsModel(YdsPerAttModel):
             ))            
         if pos == 'RB':
             return np.array((
-                12.01, 1.89, 152.6, 2650., # initial bayes parameters
+                12.01, 1.89, 152.6/20, 2650./20, # initial bayes parameters
                 0.2635, # skew
                 0.00262, 0.0184, # learn rates
                 1.0,0.985, # season memory
