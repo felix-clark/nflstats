@@ -15,13 +15,14 @@ def replaceTitleLine(line):
     line = line.replace('"Player"', 'name')
     line = line.replace('"Team"', 'team')
     # the QB pattern is unambiguous, with CMP and INTS
-    line = line.replace('"ATT","CMP","YDS","TDS","INTS"', 'passing_att,passing_cmp,passing_yds,passing_td,passing_int')
+    line = line.replace('"ATT","CMP","YDS","TDS","INTS"', 'pass_att,pass_cmp,pass_yds,pass_td,pass_int')
     # then check the receiver one since it has REC
-    line = line.replace('"REC","YDS","TDS"', 'receiving_rec,receiving_yds,receiving_td')
+    line = line.replace('"REC","YDS","TDS"', 'rec,rec_yds,rec_td')
     # the rushing one is ambiguous on its own, so we have to fix it last
-    line = line.replace('"ATT","YDS","TDS"', 'rushing_att,rushing_yds,rushing_td')
+    line = line.replace('"ATT","YDS","TDS"', 'rush_att,rush_yds,rush_td')
     # then kickers
-    line = line.replace('"FG","FGA","XPT"', 'kicking_fgm,kicking_fga,kicking_xpmade')
+    # line = line.replace('"FG","FGA","XPT"', 'kick_fgm,kick_fga,kick_xpmade')
+    line = line.replace('"FG","FGA","XPT"', 'fgm,fga,xpm')
     line = line.replace('"FL"', 'fumbles_lost')
     # defense stats
     line = line.replace('"SACK","INT","FR","FF","TD"',
