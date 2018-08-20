@@ -4,7 +4,7 @@ import numpy as np
 def corr_spearman(x, y, weights=None):
     """
     calculates the spearman rank coefficient between arrays, using weights.
-    this naive algorithm isn't particularly optimized and actually has n^2 complexity.
+    this version runs in linearithmic time (the naive n^2 is quite slow)
     it might also be a candidate for Cython.
     """
     assert(len(x) == len(y))
@@ -15,8 +15,12 @@ def corr_spearman(x, y, weights=None):
     xsort = np.sort(xvals)
     ysort = np.sort(yvals)
 
-    xrank = np.empty(xvals.shape)
-    yrank = np.empty(yvals.shape)
+    # keeping the indices will be useful for labelling with the ranks
+    xargsorted = np.argsort(xvals)
+    yargsorted = np.argsort(yvals)
+
+    xrank = np.empty(xsort.shape)
+    yrank = np.empty(ysort.shape)
 
     # # for testing:
     # xrank[:] = np.nan
@@ -30,8 +34,8 @@ def corr_spearman(x, y, weights=None):
             j += 1
         # if there are duplicate values, set the rank of all of them to half
         rk = 0.5*(i+j)
-        for ix,xval in enumerate(xvals):
-            if xval == val: xrank[ix] = rk
+        for ix in xargsorted[i:j]:
+            xrank[ix] = rk
         i = j
 
     i=0
@@ -42,8 +46,8 @@ def corr_spearman(x, y, weights=None):
             j += 1
         # if there are duplicate values, set the rank of all of them to half
         rk = 0.5*(i+j)
-        for iy,yval in enumerate(yvals):
-            if yval == val: yrank[iy] = rk
+        for iy in yargsorted[i:j]:
+            yrank[iy] = rk
         i = j
 
     # assert(not np.isnan(xrank).any())
