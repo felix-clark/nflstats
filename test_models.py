@@ -19,11 +19,11 @@ from tools import corr_spearman
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
     warnings.simplefilter('error') # quit on warnings
-    np.set_printoptions(precision=5)
+    np.set_printoptions(precision=4)
     sns.set()
 
     rush_models = ['rush_att', 'rush_yds', 'rush_td']
-    rec_models = ['rec', 'rec_yds', 'rec_td'] # we don't have the data for targets easily accessible yet
+    rec_models = ['targets', 'rec', 'rec_yds', 'rec_td'] # we don't have the data for targets easily accessible yet
     pass_models = ['pass_att', 'pass_cmp', 'pass_yds', 'pass_td', 'pass_int']
     all_models = rush_models + rec_models + pass_models
     
@@ -47,7 +47,7 @@ def main():
     # models = ['rush_att', 'rush_yds', 'rush_tds'] # edit this to suppress info we've already looked at
     # models = ['rush_yds'] # edit this to suppress info we've already looked at
     models = pass_models if position == 'QB' else rush_models if position == 'RB' else rec_models
-    models = rec_models # overwrite to look at RB rec
+    # models = rec_models # overwrite to look at RB rec
     for model in models:
         klds = posdf[model+'_kld']
         chisqs = posdf[model+'_chisq']
@@ -62,13 +62,13 @@ def main():
             # year_plt = sns.lvplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
         # plt.show(block=True)
 
-    # print(posdf[posdf['rushing_att'] == 0])
+    # print(posdf[posdf['rush_att'] == 0])
     # TODO: we should be able to split the dataset in half randomly and see flat CDFs in both samples
     # pltvar = sns.distplot(posdf['rush_yds_cdf'])
     # pltvar.figure.show()
     # plt.show(block=True)
     # cdf_plt = sns.pairplot(posdf, #height = 4,
-    #                        vars=['rush_yds_cdf', 'rushing_att', 'rushing_yds'],
+    #                        vars=['rush_yds_cdf', 'rush_att', 'rush_yds'],
     #                        hue='career_year',
     # )
     # plt.show(block=True)
@@ -96,8 +96,8 @@ def main():
     # plt_corr.map_offdiag(sns.kdeplot, n_levels=6)
     plt.show(block=True)
         
-    # logging.warning('exiting early')
-    # exit(0)
+    logging.warning('exiting early')
+    exit(0)
     
     good_pos = True
     if position == 'RB': good_pos = posdf['rush_att'] > 0
@@ -121,8 +121,8 @@ def main():
     #     'beta_neg_binomial' # beta-negative does well overall for QBs (accounting for extra variance)
     # ]
     # # dist_fit.plot_counts( rush_att[good_pos], label='rushing attempts per game' ,fits=rush_att_fits)
-    # dist_fit.plot_counts( rec_rec, label='receptions per game' ,fits=rush_att_fits)
-    # # assert(rec_rec == 0).any())
+    # dist_fit.plot_counts( rec, label='receptions per game' ,fits=rush_att_fits)
+    # # assert(rec == 0).any())
 
     # print('rushing yards per attempt:')
     # # in a single game
@@ -140,23 +140,23 @@ def main():
     # # poisson is too narrow, geometric has too heavy of tail
     # # neg binomial is not perfect, -logL/N ~ 2. doesn't quite capture shape
     # # get p~0.5... coincidence?
-    # dist_fit.plot_counts( rec_rec, label='receptions', fits=['neg_binomial'] )
+    # dist_fit.plot_counts( rec, label='receptions', fits=['neg_binomial'] )
 
     
     ## # correlation calculations:
     
     corrdf = posdf[good_pos]
-    # corrdf['rushing_ypa'] = corrdf['rushing_yds'] / corrdf['rushing_att']
-    # corrdf['rushing_tdpa'] = corrdf['rushing_tds'] / corrdf['rushing_att']
+    # corrdf['rush_ypa'] = corrdf['rush_yds'] / corrdf['rush_att']
+    # corrdf['rush_tdpa'] = corrdf['rush_tds'] / corrdf['rush_att']
     # we probably want to use the *weighted* spearman correlation of the CDF values,
     # since those are computed within the context of our model.
     # using spearman over pearson at least factorizes the effects of mis-modeling, and
     # accounts for the biased CDFs from integer results (which push the CDF value higher)
-    # rush_corr = corrdf[['rushing_att', 'rushing_ypa', 'rushing_tdpa']].corr(method='spearman')
-    rec_corr = corrdf[['receiving_rec', 'receiving_yds', 'receiving_tds']].corr(method='spearman')
+    # rush_corr = corrdf[['rush_att', 'rush_ypa', 'rush_tdpa']].corr(method='spearman')
+    rec_corr = corrdf[['rec', 'rec_yds', 'rec_td']].corr(method='spearman')
     print(rec_corr)
 
-    # rush_att = corrdf['rushing_att']
+    # rush_att = corrdf['rush_att']
     # print('att, yds cdf spearman:')
     # print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rush_yds_cdf'].values, weights=rush_att))
     # print('att, tds cdf spearman:')
@@ -168,22 +168,22 @@ def main():
     # print(rush_corr)
     
     print('rush and rec attempts cdf spearman:')
-    print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rec_rec_cdf'].values))
+    print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rec_cdf'].values))
     
-    rec_rec = corrdf['receiving_rec']
+    rec = corrdf['rec']
     print('rec, yds cdf spearman:')
-    print(corr_spearman(corrdf['rec_rec_cdf'].values, corrdf['rec_yds_cdf'].values, weights=rec_rec))
+    print(corr_spearman(corrdf['rec_cdf'].values, corrdf['rec_yds_cdf'].values, weights=rec))
     print('rec, tds cdf spearman:')
-    print(corr_spearman(corrdf['rec_rec_cdf'].values, corrdf['rec_tds_cdf'].values, weights=rec_rec))
+    print(corr_spearman(corrdf['rec_cdf'].values, corrdf['rec_tds_cdf'].values, weights=rec))
     print('tds, yds cdf spearman:')
-    print(corr_spearman(corrdf['rec_yds_cdf'].values, corrdf['rec_tds_cdf'].values, weights=rec_rec))
+    print(corr_spearman(corrdf['rec_yds_cdf'].values, corrdf['rec_tds_cdf'].values, weights=rec))
     rec_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
     print(rec_corr)
     
     
     plt_corr = sns.pairplot(corrdf, #height = 4,
                             # vars=['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf'],
-                            vars=['rec_rec_cdf', 'rec_yds_cdf', 'rec_tds_cdf'],
+                            vars=['rec_cdf', 'rec_yds_cdf', 'rec_tds_cdf'],
                             dropna=True,
                             # kind='reg', # do linear regression to look for correlations
                             # hue='career_year'
@@ -204,25 +204,28 @@ def get_pos_dfs(pos, fname = None):
     pldfs = [] # pd.DataFrame()
 
     good_col = None
-    if pos == 'QB': good_col = lambda col: 'rec' not in col and 'kick' not in col
-    if pos == 'K': good_col = lambda col: 'pass' not in col and 'rush' not in col and 'rec' not in col
-    if pos in ['RB', 'WR', 'TE']: good_col = lambda col: 'pass' not in col and 'kick' not in col
+    if pos == 'QB': good_col = lambda col: 'rec' not in col and 'kick' not in col and 'punt' not in col
+    if pos == 'K': good_col = lambda col: 'pass' not in col and 'rush' not in col and 'rec' not in col and 'punt' not in col
+    if pos in ['RB', 'WR', 'TE']: good_col = lambda col: 'pass' not in col and 'kick' not in col and 'punt' not in col
     players = get_pos_players(pos)
     pfrids = players['pfr_id']
     for pid in pfrids:
         pdf = get_player_stats(pid)
-        pdf.loc['pfr_id'] = pid
-        pdlf.append(pdf, ignore_index=True, sort=False)
+        if len(pdf) == 0:
+            logging.error('empty data for {}'.format(pid))
+            continue
+        # pdf = pdf[pdf['gs'] == '*'] # only count where they started? # don't have the indicator for this, and it might rule out some real data points for e.g. RBs, TEs
+        pdf.loc[:,'pfr_id'] = pid
 
-        columns = [col for col in yrdf.columns if good_col(col)]
+        columns = [col for col in pdf.columns if good_col(col)]
         columns.remove('game_location')
         columns.remove('opp')
         columns.remove('game_result')
-        pldf = pldf[columns].fillna(0)
+        pdf = pdf[columns].fillna(0)
         
         # they should already be sorted properly, but let's check.
-        pldf = rbdf.sort_values(['year', 'game_num']).reset_index(drop=True)
-        pldfs.append(pldf)
+        pdf = pdf.sort_values(['year', 'game_num']).reset_index(drop=True)
+        pldfs.append(pdf)
 
     return pldfs
         
@@ -241,12 +244,12 @@ def get_pos_dfs(pos, fname = None):
     #     mask = None
     #     # filtering by position alone rules out e.g. Fred Jackson in 2009 because of an error in the data
     #     # ... but this data is weekly. it'd be more messiness to correct that here.
-    #     # if pos == 'RB': mask = (yrdf['pos'] == 'RB') | (yrdf['rushing_att'] > 100) .. else
+    #     # if pos == 'RB': mask = (yrdf['pos'] == 'RB') | (yrdf['rush_att'] > 100) .. else
     #     mask = (yrdf['pos'] == pos) # we may have to use more custom workarounds
     #     # to be included each week, they need to have been a good [RB] and also have actually played:
     #     if pos == 'QB': mask &= (yrdf['passing_cmp'] > 0)
-    #     if pos == 'RB': mask &= (yrdf['rushing_att'] > 0)
-    #     if pos in ['WR', 'TE']: mask &= ((yrdf['receiving_rec'] > 0) | (yrdf['rushing_att'] > 0))
+    #     if pos == 'RB': mask &= (yrdf['rush_att'] > 0)
+    #     if pos in ['WR', 'TE']: mask &= ((yrdf['rec'] > 0) | (yrdf['rush_att'] > 0))
     #     if pos == 'K': mask &= ((yrdf['kicking_xpa'] > 0) | (yrdf['kicking_fga'] > 0))
     #     yrdf = yrdf[mask]
         
@@ -277,9 +280,9 @@ def get_model_df( pos='RB', fname = None):
     if os.path.isfile(fname):
         return pd.read_csv(fname)
 
-    rbdf = get_pos_dfs(pos)
-    playerids = rbdf['playerid'].unique()
-    years = rbdf['year'].unique()    
+    posdfs = get_pos_dfs(pos)
+    # playerids = rbdf['playerid'].unique()
+    # years = rbdf['year'].unique()    
 
     # basing rush attempts soley on the past is not so great.
     # ideally we use a team-based touch model.
@@ -288,16 +291,20 @@ def get_model_df( pos='RB', fname = None):
 
     models = []
     if pos == 'QB':
-        models.extend(['pass_att', 'pass_cmp', 'pass_yds', 'pass_tds', 'pass_int'])
+        models.extend(['pass_att', 'pass_cmp', 'pass_yds', 'pass_td', 'pass_int'])
     if pos in ['RB', 'QB', 'WR']:
-        models.extend(['rush_att', 'rush_yds', 'rush_tds'])
+        models.extend(['rush_att', 'rush_yds', 'rush_td'])
     if pos in ['WR', 'TE', 'RB']:
-        models.extend(['rec_rec', 'rec_yds', 'rec_tds'])
+        models.extend(['rec', 'rec_yds', 'rec_td'])
     tot_week = 0
     
-    for pid in playerids:
-        pdf = rbdf[rbdf['playerid'] == pid]
-        pname = pdf['name'].unique()[0]
+    # for pid in playerids:
+    # logging.warning('cutting it short')
+    for pdf in posdfs:
+        # pdf = pldf[pldf['playerid'] == pid]
+        # pname = pdf['name'].unique()[0]
+        # pname = pdf['player'].unique()[0]
+        pid = pdf['pfr_id'].unique()[0]
 
         plmodels = [get_model_class(mod).for_position(pos) for mod in models]
         
@@ -305,14 +312,19 @@ def get_model_df( pos='RB', fname = None):
         # we could skip single-year seasons
         for icareer,year in enumerate(years):
             # can we use "group by" or something to reduce the depth of these loops?
-            ypdf = pdf[(pdf['year'] == year) & (pdf['week'] < 17)] # week 17 is often funky
+            # ypdf = pdf[(pdf['year'] == year) & (pdf['week'] < 17)] # week 17 is often funky
+            ypdf = pdf[(pdf['year'] == year) & (pdf['game_num'] < 16)] # week 17 is often funky
             for index, row in ypdf.iterrows():
                 # these do point to the same one:
                 # assert((row[['name', 'year', 'week']] == rbdf.loc[index][['name', 'year', 'week']]).all())
                 tot_week += 1
-                rbdf.loc[index,'career_year'] = icareer+1
+                pdf.loc[index,'career_year'] = icareer+1
                 for model in plmodels:
-                    mvars = [row[v] for v in model.var_names]
+                    try:
+                        mvars = [row[v] for v in model.var_names]
+                    except:
+                        print(row)
+                        print (model.var_names)
                     kld = model.kld(*mvars)
                     chisq = model.chi_sq(*mvars)
                     data = row[model.pred_var]
@@ -320,32 +332,29 @@ def get_model_df( pos='RB', fname = None):
                     ev = model.ev(*depvars)
                     var = model.var(*depvars)
                     cdf = model.cdf(*mvars) # standardized to look like a gaussian
-                    if row[model.pred_var] == 0:
-                        cdf = random.uniform(0,cdf) # smear the cdf to deal with small discrete numbers
+                    # if row[model.pred_var] == 0:
+                    #     cdf = random.uniform(0,cdf) # smear the cdf to deal with small discrete numbers
                     # res = (data-ev)/np.sqrt(var)
-                    rbdf.loc[index,'{}_ev'.format(model.name)] = ev
-                    rbdf.loc[index,'{}_cdf'.format(model.name)] = cdf
-                    rbdf.loc[index,'{}_kld'.format(model.name)] = kld
-                    rbdf.loc[index,'{}_chisq'.format(model.name)] = chisq
-                    # if np.isnan(cdf):
-                    #     print(rbdf.loc[index])
-                    #     print(kld)
-                    #     exit(1)
+                    pdf.loc[index,'{}_ev'.format(model.name)] = ev
+                    pdf.loc[index,'{}_cdf'.format(model.name)] = cdf
+                    pdf.loc[index,'{}_kld'.format(model.name)] = kld
+                    pdf.loc[index,'{}_chisq'.format(model.name)] = chisq
                     model.update_game(*mvars) # it's important that this is done last, after computing KLD and chi^2
             for model in plmodels:
                 model.new_season()
                 
         # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
         # logging.info('  {}'.format(plmodels['rush_yds']))
-        
-    rbdf.to_csv(fname)
-    return rbdf
+
+    combdf = pd.concat(posdfs, sort=False)
+    combdf.to_csv(fname)
+    return combdf
 
 def find_model_hyperparameters(pos, model_name='rush_att'):
     logging.info('will search for good hyperparameters for {}'.format(model_name))
-    rbdf = get_pos_dfs(pos)
-    playerids = rbdf['playerid'].unique()
-    years = rbdf['year'].unique()
+    posdfs = get_pos_dfs(pos)
+    # playerids = rbdf['playerid'].unique()
+    # years = rbdf['year'].unique()
 
     # learn = True
     mdtype = get_model_class(model_name)
@@ -358,19 +367,29 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
     
     def tot_kld(hparams):
         nonlocal newmin
-        tot_week = 0
         tot_kld = 0
-        for pid in playerids:
-            pdf = rbdf[rbdf['playerid'] == pid]
+        # for pid in playerids:
+        for pdf in posdfs:
+            # pdf = rbdf[rbdf['playerid'] == pid]
             plmodel = mdtype(*hparams)
             years = pdf['year'].unique()
             # we could skip single-year seasons
             for icareer,year in enumerate(years):
                 # can we use "group by" or something to reduce the depth of these loops?
-                ypdf = pdf[(pdf['year'] == year) & (pdf['week'] < 17)] # week 17 is often funky
+                # ypdf = pdf[(pdf['year'] == year) & (pdf['week'] < 17)] # week 17 is often funky
+                ypdf = pdf[(pdf['year'] == year) & (pdf['game_num'] < 16)] # week 17 is often funky
                 for index, row in ypdf.iterrows():
-                    tot_week += 1
-                    mvars = [row[v] for v in plmodel.var_names]
+                    # print(plmodel.var_names)
+                    # print(row)
+                    # print(row['targets'])
+                    try:
+                        mvars = [row[v] for v in plmodel.var_names]
+                    except:
+                        print(row)
+                        exit(1)
+                    # if plmodel.name == 'rec':
+                    #     if row['rec'] > row['targets']:
+                    #         print(row)
                     kld = plmodel.kld(*mvars)
                     # if np.isnan(kld):
                     #     print(plmodel.var_names)
@@ -424,21 +443,21 @@ def top_rb_names(year, nadp=32, n1=4, n2=12):
     yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year))
     # yrdf = yrdf[yrdf['pos'] == pos] # some of the position data is incorrect, so just rank by rush attempts
     # manually remove QBs from here
-    yrdf = yrdf[(yrdf['rushing_att'] > 4) & (yrdf['pos'] != 'QB')]
+    yrdf = yrdf[(yrdf['rush_att'] > 4) & (yrdf['pos'] != 'QB')]
     teams = yrdf['team'].unique()
     weeks = yrdf['week'].unique()
     top1,top2 = {},{}
     for week,team in itertools.product(weeks, teams):
-        relpos = yrdf[(yrdf['week'] == week) & (yrdf['team'] == team)].sort_values('rushing_att', ascending=False)
+        relpos = yrdf[(yrdf['week'] == week) & (yrdf['team'] == team)].sort_values('rush_att', ascending=False)
         if len(relpos) == 0: continue # then it's probably a bye week
         toprsh = relpos.iloc[0]
-        if toprsh['rushing_yds'] >= 10:
+        if toprsh['rush_yds'] >= 10:
             t1name = toprsh['name']
             top1[t1name] = top1.get(t1name, 0) + 1
             top2[t1name] = top2.get(t1name, 0) + 1
         if len(relpos) < 2: continue
         toprsh = relpos.iloc[1]
-        if toprsh['rushing_yds'] >= 10:
+        if toprsh['rush_yds'] >= 10:
             t2name = toprsh['name']
             top2[t2name] = top2.get(t2name, 0) + 1
 
@@ -479,16 +498,16 @@ def top_wr_names(year, nadp=36, n1=4, n2=12):
     top1,top2 = {},{}
     for week,team in itertools.product(weeks, teams):
         relpos = yrdf[(yrdf['week'] == week) & (yrdf['team'] == team)]
-        relpos = relpos.assign(fp = relpos['receiving_rec'] + 0.1*relpos['receiving_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
+        relpos = relpos.assign(fp = relpos['rec'] + 0.1*relpos['rec_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
         if len(relpos) == 0: continue # then it's probably a bye week
         toprec = relpos.iloc[0]
-        if toprec['receiving_yds'] >= 10:
+        if toprec['rec_yds'] >= 10:
             t1name = toprec['name']
             top1[t1name] = top1.get(t1name, 0) + 1
             top2[t1name] = top2.get(t1name, 0) + 1
         if len(relpos) < 2: continue
         toprec = relpos.iloc[1]
-        if toprec['receiving_yds'] >= 10:
+        if toprec['rec_yds'] >= 10:
             t2name = toprec['name']
             top2[t2name] = top2.get(t2name, 0) + 1
 
@@ -528,16 +547,16 @@ def top_te_names(year, nadp=18,
     # top1,top2 = {},{}
     # for week,team in itertools.product(weeks, teams):
     #     relpos = yrdf[(yrdf['week'] == week) & (yrdf['team'] == team)]
-    #     relpos = relpos.assign(fp = relpos['receiving_rec'] + 0.1*relpos['receiving_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
+    #     relpos = relpos.assign(fp = relpos['rec'] + 0.1*relpos['rec_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
     #     if len(relpos) == 0: continue # then it's probably a bye week
     #     toprec = relpos.iloc[0]
-    #     if toprec['receiving_yds'] >= 10:
+    #     if toprec['rec_yds'] >= 10:
     #         t1name = toprec['name']
     #         top1[t1name] = top1.get(t1name, 0) + 1
     #         # top2[t1name] = top2.get(t1name, 0) + 1
     #     if len(relpos) < 2: continue
     #     toprec = relpos.iloc[1]
-    #     if toprec['receiving_yds'] >= 10:
+    #     if toprec['rec_yds'] >= 10:
     #         t2name = toprec['name']
     #         top2[t2name] = top2.get(t2name, 0) + 1
 
@@ -575,16 +594,16 @@ def top_qb_names(year, nadp=18,
     # top1,top2 = {},{}
     # for week,team in itertools.product(weeks, teams):
     #     relpos = yrdf[(yrdf['week'] == week) & (yrdf['team'] == team)]
-    #     relpos = relpos.assign(fp = relpos['receiving_rec'] + 0.1*relpos['receiving_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
+    #     relpos = relpos.assign(fp = relpos['rec'] + 0.1*relpos['rec_yds']).sort_values('fp', ascending=False).drop('fp', axis=1)
     #     if len(relpos) == 0: continue # then it's probably a bye week
     #     toprec = relpos.iloc[0]
-    #     if toprec['receiving_yds'] >= 10:
+    #     if toprec['rec_yds'] >= 10:
     #         t1name = toprec['name']
     #         top1[t1name] = top1.get(t1name, 0) + 1
     #         # top2[t1name] = top2.get(t1name, 0) + 1
     #     if len(relpos) < 2: continue
     #     toprec = relpos.iloc[1]
-    #     if toprec['receiving_yds'] >= 10:
+    #     if toprec['rec_yds'] >= 10:
     #         t2name = toprec['name']
     #         top2[t2name] = top2.get(t2name, 0) + 1
 
