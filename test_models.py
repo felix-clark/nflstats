@@ -84,21 +84,19 @@ def main():
     #     plt_cdf.figure.show()
     # plt.show(block=True)
 
-    resnames = ['{}_cdf'.format(m) for m in models] # we could take the ppf of this to look at standardized residuals
-    plt_corr = sns.pairplot(posdf, # height = 4,
-                            dropna=True,
-                            vars=resnames,
-                            # kind='reg', # do linear regression to look for correlations
-                            # diag_kind='hist', # causes error
-                            hue='career_year'
-    )
-    # plt_corr.map_diag(plt.hist)
-    # plt_corr.map_offdiag(sns.kdeplot, n_levels=6)
-    plt.show(block=True)
+    if False:
+        resnames = ['{}_cdf'.format(m) for m in models] # we could take the ppf of this to look at standardized residuals
+        plt_corr = sns.pairplot(posdf, # height = 4,
+                                dropna=True,
+                                vars=resnames,
+                                # kind='reg', # do linear regression to look for correlations
+                                # diag_kind='hist', # causes error
+                                hue='career_year'
+        )
+        # plt_corr.map_diag(plt.hist)
+        # plt_corr.map_offdiag(sns.kdeplot, n_levels=6)
+        plt.show(block=True)
         
-    logging.warning('exiting early')
-    exit(0)
-    
     good_pos = True
     if position == 'RB': good_pos = posdf['rush_att'] > 0
     if position == 'QB': good_pos = posdf['pass_cmp'] > 0
@@ -106,102 +104,75 @@ def main():
          # not clear we should filter these. include zero for now
         good_pos = posdf['rec'] >= 0
     
-    # print(posdf[~good_rushers])
-    # print(rush_att[~good_rushers])
-    # print('receptions')
-    # # negative binomial does quite well here for single year, but only for top players.
-    # # note p~0.5 ... more like 0.7 w/ all seasons
-    # # poisson is under-dispersed.
-    # # neg bin doesn't do as well w/ all years, but still better than poisson
-    # # beta-negative binomial should have the extra dispersion to capture this
-    # rush_att_fits = [
-    #     # 'geometric',
-    #     'poisson',
-    #     'neg_binomial',
-    #     'beta_neg_binomial' # beta-negative does well overall for QBs (accounting for extra variance)
-    # ]
-    # # dist_fit.plot_counts( rush_att[good_pos], label='rushing attempts per game' ,fits=rush_att_fits)
-    # dist_fit.plot_counts( rec, label='receptions per game' ,fits=rush_att_fits)
-    # # assert(rec == 0).any())
-
-    # print('rushing yards per attempt:')
-    # # in a single game
-    # dist_fit.plot_avg_per( rush_yds[good_rbs]/rush_att[good_rbs], weights=rush_att[good_rbs],
-    #                        label='rush yds per attempt', bounds=(-10,50))
+    corrdf = posdf[good_pos]
     
-    # dist_fit.plot_counts( all_td, label='touchdowns', fits=['poisson', 'neg_binomial'] )
-    
-    # # the direct ratio fit doesn't do so well. TDs are farely rare overall, and the alpha/beta parameters tend to blow up in the fit.
-    # # perhaps just a poisson or simple rate would suffice.
-    # print('rush TDs per attempt:')
-    # dist_fit.plot_fraction( rush_tds[good_rbs], rush_att[good_rbs], label='touchdowns per attempt' )
-    
-    # print('receptions:')
-    # # poisson is too narrow, geometric has too heavy of tail
-    # # neg binomial is not perfect, -logL/N ~ 2. doesn't quite capture shape
-    # # get p~0.5... coincidence?
-    # dist_fit.plot_counts( rec, label='receptions', fits=['neg_binomial'] )
-
+    # logging.warning('exiting early')
+    # exit(0)
     
     ## # correlation calculations:
-    
-    corrdf = posdf[good_pos]
-    # corrdf['rush_ypa'] = corrdf['rush_yds'] / corrdf['rush_att']
-    # corrdf['rush_tdpa'] = corrdf['rush_tds'] / corrdf['rush_att']
-    # we probably want to use the *weighted* spearman correlation of the CDF values,
-    # since those are computed within the context of our model.
-    # using spearman over pearson at least factorizes the effects of mis-modeling, and
-    # accounts for the biased CDFs from integer results (which push the CDF value higher)
-    # rush_corr = corrdf[['rush_att', 'rush_ypa', 'rush_tdpa']].corr(method='spearman')
-    rec_corr = corrdf[['rec', 'rec_yds', 'rec_td']].corr(method='spearman')
-    print(rec_corr)
+    plmodel = get_player_model(position)()
+    stats = plmodel.stats
+    print(stats)
+    corr_mat = np.ones(shape=(len(stats), len(stats)))
+    # for sa,sb in itertools.combinations(stats, 2):
+    for ia in range(len(stats)):
+        sa = stats[ia]
+        for ib in range(ia):
+            sb = stats[ib]
+            cdfs = (corrdf[sa+'_cdf'].values, corrdf[sb+'_cdf'].values)
+            # sr = st.spearmanr(*cdfs)
+            # rho,p = sr
+            # print('rho: {:.3f} \t p : {:.3g}'.format(rho, p))
+            # quantities that are "per" another quantity should be weighted by that quantity so the correlation is dominated by relevant data
+            weights = np.ones(shape=cdfs[0].shape)
+            cmpsts = set((sa, sb))
+            # we don't want to double-weight; for instance the correlation between
+            # rush_yds and rush_td should be weighted by a single power of rush_att
+            if len(cmpsts & set(['rush_yds', 'rush_td'])):
+                # print('weighting {},{} by rush attempts'.format(sa, sb))
+                weights *= corrdf['rush_att'].values
+                
+            if 'rec' in cmpsts:
+                # print('weighting {},{} by targets'.format(sa, sb))
+                weights *= corrdf['targets'].values
+            elif len(cmpsts & set(['rec_yds', 'rec_td'])):
+                # print('weighting {},{} by receptions'.format(sa, sb))
+                weights *= corrdf['rec'].values
 
-    # rush_att = corrdf['rush_att']
-    # print('att, yds cdf spearman:')
-    # print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rush_yds_cdf'].values, weights=rush_att))
-    # print('att, tds cdf spearman:')
-    # print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rush_tds_cdf'].values, weights=rush_att))
-    # print('tds, yds cdf spearman:')
-    # print(corr_spearman(corrdf['rush_yds_cdf'].values, corrdf['rush_tds_cdf'].values, weights=rush_att))
-    # # spearman and pearson are quite similar for the cdf, at least when the models are working decently
-    # rush_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
-    # print(rush_corr)
-    
-    print('rush and rec attempts cdf spearman:')
-    print(corr_spearman(corrdf['rush_att_cdf'].values, corrdf['rec_cdf'].values))
-    
-    rec = corrdf['rec']
-    print('rec, yds cdf spearman:')
-    print(corr_spearman(corrdf['rec_cdf'].values, corrdf['rec_yds_cdf'].values, weights=rec))
-    print('rec, tds cdf spearman:')
-    print(corr_spearman(corrdf['rec_cdf'].values, corrdf['rec_tds_cdf'].values, weights=rec))
-    print('tds, yds cdf spearman:')
-    print(corr_spearman(corrdf['rec_yds_cdf'].values, corrdf['rec_tds_cdf'].values, weights=rec))
-    rec_corr = corrdf[['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf']].corr(method='spearman')
-    print(rec_corr)
-    
+            if len(cmpsts & set(['pass_cmp', 'pass_int'])) > 0:
+                # print('weighting {},{} by pass attempts'.format(sa, sb))
+                weights *= corrdf['pass_att'].values
+            elif len(cmpsts & set(['pass_yds', 'pass_td'])) > 0:
+                # print('weighting {},{} by completions'.format(sa, sb))
+                weights *= corrdf['pass_cmp'].values
+                
+            corr_sp = corr_spearman(*cdfs, weights=weights)
+            corr_mat[ia,ib] = corr_mat[ib,ia] = corr_sp
+            # print('weighted spearman correlation of {} and {}:'.format(sb, sa))
+            # print('{:.3f}'.format(corr_sp))
+
+    # array2string lets us print out w/ commas for easy copy-paste
+    print('weighted covariance matrix for {} stats:'.format(position))
+    print(np.array2string(corr_mat, precision=3, separator=',', suppress_small=True))
+        
+    logging.warning('exiting early')
+    exit(0)    
     
     plt_corr = sns.pairplot(corrdf, #height = 4,
-                            # vars=['rush_att_cdf', 'rush_yds_cdf', 'rush_tds_cdf'],
-                            vars=['rec_cdf', 'rec_yds_cdf', 'rec_tds_cdf'],
+                            vars=[v+'_cdf' for v in stats],
                             dropna=True,
                             # kind='reg', # do linear regression to look for correlations
                             # hue='career_year'
     )
     plt.show(block=True)
 
-    pass
+    return
 
 
 def get_pos_dfs(pos, fname = None):
+    # this whole procedure can be done rather rapidly now, so there's no need to cache
     pos = pos.upper()
-    # no longer caching...
-    # if fname is None:
-    #     fname = 'data_{}_cache.csv'.format(pos.lower())
-    # if os.path.isfile(fname):
-    #     return pd.read_csv(fname, index_col=0)
-    # logging.info('will compile and cache {} data'.format(pos))
-    pldfs = [] # pd.DataFrame()
+    pldfs = []
 
     good_col = None
     if pos == 'QB': good_col = lambda col: 'rec' not in col and 'kick' not in col and 'punt' not in col
@@ -228,52 +199,8 @@ def get_pos_dfs(pos, fname = None):
         pldfs.append(pdf)
 
     return pldfs
-        
-    # adpfunc = None
-    # if pos == 'QB': adpfunc = top_qb_names
-    # if pos == 'RB': adpfunc = top_rb_names
-    # if pos == 'WR': adpfunc = top_wr_names
-    # if pos == 'TE': adpfunc = top_te_names
-    # # ...
-    
-    
-    # firstyear,lastyear = 2009,2017 # 2009 seems to have very limited stats
-    # for year in range(firstyear,lastyear+1):
-    #     yrdf = pd.read_csv('weekly_stats/fantasy_stats_year_{}.csv'.format(year), index_col=0)
-        
-    #     mask = None
-    #     # filtering by position alone rules out e.g. Fred Jackson in 2009 because of an error in the data
-    #     # ... but this data is weekly. it'd be more messiness to correct that here.
-    #     # if pos == 'RB': mask = (yrdf['pos'] == 'RB') | (yrdf['rush_att'] > 100) .. else
-    #     mask = (yrdf['pos'] == pos) # we may have to use more custom workarounds
-    #     # to be included each week, they need to have been a good [RB] and also have actually played:
-    #     if pos == 'QB': mask &= (yrdf['passing_cmp'] > 0)
-    #     if pos == 'RB': mask &= (yrdf['rush_att'] > 0)
-    #     if pos in ['WR', 'TE']: mask &= ((yrdf['rec'] > 0) | (yrdf['rush_att'] > 0))
-    #     if pos == 'K': mask &= ((yrdf['kicking_xpa'] > 0) | (yrdf['kicking_fga'] > 0))
-    #     yrdf = yrdf[mask]
-        
-    #     # we won't try to model passing for non-QBs; it's too rare to be meaningful
-    #     # similarly we won't track QB receptions
-    #     good_col = None
-    #     if pos == 'QB': good_col = lambda col: 'receiving' not in col and 'kicking' not in col
-    #     if pos == 'K': good_col = lambda col: 'passing' not in col and 'rushing' not in col and 'receiving' not in col
-    #     if pos in ['RB', 'WR', 'TE']: good_col = lambda col: 'passing' not in col and 'kicking' not in col
-    #     columns = [col for col in yrdf.columns if good_col(col)]
-    #     yrdf = yrdf[columns].fillna(0)
-        
-    #     yrdf['year'] = year
-    #     # could also provide a weight based on ADP or production?
-    #     good_pos_names = adpfunc(year)
-    #     good_pos = yrdf['name'].isin(good_pos_names)
-    #     yrdf = yrdf[good_pos]
-    #     rbdf = rbdf.append(yrdf)
-        
-    # logging.info('saving relevant {} data to {}'.format(pos, fname))
-    # pldf.to_csv(fname)
-    # return pldf
 
-    
+
 def get_model_df( pos='RB', fname = None):
     if fname is None:
         fname = 'model_cache_{}.csv'.format(pos.lower())
@@ -281,8 +208,6 @@ def get_model_df( pos='RB', fname = None):
         return pd.read_csv(fname)
 
     posdfs = get_pos_dfs(pos)
-    # playerids = rbdf['playerid'].unique()
-    # years = rbdf['year'].unique()    
 
     # basing rush attempts soley on the past is not so great.
     # ideally we use a team-based touch model.
@@ -295,24 +220,25 @@ def get_model_df( pos='RB', fname = None):
     if pos in ['RB', 'QB', 'WR']:
         models.extend(['rush_att', 'rush_yds', 'rush_td'])
     if pos in ['WR', 'TE', 'RB']:
-        models.extend(['rec', 'rec_yds', 'rec_td'])
+        models.extend(['targets', 'rec', 'rec_yds', 'rec_td'])
     tot_week = 0
     
-    # for pid in playerids:
-    # logging.warning('cutting it short')
     for pdf in posdfs:
-        # pdf = pldf[pldf['playerid'] == pid]
         # pname = pdf['name'].unique()[0]
         # pname = pdf['player'].unique()[0]
-        pid = pdf['pfr_id'].unique()[0]
-
-        plmodels = [get_model_class(mod).for_position(pos) for mod in models]
         
+        pid = pdf['pfr_id'].unique()[0]
+        plmodels = [get_stat_model(mod).for_position(pos) for mod in models]
+
+        # insert zeros for stats that aren't saved for this player
+        for var in np.concatenate([plmodel.var_names for plmodel in plmodels]):
+            if var not in pdf:
+                pdf[var] = 0
+
         years = pdf['year'].unique()
         # we could skip single-year seasons
         for icareer,year in enumerate(years):
             # can we use "group by" or something to reduce the depth of these loops?
-            # ypdf = pdf[(pdf['year'] == year) & (pdf['week'] < 17)] # week 17 is often funky
             ypdf = pdf[(pdf['year'] == year) & (pdf['game_num'] < 16)] # week 17 is often funky
             for index, row in ypdf.iterrows():
                 # these do point to the same one:
@@ -343,21 +269,16 @@ def get_model_df( pos='RB', fname = None):
             for model in plmodels:
                 model.new_season()
                 
-        # logging.info('after {} year career, {} is modeled by:'.format(len(years), pname))
-        # logging.info('  {}'.format(plmodels['rush_yds']))
-
     combdf = pd.concat(posdfs, sort=False)
     combdf.to_csv(fname)
     return combdf
 
+
 def find_model_hyperparameters(pos, model_name='rush_att'):
     logging.info('will search for good hyperparameters for {}'.format(model_name))
     posdfs = get_pos_dfs(pos)
-    # playerids = rbdf['playerid'].unique()
-    # years = rbdf['year'].unique()
 
-    # learn = True
-    mdtype = get_model_class(model_name)
+    mdtype = get_stat_model(model_name)
     hpars0 = mdtype._default_hyperpars(pos)
     hparbounds = mdtype._hyperpar_bounds()
     logging.info('starting with parameters {}'.format(hpars0))
@@ -368,11 +289,13 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
     def tot_kld(hparams):
         nonlocal newmin
         tot_kld = 0
-        # for pid in playerids:
         for pdf in posdfs:
-            # pdf = rbdf[rbdf['playerid'] == pid]
             plmodel = mdtype(*hparams)
+            for var in plmodel.var_names:
+                if var not in pdf:
+                    pdf[var] = 0
             years = pdf['year'].unique()
+            assert((np.diff(years) > 0).all()) # make sure the years are sorted
             # we could skip single-year seasons
             for icareer,year in enumerate(years):
                 # can we use "group by" or something to reduce the depth of these loops?
@@ -385,6 +308,7 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
                     try:
                         mvars = [row[v] for v in plmodel.var_names]
                     except:
+                        logging.error('missing some of {}'.format(plmodel.var_names))
                         print(row)
                         exit(1)
                     # if plmodel.name == 'rec':
@@ -418,6 +342,9 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
     minpars = minned.x
     print(mdtype(*minpars))
     return minpars
+
+### we are no longer using these functions to grad by ADP
+### could we just delete these functions?
 
 # returns a list of the top N rbs by ADP in a given year
 def top_rb_names(year, nadp=32, n1=4, n2=12):
