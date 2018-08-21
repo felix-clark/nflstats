@@ -37,7 +37,7 @@ def main():
     pidx = get_pos_players(pos)
     pidx = pidx[(pidx['pos'] == pos) & (pidx['year_max'] >= current_year-1)]
     ngames = 16
-    nseasons = 32
+    nseasons = 128
 
     evdf = pd.DataFrame(columns=['player', 'pos'], dtype=int)
     
@@ -57,15 +57,17 @@ def main():
             pmod.new_season()
         fpdf = pd.DataFrame([pmod.gen_game() for _ in range(ngames)])
         fps = pd.concat((get_points_from_data_frame( rules, fpdf ) for _ in range(nseasons)), ignore_index=True)
-        print('std dev / mean: {}'.format(fps.std()/fps.mean()))
+        # print('std dev / mean: {}'.format(fps.std()/fps.mean()))
         evdat = {key:(ngames*val) for key,val in pmod.evs().items()}
         evdat['player'] = pname
         evdat['pos'] = pos
-        evdat['fpts'] = get_points_from_data_frame( rules, evdat )
+        evdat['fpts_ev'] = get_points_from_data_frame( rules, evdat )
+        evdat['fpts_sim'] = fps.mean()
+        evdat['fpts_simstd'] = fps.std()
         # evdat['fpts'] = fps.sum() # this is random
         evdf = evdf.append(evdat, ignore_index=True)
         
-    print(evdf.sort_values('fpts', ascending=False))
+    print(evdf.sort_values('fpts_ev', ascending=False))
     
     return
 
