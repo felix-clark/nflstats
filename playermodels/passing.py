@@ -58,12 +58,12 @@ class PassYdsModel(YdsPerAttModel):
     def _default_hyperpars(self, pos):
         pos = pos.upper()
         if pos == 'QB':
-            return np.array(( #TODO: run this
-                60.16, 5.28, 7.30, 56.09, # initial bayes parameters
-                0.0494, # skew
-                0.0210, 0.00885, # learn rates
-                0.678,0.923, # munu/nu, alpha/beta season memory
-                0.982,0.994, # game memories
+            return np.array((
+                12.15/4, 1.079/4, 0.395/2, 1.08/2, # initial bayes parameters
+                2.55, # skew
+                0.00246, 1.46e-7, # learn rates
+                0.706,0.863, # munu/nu, alpha/beta season memory
+                0.999,1.0, # game memories
                 ))
         else:
             logging.error('only QBs will have passing models (not {}s)'.format(pos))

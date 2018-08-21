@@ -59,11 +59,11 @@ class RushYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                3.95, 1.07, 3.43, 4.37, # initial bayes parameters
-                1.422, # skew
-                0.00271, 9.54e-5, # learn rates
-                0.850, 0.965, # munu/nu, a/b season memory
-                0.991, 0.970, # game memories
+                4.07, 1.08, 3.45, 4.36, # initial bayes parameters
+                1.46, # skew
+                0.0025, 0.0010, # learn rates
+                0.833, 0.967, # munu/nu, a/b season memory
+                1.0, 1.0, # game memories
             ))
         if pos == 'QB':
             return np.array(( # TODO: here and other positions
