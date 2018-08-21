@@ -5,6 +5,7 @@ from sys import argv
 import pandas as pd
 import logging
 import os
+from retrying import retry
 
 
 def _make_dirs():
@@ -69,19 +70,27 @@ def _make_cache(pfrid):
                    'scoring',
                    ]
     
-    df = pd.DataFrame()
-    
-    for year in years:
-        url = 'https://www.pro-football-reference.com/players/{}/{}/gamelog/{year}/'.format(pfrid[0], pfrid, year=year)
-        html = urlopen(url)
-        soup = BeautifulSoup(html, 'lxml')
-        table_rows = soup.select('#stats tr')
-        stats = _get_stats(table_rows, ignore_cols)
-        stats['year'] = year
-        # sort=False because we've already ordered the columns how we want
-        df = df.append(stats, ignore_index=True, sort=False)
+
+    @retry(wait_exponential_multiplier=1000, wait_exponential_max=8000)
+    def _scrape(pfrid, years):
+        df = pd.DataFrame()
+        for year in years:
+            url = 'https://www.pro-football-reference.com/players/{}/{}/gamelog/{year}/'.format(pfrid[0], pfrid, year=year)
+            html = urlopen(url)
+            soup = BeautifulSoup(html, 'lxml')
+            table_rows = soup.select('#stats tr')
+            stats = _get_stats(table_rows, ignore_cols)
+            stats['year'] = year
+            # sort=False because we've already ordered the columns how we want
+            df = df.append(stats, ignore_index=True, sort=False)
+        return df
+
+    df = _scrape(pfrid, years)
+        
     f = 'data/players/{id}.csv'.format(id=pfrid)
     df.to_csv(f, index=False)
+    del df
+    df = pd.read_csv(f)
     return df
 
 def _get_stats(table_rows, ignore_cols=None):
@@ -143,12 +152,11 @@ def _undrafted_players():
 
 # assuming all the draft data is there, make a file that lists names, ids, positions, and years active
 def get_fantasy_player_dict(startyear=1992):
-    # logging.info('in get_fantasy_player_dict')
     lastyear = 2018
     fname = 'data/players/index.csv'
     if os.path.isfile(fname):
         return pd.read_csv(fname)
-    logging.info('generating relevant player index file')
+    logging.info('generating index file of relevant players')
     _make_dirs()
     positions = ['QB', 'RB', 'WR', 'TE', 'K']
     df = _undrafted_players()
@@ -158,12 +166,15 @@ def get_fantasy_player_dict(startyear=1992):
     keepcols = df.columns
     for year in range(startyear, lastyear+1):
         draftdf = pd.read_csv('data/draft/class_{}.csv'.format(year))
-        keepix = (draftdf['pos'].isin(positions)) & (draftdf['years_as_primary_starter'] > 0)
-        draftdf = draftdf[keepix]
-        # filter out players who have been around but usually just as backups
-        # we could consider a more refined cutoff
+        draftdf = draftdf[draftdf['pos'].isin(positions)]
         years_in_league = draftdf['year_max']+1 - draftdf['year']
-        keepix = draftdf['years_as_primary_starter'] >= years_in_league // 4
+        # filter out players who have been around but usually just as backups
+        keepix = (draftdf['years_as_primary_starter'] > 0) & (draftdf['years_as_primary_starter'] >= years_in_league // 4)
+        # we could consider a more refined cutoff
+        # allow some players who have gotten decent volume
+        keepix |= (draftdf['pass_att'] >= (128 * years_in_league))
+        keepix |= (draftdf['rush_att'] >= (64  * years_in_league))
+        keepix |= (draftdf['rec']      >= (32  * years_in_league))
         draftdf = draftdf[keepix]
         df = df.append(draftdf[keepcols])
     df.to_csv(fname, index=False)
