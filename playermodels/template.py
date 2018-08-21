@@ -240,7 +240,7 @@ class YdsPerAttModel(Model):
     def _loc(self, att):
         df = self._df(att)
         ncmean = self._ncmean(att)
-        return (self.mnab[0] / self.mnab[1] - ncmean) * att
+        return (self.mnab[0] / self.mnab[1] - ncmean) # * att
     
     def _scale(self, att):
         df = self._df(att)
@@ -262,15 +262,18 @@ class YdsPerAttModel(Model):
         if att == 0: return 0 # we won't try to simulate laterals
         df,nc = att,self.skew
         yds = st.nct.ppf(uni, df, nc,
-                              loc=self._loc(att),
-                              scale=self._scale(att),)
+                         loc=self._loc(att),
+                         scale=self._scale(att),)
         return yds
     
     def ev(self, att):
         # the mean is mu*nu / nu
         munu = self.mnab[0]
         nu = self.mnab[1]
-        ev = munu / nu * att
+        ev = (munu / nu) * att
+        # TODO: debug this until values match expectation
+        print(att, ev, st.nct.mean(self._df(att), self.skew, loc=self._loc(att), scale=self._scale(att)))
+        # print(att, ev, st.nct.mean(self._df(att), self.skew, loc=ev, scale=self._scale(att)))
         return ev
 
     def var(self, att):
