@@ -19,19 +19,24 @@ class RushAttModel(CountsModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                0.756, 0.0756,
-                0.133,
-                0.503, 0.752))
+                0.641, 0.0746,
+                0.121,
+                0.464, # seasonal parameter decay
+                0.754, # game memory # this means the memory is only about 4 games. need more info.
+                ))
         if pos == 'QB':
             return np.array((
-                1.76, 0.58,
-                0.238,
-                0.494, 0.963))
+                1.76, 0.657,
+                0.225,
+                0.545,
+                0.953, # 0.0282,
+            ))
         if pos == 'WR':
             return np.array((
-                1.17, 7.03,
-                1.0,
-                0.545, 0.982
+                0.78, 6.29,
+                0.759,
+                0.718,
+                1.0, # 0.128
                 ))
         if pos == 'TE':
             logging.error('TEs do not rush enough to try to predict them')
@@ -54,21 +59,14 @@ class RushYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                0.657, 0.2, 1.68, 10.88, # initial bayes parameters
-                1.988, # skew
-                0.381, 0.00154, # learn rates
-                1.0, 1.0, # munu/nu, a/b season memory
-                1.0, 1.0, # game memories
+                3.95, 1.07, 3.43, 4.37, # initial bayes parameters
+                1.422, # skew
+                0.00271, 9.54e-5, # learn rates
+                0.850, 0.965, # munu/nu, a/b season memory
+                0.991, 0.970, # game memories
             ))
-            # return np.array(( # the one w/ the scaled loc
-            #     0.627, 0.255, 0.922, 0.798, # initial bayes parameters
-            #     0.811, # skew
-            #     0.0013, 0.0012, # learn rates
-            #     1.0, 0.987, # munu/nu, a/b season memory
-            #     1.0, 0.971, # game memories
-            # ))
         if pos == 'QB':
-            return np.array((
+            return np.array(( # TODO: here and other positions
                 111.59, 42.13, 2.82, 50.32, # initial bayes parameters
                 0.0472, # skew # low due to sacks? and QBs don't often break away w/ big runs
                 0.940,  4.2e-5, # learn rates
@@ -106,16 +104,16 @@ class RushTdModel(TrialModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                20.90, 684.65, # initial bayes parameters
+                20.51, 684.67, # initial bayes parameters
                 1.0, # learn rate
-                0.569, # season memory
+                0.633, # season memory
                 1.0)) # game mem
         if pos == 'QB':
             return np.array((
-                12.95, 330.25, # initial bayes parameters
+                12.67, 330.26, # initial bayes parameters
                 1.0, # learn rate
-                1.0, # season memory
-                0.991)) # game mem
+                0.862, # season memory
+                1.0)) # game mem
         if pos == 'WR':
             return np.array((
                 1.14, 60.63, # initial bayes parameters

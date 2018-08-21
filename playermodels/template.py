@@ -24,22 +24,31 @@ class CountsModel(Model):
     used to model a number of discrete events (like attempts per game).
     the predictive posterior is a negative binomial.
     the learning parameters allow some variance, but it cannot describe different players having different variances.
+    the KLD parameter penalty might be able to partially address this.
     a generalized beta-negative binomial could be investigated, but the bayesian update rules are not so clear.
     """
     def __init__(self,
                  a0, b0, # initial bayes parameters
                  lr,     # learn rate per game
                  mem, gmem, # memory per season and game
+                 # kldp, # decay penalty for high KLD (downside: takes much longer to update/train; can bias after a few good/bad games)
     ):
         self.ab = np.array((a0,b0))
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.season_mem = mem
         self.game_mem = gmem
+        # self.kldpen = kldp # ends up over-corrected to recent fluctuations
     
     @classmethod
     def _hyperpar_bounds(self):
-        return [(1e-6,None),(1e-6,None),(0,1),(0.1,1.0),(0.5,1.0)]
+        return [
+            (1e-6,None),(1e-6,None),
+            (0,1),
+            (0.1,1.0),
+            (0.0, 1.0), # game memory 
+            # (0.0, 1.0), # KLD penalty
+        ]
     
     # a shortcut for a re-mapping of beta that comes up a lot due to the common convention for negative binomial
     def _p(self):
@@ -48,6 +57,10 @@ class CountsModel(Model):
         return beta/(1.+beta)
 
     def update_game(self, att):
+        # kld = self.kld(att)
+        # the KLD has an arbitrary constant term, but we need to ensure the denominator > 1
+        # it could be guaranteed with a game_mem < 1, but it's not obvious how to do this naively
+        # we really want to use "chi-sq" but this isn't well-defined for the neg. bin. distribution
         self.ab *= self.game_mem
         self.ab += self.game_lr * np.array((att, 1.))
         # we could accumulate a KLD to diagnose when the model has been very off recently
@@ -95,6 +108,7 @@ class TrialModel(Model):
                  a0, b0,
                  lr,
                  mem,gmem,
+                 # TODO: we could consider additional memory decay for large KLD in this type of model as well
     ):
         self.ab = np.array((a0,b0))
         # we might want game_lr to be a function of the season?
@@ -107,7 +121,7 @@ class TrialModel(Model):
         return [
             (1e-6,None),(1e-6,None), # small positive lower bounds can prevent the fitter from going to invalid locations
             (0.0,1.0), #  should probably cap learn rate to prevent overfitting
-            (0.2,1.0),(0.5,1.0)
+            (0.2,1.0),(0.5,1.0),
         ]
 
     def _p(self):
@@ -203,14 +217,14 @@ class YdsPerAttModel(Model):
             (0.5,1.0),(0.5,1.0), # game memory - doesn't help much
         ]
         
-    def update_game(self, rush_yds, att):
+    def update_game(self, yds, att):
         # assert((0 < self.game_mem).all() and (self.game_mem <= 1.0).all())
         # mu does not decay simply like the others, but mu*nu does
         ev = self.ev(att)
         self.mnab *= self.game_mem
-        self.mnab += self.game_lr * np.array((rush_yds, att,
+        self.mnab += self.game_lr * np.array((yds, att,
                                               0.5*att,
-                                              0.5*(rush_yds-ev)**2/max(1,att)))
+                                              0.5*(yds-ev)**2/max(1,att)))
         # the max() function is just to avoid a divide-by-zero error when everything is zero
         # we could accumulate a KLD to diagnose when the model has been very wrong recently
 
@@ -240,20 +254,22 @@ class YdsPerAttModel(Model):
     def _loc(self, att):
         df = self._df(att)
         ncmean = self._ncmean(att)
-        return (self.mnab[0] / self.mnab[1] - ncmean) # * att
+        return (self.mnab[0] / self.mnab[1] - self._scale(att)*ncmean) # * att
     
     def _scale(self, att):
         df = self._df(att)
         sigma = np.sqrt(self._sigma2())
-         # prevent a zero to remove a warning, even tho it doesn't change any calculations:
-        if df == 0: return sigma
-        scale = att*sigma
-        if df > 2:
-            nc = self.skew
-            # scale /= ( df*(1+nc**2)/(df-2) - nc**2*df/2*(gamma((df-1)/2)/gamma(df/2))**2 )
-            # a good approximation:
-            scale /= ( df*(1+nc**2)/(df-2) - nc**2/(1-3/(4*df-1))**2 )
-        return scale
+        return sigma
+        # now we want low df to explicitly increase the variance, so don't divide out the nu factor
+        # prevent a zero to remove a warning, even tho it doesn't change any calculations:
+        # if df == 0: return sigma
+        # scale = sigma # * att
+        # if df > 2:
+        #     nc = self.skew
+        #     # scale /= np.sqrt( df*(1+nc**2)/(df-2) - nc**2*df/2*(gamma((df-1)/2)/gamma(df/2))**2 )
+        #     # a good approximation:
+        #     scale /= np.sqrt( df*(1+nc**2)/(df-2) - nc**2/(1-3/(4*df-1))**2 )
+        # return scale
 
     # given a uniformly distributed number 0 < uni < 1, return the yards corresponding to that point on the cdf.
     # correlations can be dealt with externally, since it's much easier to correlate normal variables.
@@ -261,9 +277,9 @@ class YdsPerAttModel(Model):
         assert(0 < uni < 1)
         if att == 0: return 0 # we won't try to simulate laterals
         df,nc = att,self.skew
-        yds = st.nct.ppf(uni, df, nc,
-                         loc=self._loc(att),
-                         scale=self._scale(att),)
+        yds = att*st.nct.ppf(uni, df, nc,
+                             loc=self._loc(att),
+                             scale=self._scale(att),)
         return yds
     
     def ev(self, att):
@@ -271,9 +287,8 @@ class YdsPerAttModel(Model):
         munu = self.mnab[0]
         nu = self.mnab[1]
         ev = (munu / nu) * att
-        # TODO: debug this until values match expectation
-        print(att, ev, st.nct.mean(self._df(att), self.skew, loc=self._loc(att), scale=self._scale(att)))
-        # print(att, ev, st.nct.mean(self._df(att), self.skew, loc=ev, scale=self._scale(att)))
+        # print(att, ev, att*(self._loc(att) + self._scale(att)*self._ncmean(att)))
+        # print(att, ev, att*st.nct.mean(self._df(att), self.skew, loc=self._loc(att), scale=self._scale(att))) # this one matches ev pretty well.
         return ev
 
     def var(self, att):
@@ -293,7 +308,7 @@ class YdsPerAttModel(Model):
         if df == 0:
             # there can be nonzero rushing yards w/out an attempt due to laterals. just skip these.
             return 0.
-        cdf = st.nct.cdf(yds, df, nc,
+        cdf = st.nct.cdf(yds/att, df, nc,
                          loc=self._loc(att),
                          scale=self._scale(att))
         assert(not np.isnan(cdf))
@@ -321,7 +336,7 @@ class YdsPerAttModel(Model):
         # the skew parameter is in between the mode and mean, so let's just use this
         loc = self._loc(att)
         scale = self._scale(att)
-        result = - st.nct.logpdf(yds, df, nc, loc=loc,
+        result = - st.nct.logpdf(yds/att, df, nc, loc=loc,
                                  scale=scale)
         return result
 

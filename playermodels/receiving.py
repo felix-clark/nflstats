@@ -20,20 +20,23 @@ class RecTgtModel(CountsModel):
         if pos == 'WR':
             return np.array((
                 1.42, 0.315,
-                0.305,
-                0.421, 0.865
+                0.305, # lr
+                0.421, # season mem
+                0.865, # game mem
                 ))
         if pos == 'TE':
             return np.array((
                 1.03, 0.443,
                 0.339,
-                0.375, 0.889
+                0.375,
+                0.889,
                 ))
         if pos == 'RB':
             return np.array((
-                1.05, 0.457,
-                0.279,
-                0.442, 0.891
+                0.88, 0.457,
+                0.276,
+                0.401,
+                0.895,
             ))
         if pos == 'QB':
             logging.error('we aren\'t modeling receptions for QBs')
@@ -70,9 +73,9 @@ class RecModel(TrialModel):
             ))
         if pos == 'RB':
             return np.array((
-                37.55, 13.71, # initial bayes parameters
-                0.173, # learn rate
-                0.941, 1.0 # season,game memory
+                37.47, 13.95, # initial bayes parameters
+                0.185, # learn rate
+                0.922, 1.0 # season,game memory
             ))
         logging.error( 'rushing TD positional defaults not implemented for {}'.format(pos) )
     
@@ -106,9 +109,9 @@ class RecTdModel(TrialModel):
             )) # game mem
         if pos == 'RB':
             return np.array((
-                11.22, 361.5, # initial bayes parameters
-                0.582, # learn rate
-                0.975, 0.988 # season,game memory
+                11.84, 361.48, # initial bayes parameters
+                0.659, # learn rate
+                0.784, 1.0 # season,game memory
             ))
         logging.error( 'rushing TD positional defaults not implemented for {}'.format(pos) )
 

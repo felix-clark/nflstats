@@ -282,6 +282,7 @@ def find_model_hyperparameters(pos, model_name='rush_att'):
     hpars0 = mdtype._default_hyperpars(pos)
     hparbounds = mdtype._hyperpar_bounds()
     logging.info('starting with parameters {}'.format(hpars0))
+    
     assert(len(hpars0) == len(hparbounds))
 
     newmin = np.inf

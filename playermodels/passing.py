@@ -14,9 +14,10 @@ class PassAttModel(CountsModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                0.817, 0.033, # bayes parameters
-                0.080, # learn rate
-                0.257, 0.857 # memories
+                0.794, 0.0342, # bayes parameters
+                0.066, # learn rate
+                0.233,# season mem
+                0.858, # 0.05 # game mem
             ))
         else:
             logging.error('no passing models for {}'.format(pos))
