@@ -19,14 +19,14 @@ class RecTgtModel(CountsModel):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                1.42, 0.315,
-                0.305, # lr
-                0.421, # season mem
+                1.36, 0.304,
+                0.306, # lr
+                0.422, # season mem
                 0.865, # game mem
                 ))
         if pos == 'TE':
             return np.array((
-                1.03, 0.443,
+                1.03, 0.442,
                 0.339,
                 0.375,
                 0.889,
@@ -95,16 +95,16 @@ class RecTdModel(TrialModel):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                9.22, 100.15, # initial bayes parameters
+                9.22, 100.16, # initial bayes parameters
                 0.476, # learn rate
-                0.918, 1.0 # season,game memory
+                0.920, 1.0 # season,game memory
             ))
         if pos == 'TE':
             # this large learn rate with perfect memory seems a bit strange.
             # this type of thing suggests learn rate decay would be useful.
             return np.array((
-                4.92, 52.78, # initial bayes parameters
-                0.464, # learn rate
+                4.93, 52.79, # initial bayes parameters
+                0.463, # learn rate
                 1.0, 1.0 # season,game memory
             )) # game mem
         if pos == 'RB':
@@ -131,19 +131,19 @@ class RecYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                33.13, 3.07, 0.35, 13.95, # initial bayes parameters -- consider reducing and re-fitting
-                0.408, # skew
-                0.0021, 0.0018, # learn rates
-                1.0,0.991, # munu/nu, alpha/beta season memory
-                1.0,0.995, # game memories
+                33.18, 3.02, 1.43, 13.95, # initial bayes parameters -- consider reducing and re-fitting
+                0.935, # skew
+                0.0039, 0.0016, # learn rates
+                0.963,1.0, # munu/nu, alpha/beta season memory
+                0.968,1.0, # game memories
             ))
         if pos.upper() == 'TE':
             return np.array((
-                5.88, 0.675, 0.184, 2.40, # initial bayes parameters -- not much sensitivity to these!
-                0.206, # skew
-                0.00333, 0.000899, # learn rates
-                1.0, 1.0, # munu/nu memory, alpha/beta mem
-                1.0, 1.0
+                5.86, 0.603, 0.596, 2.40, # initial bayes parameters -- not much sensitivity to these!
+                0.498, # skew
+                0.0052, 0.00040, # learn rates
+                0.992, 1.0, # munu/nu memory, alpha/beta mem
+                0.983, 1.0
             ))
         if pos == 'RB':
             return np.array((
