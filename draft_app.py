@@ -1494,8 +1494,8 @@ def main():
             availdf.loc[label,'auction'] = auction_multiplier(idx)*max(0,np.mean([volb]))
 
     total_auction_points = availdf['auction'].sum()
-    cap = 20 # typical is $200; we'll scale to our buy-in
-    min = 0 # 0.1 # typical is $1; we are scaling down. however there is no minimum, we just want to see value.
+    cap = 200 # typical is $200; we'll scale to our buy-in
+    min = 1 # 0.1 # typical is $1; we are scaling down. however there is no minimum, we just want to see value.
     league_cap = n_teams * (cap - min*sum([n_roster_per_team[pos] for pos in n_roster_per_team]))
     # print( availdf['auction'] )
     availdf.loc[:,'auction'] *= league_cap / total_auction_points
