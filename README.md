@@ -28,6 +28,6 @@ in the future, a GUI w/ tk might be nice.
 
 To scrape for historic data, run `get_yearly_stats.py`. This will enable some of the other analyses.
 
-other scripts to get data are `get_weekly_stats.py` and `get_draft_data.py`.
+other scripts to get data are `get_weekly_stats.py` and `get_draft_data.py`. while there is some attempt at automatically scraping and caching data when needed, these may need to be run manually as the process is not robust.
 
 `draft_app.py` can be used to provide useful metrics while drafting.
