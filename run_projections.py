@@ -2,11 +2,26 @@
 from get_player_stats import *
 from playermodels.positions import *
 from ruleset import *
-from get_fantasy_points import get_points_from_data_frame
+from get_fantasy_points import get_points
 import os.path
 import argparse
 import numpy as np
 import numpy.random as rand
+
+# return a player from a dataframe if a unique one exists, else return None
+# we could make this a bit more robust and flexible and move it to tools.py
+# (e.g. option to select by team)
+def get_player_from_df(df, pname, pos=None, team=None):
+    pix = (df.player == pname)
+    if pos is not None: pix &= (df.pos == pos)
+    if team is not None: pix &= (df.team == team)
+    if pix.any():
+        # pl = df.iloc[df.index[pix]]
+        pl = df[pix]
+        assert(len(pl) == 1)
+        return pl.iloc[0]
+    return None
+    
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
@@ -18,6 +33,8 @@ def main():
     parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc'],
                         default='phys', help='which ruleset to use')
     parser.add_argument('--year',nargs='?', type=int, default=2018, help='what is the current year')
+    parser.add_argument('--expert-touch', nargs='?', type=bool, default=True, help='scale models to meet expert consensus for rush attempts and targets')
+    parser.add_argument('--n-seasons',nargs='?', type=int, default=128, help='number of seasons to simulate')
 
     args = parser.parse_args()
     pos = args.position
@@ -32,45 +49,117 @@ def main():
     if args.ruleset == 'nycfc':
         rules = nycfc_league
 
+    scale_touch = args.expert_touch
 
     # get player index
     pidx = get_pos_players(pos)
     pidx = pidx[(pidx['pos'] == pos) & (pidx['year_max'] >= current_year-1)]
     ngames = 16
-    nseasons = 128
+    nseasons = args.n_seasons
 
+    # get expert projections so we can adjust to touches
+    expertdf = pd.read_csv('preseason_rankings/project_fp_{}_pre{}.csv'.format(pos.lower(), current_year))
+
+    # any known suspension data
+    sussdf = pd.read_csv('data/suspensions.csv')
+
+    # data of expectation values to print out at the end (and possibly save)
     evdf = pd.DataFrame(columns=['player', 'pos'], dtype=int)
+
+    np.random.seed(3490) # pick a constant seed so we can debug weird outcomes
     
-    for _,prow in pidx.iterrows():
-        pname,pid = prow[['player', 'pfr_id']]
+    # for _,prow in pidx.iterrows():
+    for _,exproj in expertdf.iterrows():
+        pname = exproj['player']
+        if exproj['fp_projection'] < 32:
+            logging.debug('skipping {} as irrelevant'.format(pname))
+            continue
+        # pname,pid = prow[['player', 'pfr_id']]
         logging.info('training model for {}'.format(pname))
-        pdf = get_player_stats(prow['pfr_id']).fillna(0)
+
+        prow = get_player_from_df(pidx, pname)
+        # exproj = get_player_from_df(expertdf, pname)
+        # if exproj is None:
+        #     # they are probably retired; let's not waste time simulating them
+        #     logging.warning('no expert projection for {}. skipping.'.format(pname))
+        #     continue
+                
         pmod = gen_player_model(pos)
-        for model in pmod.models:
-            if model.pred_var not in pdf:
-                pdf[model.pred_var] = 0
+        
+        pdf = get_player_stats(prow['pfr_id']).fillna(0) if prow is not None else pd.DataFrame(columns=['player', 'pos', 'team', 'year'])
+        stat_vars = [model.pred_var for model in pmod.models]
+        for st in stat_vars:
+            if st not in pdf:
+                pdf[st] = 0 # set non-existent values to zero
+                
         years = pdf['year'].unique()
         assert((np.diff(years) > 0).all())
+        pcterrs = []
         for year in years:
             ydf = pdf[pdf['year'] == year]
             games = ydf['game_num']
-            assert((np.diff(games) > 0).all()) # this might fail when players are traded mid-week
+            assert((np.diff(games) > 0).all()) # this sometimes fails when players are traded mid-week. we could just pick the one with the most points (so far just manually deleting)
             for _,game in ydf.iterrows():
+                evs = pmod.evs() # expected outcome
+                expt = get_points(rules, evs) # works from dict too?
+                actpt = get_points(rules, game)
+                pcterrs.append((actpt-expt)/expt)
                 pmod.update_game(game)
             pmod.new_season()
-        fpdf = pd.DataFrame([pmod.gen_game() for _ in range(ngames)])
-        fps = pd.concat((get_points_from_data_frame( rules, fpdf ) for _ in range(nseasons)), ignore_index=True)
+
+        # now we're done training; do simulations next
+        # get the number of games a player is expected to play
+        pgames = ngames # number of games this player expects to play. we'll check suspensions:
+        psus = get_player_from_df(sussdf, pname, pos)
+        if psus is not None:
+            gsus = psus.games_suspended
+            print(psus.details)
+            if not np.isnan(gsus):
+                pgames -= int(gsus)
+                print(' -- {} game suspension'.format(gsus))
+
+        if scale_touch:
+            re_ev_dict = {}
+            for touchvar in set(stat_vars) & set(['pass_att', 'rush_att']):
+                re_ev_dict[touchvar] = exproj[touchvar]/pgames
+            if 'targets' in stat_vars:
+                # expert projections from this source don't have targets, just receptions
+                modevs = pmod.evs()
+                re_ev_dict['targets'] = modevs['targets'] * exproj['rec'] / modevs['rec'] / pgames
+            pmod.revert_evs(re_ev_dict)
+        
+        if pname in ['Todd Gurley', 'Ezekiel Elliott', 'Le\'Veon Bell', 'Saquon Barkley', 'Royce Freeman']:
+            print(pmod)
+
+        fpdf = pd.concat([pd.DataFrame((pmod.gen_game() for _ in range(pgames))) for _ in range(nseasons)], ignore_index=True)
+        # fps = pd.concat((get_points( rules, fpdf )), ignore_index=True)
+        fps = get_points( rules, fpdf )
+
+        largegames = fps > 50
+        if largegames.any():
+            print(pname)
+            print(fpdf[largegames])
+        
         # print('std dev / mean: {}'.format(fps.std()/fps.mean()))
-        evdat = {key:(ngames*val) for key,val in pmod.evs().items()}
+        fp_2d,fp_1d,fp_med,fp_1u,fp_2u = fps.quantile((0.02275, 0.15865, 0.5, 0.84135, 0.97725))
+        evdat = {key:(pgames*val) for key,val in pmod.evs().items()}
         evdat['player'] = pname
         evdat['pos'] = pos
-        evdat['fpts_ev'] = get_points_from_data_frame( rules, evdat )
-        evdat['fpts_sim'] = fps.mean()
-        evdat['fpts_simstd'] = fps.std()
+        evdat['g'] = pgames
+        evdat['ex_pred'] = exproj['fp_projection']
+        evdat['fpts_ev'] = get_points( rules, evdat )
+        evdat['fpts_sim'] = fps.mean()*pgames
+        evdat['fpts_simstd'] = fps.std()*np.sqrt(pgames)
+        evdat['volatility'] = np.sqrt(np.mean(np.array(pcterrs)**2))
+        if fp_med > 0:
+            evdat['vol1'] = 0.5*(fp_1u - fp_1d)/fp_med
+            evdat['vol2'] = 0.5*(fp_2u - fp_2d)/fp_med
         # evdat['fpts'] = fps.sum() # this is random
+        
         evdf = evdf.append(evdat, ignore_index=True)
         
     print(evdf.sort_values('fpts_ev', ascending=False))
+    evdf.to_csv('data/{}_simulations_{}.csv'.format(pos.lower(), current_year))
     
     return
 
