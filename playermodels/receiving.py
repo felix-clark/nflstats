@@ -131,11 +131,11 @@ class RecYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'WR':
             return np.array((
-                33.18, 3.02, 1.43, 13.95, # initial bayes parameters -- consider reducing and re-fitting
-                0.935, # skew
-                0.0039, 0.0016, # learn rates
-                0.963,1.0, # munu/nu, alpha/beta season memory
-                0.968,1.0, # game memories
+                6.66, 0.532, 0.645, 3.49, # initial bayes parameters -- consider reducing and re-fitting
+                0.940, # skew
+                0.0037, 3.45e-4, # learn rates
+                0.967,1.0, # munu/nu, alpha/beta season memory
+                0.990,1.0, # game memories
             ))
         if pos.upper() == 'TE':
             return np.array((

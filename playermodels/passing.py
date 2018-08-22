@@ -14,10 +14,10 @@ class PassAttModel(CountsModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                0.794, 0.0342, # bayes parameters
-                0.066, # learn rate
-                0.233,# season mem
-                0.858, # 0.05 # game mem
+                0.816, 0.033, # bayes parameters
+                0.080, # learn rate
+                0.257,# season mem
+                0.857, # 0.05 # game mem
             ))
         else:
             logging.error('no passing models for {}'.format(pos))
@@ -36,9 +36,9 @@ class PassCmpModel(TrialModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                88.88, 62.28, # initial bayes parameters
-                0.361, # learn rate
-                0.853, 0.964 # season,game memory
+                64.38, 44.67, # initial bayes parameters
+                0.332, # learn rate
+                0.888, 0.964 # season,game memory
             ))
         else:
             logging.error('only QBs have passing models (not {}s)'.format(pos))
@@ -59,11 +59,11 @@ class PassYdsModel(YdsPerAttModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                12.15/4, 1.079/4, 0.395/2, 1.08/2, # initial bayes parameters
-                2.55, # skew
-                0.00246, 1.46e-7, # learn rates
-                0.706,0.863, # munu/nu, alpha/beta season memory
-                0.999,1.0, # game memories
+                1.144, 0.0987, 1.075, 0.536, # initial bayes parameters
+                2.56, # skew
+                2.99e-4, 2.72e-6, # learn rates
+                0.709,0.865, # munu/nu, alpha/beta season memory
+                0.982,1.0, # game memories
                 ))
         else:
             logging.error('only QBs will have passing models (not {}s)'.format(pos))
@@ -101,9 +101,9 @@ class PassIntModel(TrialModel):
         pos = pos.upper()
         if pos == 'QB':
             return np.array((
-                18.75, 629.9, # initial bayes parameters
-                0.400, # learn rate
-                0.796, 1.0 # season,game memory
+                6.02, 201.8, # initial bayes parameters
+                0.235, # learn rate
+                0.903, 0.995 # season,game memory
             ))
         else:
             logging.error('only QBs have passing models (not {}s)'.format(pos))
