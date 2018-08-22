@@ -46,12 +46,15 @@ def main():
         logging.info('training model for {}'.format(pname))
         pdf = get_player_stats(prow['pfr_id']).fillna(0)
         pmod = gen_player_model(pos)
+        for model in pmod.models:
+            if model.pred_var not in pdf:
+                pdf[model.pred_var] = 0
         years = pdf['year'].unique()
         assert((np.diff(years) > 0).all())
         for year in years:
             ydf = pdf[pdf['year'] == year]
             games = ydf['game_num']
-            assert((np.diff(games) > 0).all())
+            assert((np.diff(games) > 0).all()) # this might fail when players are traded mid-week
             for _,game in ydf.iterrows():
                 pmod.update_game(game)
             pmod.new_season()
