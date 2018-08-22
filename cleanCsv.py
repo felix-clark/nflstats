@@ -10,9 +10,9 @@ def getElems(line):
     return number_commas_removed
 
 def replaceTitleLine(line):
-    """change names from those used online to those used in our code (e.g. 'INTS' to 'passing_int')"""
+    """change names from those used online to those used in the PFR tables (e.g. 'INTS' to 'pass_int')"""
     # check https://github.com/BurntSushi/nfldb/wiki/The-data-model for list of full possible stats
-    line = line.replace('"Player"', 'name')
+    line = line.replace('"Player"', 'player')
     line = line.replace('"Team"', 'team')
     # the QB pattern is unambiguous, with CMP and INTS
     line = line.replace('"ATT","CMP","YDS","TDS","INTS"', 'pass_att,pass_cmp,pass_yds,pass_td,pass_int')
@@ -41,7 +41,7 @@ def replaceTitleLine(line):
     line = line.replace('"Pos"', 'pos')
     line = line.replace('"Best","Worst","Avg","Std Dev","ADP","vs. ADP"', 'best,worst,ecp,ecp_std_dev,adp,ecp_vs_adp')
     # line = line.replace('"Overall (Team)"', 'name,team') # old format
-    line = line.replace('"Overall"', 'name')
+    line = line.replace('"Overall"', 'player')
     line = line.replace('"Team"', 'team')
     # line = line.replace(',"WSID",', ',')
 
