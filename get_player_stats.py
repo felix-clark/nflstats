@@ -147,6 +147,8 @@ def _undrafted_players():
         ['Victor Cruz', 'CruzVi00', 'WR', 2010, 2016],
         ['C.J. Anderson', 'AndeC.00', 'RB', 2013, 2017],
         ['Arian Foster', 'FostAr00', 'RB', 2009, 2016],
+        ['Isaiah Crowell', 'CrowIs00', 'RB', 2014, 2017],
+        ['LeGarrette Blount', 'BlouLe00', 'RB', 2010, 2017],
     ]
     return pd.DataFrame(columns=columns, data=players)
 
