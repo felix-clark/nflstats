@@ -17,7 +17,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 from tools import *
-from get_fantasy_points import get_points_from_data_frame
+from get_fantasy_points import get_points
 from ruleset import bro_league, phys_league, dude_league, nycfc_league
 
 
@@ -1393,7 +1393,7 @@ def main():
             print('{} already in data frame!'.format(st))
 
     # decorate the dataframe with projections for our ruleset
-    availdf.loc[availdf.position != 'DST', 'projection'] = get_points_from_data_frame(rules, availdf)
+    availdf.loc[availdf.position != 'DST', 'projection'] = get_points(rules, availdf)
     # for DST, just take the FP projection.
     availdf.loc[availdf.position == 'DST', 'projection'] = availdf['fp_projection']
     # can go ahead and filter out stats once we have projections
