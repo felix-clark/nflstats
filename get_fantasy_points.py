@@ -63,34 +63,36 @@ def getBasePoints( rs, plyr ):
 #     + rs.ppFG0 * df['kicking_fgm']
 #     return df
 
-def get_points_from_data_frame( rs, df ):
+# with get() this should work from a dictionary or a dataframe
+def get_points( rs, df ):
     """
     repeating ourselves a lot here; it would be good to combine code w/ above (or only use this)
     rs: rule set
     df: dataframe containing player stats
     name: name of decorated stat
     """
+    gf = lambda key: df.get(key, 0)
     return \
-    rs.ppPY * df.get('pass_yds', 0) \
-    + rs.ppPY25 * (df.get('pass_yds', 0) // 25) \
-    + rs.ppPC * df.get('pass_cmp', 0) \
-    + rs.ppINC * (df.get('pass_att', 0) - df.get('pass_cmp', 0)) \
-    + rs.ppPTD * df.get('pass_td', 0) \
-    + rs.ppINT * df.get('pass_int', 0) \
-    + rs.pp2PC * df.get('pass_twoptm', 0) \
-    + rs.ppRY * df.get('rush_yds', 0) \
-    + rs.ppRY10 * (df.get('rush_yds', 0) // 10) \
-    + rs.ppRTD * df.get('rush_td', 0) \
-    + rs.pp2PR * df.get('rush_twoptm', 0) \
-    + rs.ppREY * df.get('rec_yds', 0) \
-    + rs.ppREY10 * (df.get('rec_yds', 0) // 10) \
-    + rs.ppREC * df.get('rec', 0) \
-    + rs.ppRETD * df.get('rec_td', 0) \
-    + rs.pp2PRE * df.get('rec_twoptm', 0) \
-    + rs.ppFUML * df.get('fumbles_lost', 0) \
-    + rs.ppPAT * df.get('xpm', 0) \
-    + rs.ppFGM * (df.get('fga', 0) - df.get('fgm', 0)) \
-    + rs.ppFG0 * df.get('fgm', 0)
+    rs.ppPY * gf('pass_yds') \
+    + rs.ppPY25 * (gf('pass_yds') // 25) \
+    + rs.ppPC * gf('pass_cmp') \
+    + rs.ppINC * (gf('pass_att') - gf('pass_cmp')) \
+    + rs.ppPTD * gf('pass_td') \
+    + rs.ppINT * gf('pass_int') \
+    + rs.pp2PC * gf('pass_twoptm') \
+    + rs.ppRY * gf('rush_yds') \
+    + rs.ppRY10 * (gf('rush_yds') // 10) \
+    + rs.ppRTD * gf('rush_td') \
+    + rs.pp2PR * gf('rush_twoptm') \
+    + rs.ppREY * gf('rec_yds') \
+    + rs.ppREY10 * (gf('rec_yds') // 10) \
+    + rs.ppREC * gf('rec') \
+    + rs.ppRETD * gf('rec_td') \
+    + rs.pp2PRE * gf('rec_twoptm') \
+    + rs.ppFUML * gf('fumbles_lost') \
+    + rs.ppPAT * gf('xpm') \
+    + rs.ppFGM * (gf('fga') - gf('fgm')) \
+    + rs.ppFG0 * gf('fgm')
     # return df
 # could manually suffix these w/ "kick_". note that we can probably use more stats now (with PFR).
 # TODO: missing: missed PATs (ppPATM)
