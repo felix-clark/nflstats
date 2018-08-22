@@ -3,6 +3,7 @@ import numpy as np
 import scipy.stats as st
 # from scipy.special import gamma, digamma
 import dist_fit
+import logging
 
 class Model:
     """
@@ -16,9 +17,12 @@ class Model:
     def var_names(self):
         var_names = [self.pred_var] + list(self.dep_vars)
         return var_names
+
+    def summary(self):
+        args = [1 for _ in self.dep_vars] # assume everything is "per" something else, if anything
+        return u'{}:    \t{:.3f} \u00B1 {:.3f}'.format(self.name, self.ev(*args), np.sqrt(self.var(*args)))
     
 
-# TODO: implement scipy.stats.rv_discrete ?
 class CountsModel(Model):
     """
     used to model a number of discrete events (like attempts per game).
@@ -67,9 +71,28 @@ class CountsModel(Model):
 
     def new_season(self):
         self.ab *= self.season_mem
-        
+
+    def revert_ev(self, newev):
+        """
+        reduce one of the bayesian parameters until the ev is equal to the one passed.
+        this will be done solely by decreasing either alpha or beta, so that the variance will always be larger.
+        this can be used to match rush attempt / target predictions to experts' but still keep part of our description.
+        """
+        if self.ab[0] > newev*self.ab[1]: # if current ev > new ev
+            self.ab[0] = newev*self.ab[1] # reduce alpha to compensate
+        else:
+            self.ab[1] = self.ab[0]/newev
+            
     def ppf(self, uni):
         # this yields a gamma convoluted w/ a poisson
+        # most rush attempts is 45, pass attempts is 70, and most targets is >= 18.
+        # the fact that we have to do this is really ugly, so a next big step
+        # might be modeling touches as percentages of game plays.
+        maxatt = 35 if self.name == 'rush_att' else \
+                 65 if self.name == 'pass_att' else \
+                 20 if self.name == 'targets' else 100
+        maxuni = self.cdf(maxatt) # maximum rush attempts ever was 45
+        uni *= maxuni
         att = st.nbinom.ppf(uni, self.ab[0], self._p())
         return att
 
@@ -277,9 +300,23 @@ class YdsPerAttModel(Model):
         assert(0 < uni < 1)
         if att == 0: return 0 # we won't try to simulate laterals
         df,nc = att,self.skew
-        yds = att*st.nct.ppf(uni, df, nc,
-                             loc=self._loc(att),
-                             scale=self._scale(att),)
+        # constrain to make sure we don't roll ridiculous values
+        # really, this is a hack and we need a better way to model yards / attempt,
+        # e.g. rush-by-rush.
+        # most rush yards is 295 by AP; most receiving is 336 by Willie Anderson
+        minuni = self.cdf(-5*att, att)
+        maxyds = 500 if self.name == 'pass_yds' else 250   
+        maxuni = self.cdf(min(50*att, maxyds), att)
+        uni *= (maxuni-minuni)
+        uni += minuni
+        ypa = st.nct.ppf(uni, df, nc,
+                         loc=self._loc(att),
+                         scale=self._scale(att),)
+        if ypa > 90 or ypa < -5:
+            # we might need to check to make sure this isn't possible
+            logging.warning('{} yards per attempt in {} attempts for {}'.format(ypa, att, self.name))
+            logging.warning('{} out of {}/{}'.format(uni, minuni, maxuni))
+        yds = att*ypa
         return yds
     
     def ev(self, att):
@@ -292,13 +329,16 @@ class YdsPerAttModel(Model):
         return ev
 
     def var(self, att):
-        # sig2 = self._sigma2()
-        # nu = self.mnab[1]
-        nc = self.skew
-        df = self._df(att)
-        if df <= 2:
-            return np.inf
-        return st.nct.var(df, nc, scale=self._scale(att))
+        # to maintain a useful and finite variance, just return sigma^2.
+        # right now this is only used for printing, anyway.
+        return self._sigma2()
+        # # sig2 = self._sigma2()
+        # # nu = self.mnab[1]
+        # nc = self.skew
+        # df = self._df(att)
+        # if df <= 2:
+        #     return np.inf
+        # return st.nct.var(df, nc, scale=self._scale(att))
 
     # def std_res(self, yds, att):
     def cdf(self, yds, att):
@@ -307,11 +347,14 @@ class YdsPerAttModel(Model):
         df,nc = att,self.skew
         if df == 0:
             # there can be nonzero rushing yards w/out an attempt due to laterals. just skip these.
-            return 0.
+            # cdf is the number below, though, so it should return 1.
+            return 1.
         cdf = st.nct.cdf(yds/att, df, nc,
                          loc=self._loc(att),
                          scale=self._scale(att))
-        assert(not np.isnan(cdf))
+        # if np.isnan(cdf):
+        #     print('nan cdf')
+        #     print(self.name)
         return cdf
     
     def chi_sq(self, yds, att):

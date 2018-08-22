@@ -78,12 +78,30 @@ class PosModel:
         for model in self.models:
             model.new_season()
 
+    def revert_evs(self, ev_dict):
+        """
+        takes a dictionary of values to revert the EV of each model to
+        """
+        for model in self.models:
+            vname = model.pred_var
+            if vname in ev_dict:
+                newev = ev_dict.pop(vname)
+                model.revert_ev(newev)
+        if len(ev_dict) > 0:
+            logging.error('Could not revert all evs:')
+            logging.error(ev_dict)
+
     def evs(self):
         evs = {}
         for model in self.models:
             depvars = [evs[dv] for dv in model.dep_vars]
             evs[model.pred_var] = model.ev(*depvars)
         return evs
+
+    def __str__(self):
+        # outstr = '\n'.join(('\n{}:\n{}\n'.format(mod.pred_var, mod)  for mod in self.models))
+        outstr = '\n'.join((mod.summary()  for mod in self.models))
+        return outstr
 
 class QbModel(PosModel):
     """
