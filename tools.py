@@ -63,3 +63,41 @@ def corr_spearman(x, y, weights=None):
     
     result = xycorrrk / np.sqrt(xvarrk*yvarrk)
     return result
+
+
+def get_k_partition_boundaries(data, k):
+    if k >= len(data):
+        print('error: need k less than the size of the data')
+        return None
+    sortdata = np.sort(data)
+    # gaps is an array of size N-1 listing
+    gaps = np.array(sortdata[1:]) - np.array(sortdata[:-1])
+    # part_idsx are the indices of the k largest gaps
+    part_idxs = np.argpartition(gaps, k)[-k:] # [::-1] # don't think we really need to re-order these
+    # define the boundaries as the means
+    part_boundaries = [0.5*(sortdata[i] + sortdata[i+1]) for i in part_idxs]
+    return np.sort(part_boundaries)
+
+
+def get_team_abbrev(full_team_name, team_abbrevs):
+    up_name = full_team_name.upper().strip()
+    for ta in team_abbrevs:
+        un_split = up_name.split(' ')
+        # these are typically the first letter of the 1st two words:
+        # e.g. KC, TB, NE, ...
+        # can also be 1st letter of 3 words: LAR, LAC, ...
+        if ''.join([w[0] for w in un_split[:len(ta)]]) == ta:
+            # print full_team_name, ta
+            return ta
+        # the other class is the 1st 3 letters of the city
+        if up_name[:3] == ta:
+            # print full_team_name, ta
+            return ta
+    # it's possible the string is of the following form: Los Angeles (LAR)
+    # in which case the abbreviation already exists
+    if len(up_name) > 5:
+        if up_name[-5] == '(' and up_name[-1] == ')':
+            return up_name[-4:-1]
+    
+    logging.error('could not find abbreviation for {}'.format(full_team_name))
+    

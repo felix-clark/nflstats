@@ -16,6 +16,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+from tools import *
 from get_fantasy_points import get_points_from_data_frame
 from ruleset import bro_league, phys_league, dude_league, nycfc_league
 
@@ -113,7 +114,7 @@ def find_handcuff(index, ap, pp):
     """
     player = pd.concat([ap, pp]).loc[index]
     ## the "name" attribute is the index, so need dictionary syntax to grab actual name
-    name, pos, team = player['name'], player.position, player.team
+    name, pos, team = player['player'], player.position, player.team
     print('Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos))
     ah = ap[(ap.position == pos) & (ap.team == team) & (ap.name != name)]
     if len(ah) > 0:
@@ -138,65 +139,32 @@ def find_player(search_words, ap, pp):
     """
     # check if any of the search words are in the full name
     checkfunc = lambda name: any([sw in name.strip().lower() for sw in search_words])
-    filtered_pp = pp[pp['name'].map(checkfunc)]
+    filtered_pp = pp[pp['player'].map(checkfunc)]
     if len(filtered_pp) > 0:
         # print '  Could not find any picked players.'
     # else:
         print('\n  Picked players:')
         print(filtered_pp)
-    filtered_ap = ap[ap['name'].map(checkfunc)] # map creates a boolean mask
+    filtered_ap = ap[ap['player'].map(checkfunc)] # map creates a boolean mask
     if len(filtered_ap) == 0:
         print('\n  Could not find any available players.')
     else:
         print('\n  Available players:')
         print(filtered_ap)
 
-def get_team_abbrev(full_team_name, team_abbrevs):
-    up_name = full_team_name.upper()
-    for ta in team_abbrevs:
-        un_split = up_name.split(' ')
-        # these are typically the first letter of the 1st two words:
-        # e.g. KC, TB, NE, ...
-        # can also be 1st letter of 3 words: LAR, LAC, ...
-        if ''.join([w[0] for w in un_split[:len(ta)]]) == ta:
-            # print full_team_name, ta
-            return ta
-        # the other class is the 1st 3 letters of the city
-        if up_name[:3] == ta:
-            # print full_team_name, ta
-            return ta
-    logging.error('could not find abbreviation for {}'.format(full_team_name))
-    
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
     print('Loading with label {}.'.format(outname))
     if os.path.isfile(outname+'.csv'):
-        # we saved it directly we could use from_csv, but read_csv is encouraged
-        ap = pd.DataFrame.from_csv(outname+'.csv')
-        # ap = pd.read_csv(outname+'.csv')
+        ap = pd.read_csv(outname+'.csv')
     else:
         logging.error('Could not find file {}.csv!'.format(outname))
     if os.path.isfile(outname+'_picked.csv'):
-        pp = pd.DataFrame.from_csv(outname+'_picked.csv') # TODO: pd.DataFrame.from_csv -> pd.read_csv
+        pp = pd.read_csv(outname+'_picked.csv')
     else:
         logging.error('Could not find file {}_picked.csv!'.format(outname))
     return ap, pp
-
-def get_k_partition_boundaries(data, k):
-    if k >= len(data):
-        print('error: need k less than the size of the data')
-        return None
-    sortdata = np.sort(data)
-    # gaps is an array of size N-1 listing
-    gaps = np.array(sortdata[1:]) - np.array(sortdata[:-1])
-    # part_idsx are the indices of the k largest gaps
-    part_idxs = np.argpartition(gaps, k)[-k:] # [::-1] # don't think we really need to re-order these
-    # define the boundaries as the means
-    part_boundaries = [0.5*(sortdata[i] + sortdata[i+1]) for i in part_idxs]
-    return np.sort(part_boundaries)
-    
-    
-
+  
 def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
     """
     index: index of player to be removed from available
@@ -220,7 +188,7 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
             pp.loc[index, 'pick'] = pickno
             pp.pick = pp.pick.astype(int)
         # player = df.pop(index) # DataFrame.pop pops a column, not a row
-    name = player['name']
+    name = player['player']
     pos = player['position']
     team = player['team']
     print('selecting {} ({}) - {}'.format(name, team, pos))
@@ -305,7 +273,7 @@ def push_to_player_list(index, ap, pp):
     # must use loc, not iloc, since positions may move
     ap.loc[index] = player
     # ap.sort_values('vols', ascending=False, inplace=True) # don't re-sort here
-    name = player['name']
+    name = player['player']
     pos = player['position']
     team = player['team']
     print('replacing {} ({}) - {}'.format(name, team, pos))
@@ -316,7 +284,7 @@ def save_player_list(outname, ap, pp=None):
     print('Saving with label {}.'.format(outname))
     ap.to_csv(outname+'.csv')
     if pp is not None:
-        pp.to_csv(outname+'_picked.csv')
+        pp.to_csv(outname+'_picked.csv', index=False)
 
 def verify_and_quit():
     user_verify = input('Are you sure you want to quit and lose all progress [y/N]? ')
@@ -765,7 +733,7 @@ class MainPrompt(Cmd):
         find_player(search_words, self.ap, self.pp)
     def complete_find(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        avail_names = pd.concat([self.ap, self.pp])['name']
+        avail_names = pd.concat([self.ap, self.pp])['player']
         mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
                            for name in avail_names]
         if text:
@@ -784,7 +752,7 @@ class MainPrompt(Cmd):
             index = int(args)
         except ValueError as e:
             all_players = pd.concat([self.ap, self.pp])
-            criterion = all_players['name'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
+            criterion = all_players['player'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
             filtered = all_players[criterion]
             if len(filtered) <= 0:
                 print('Could not find available player with name {}.'.format(args))
@@ -798,8 +766,8 @@ class MainPrompt(Cmd):
         find_handcuff(index, self.ap, self.pp)
     def complete_handcuff(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        # avail_names = pd.concat([self.ap, self.pp])['name']
-        avail_names = pd.concat([self.ap['name'], self.pp['name']])
+        # avail_names = pd.concat([self.ap, self.pp])['player']
+        avail_names = pd.concat([self.ap['player'], self.pp['player']])
         mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
                            for name in avail_names]
         if text:
@@ -852,7 +820,7 @@ class MainPrompt(Cmd):
         print('if you quit from draft mode, then that state will not be saved.')
         print('in principle this can be extracted from the manager of the picked players,')
         print('but that is not yet implemented.')
-        outname = args if args else 'draft_players'
+        outname = args if args else 'draft_backup'
         self.ap, self.pp = load_player_list(outname)
 
     def do_ls(self, args):
@@ -980,7 +948,7 @@ class MainPrompt(Cmd):
             if index is None:
                 index = int(args) 
         except ValueError as e:
-            criterion = self.ap['name'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
+            criterion = self.ap['player'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
             filtered = self.ap[criterion]
             if len(filtered) <= 0:
                 print('Could not find available player with name {}.'.format(args))
@@ -1002,7 +970,7 @@ class MainPrompt(Cmd):
             print('could not pick player from list.')
     def complete_pick(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        avail_names = self.ap['name']
+        avail_names = self.ap['player']
         # TODO: make it look a bit prettier by allowing spaces instead of underscores.
         # see: https://stackoverflow.com/questions/4001708/change-how-python-cmd-module-handles-autocompletion
         # clean up the list a bit, removing ' characters and replacing spaces with underscores
@@ -1015,7 +983,9 @@ class MainPrompt(Cmd):
             return [name for name in mod_avail_names]
     
     def do_plot(self, args):
-        """plot dropoff by position"""
+        """
+        plot the dropoff of a quantity by position
+        """
         yquant = args.strip().lower() if args else self._sort_key
         if yquant not in self.ap:
             print('{} is not a quantity that can be plotted.'.format(yquant))
@@ -1028,13 +998,14 @@ class MainPrompt(Cmd):
             pos_idxs = plotdf[plotdf.position == pos].sort_values(yquant, ascending=False).index
             for rank,idx in enumerate(pos_idxs):
                 plotdf.loc[idx,'posrank'] = rank
-        g = sns.factorplot(data=plotdf, x='posrank', y=yquant,
+        g = sns.pointplot(data=plotdf, x='posrank', y=yquant,
                            hue='position',
                            aspect=2.0 # make the plot wider by factor of 2
                            # , kind='strip' # this style looks decent, but I prefer lines connecting these points because they're sorted
         )
+        g.set_xlabel('Position rank')
+        g.set_ylabel(yquant)
         # g.set_xticklabels(tick_labels.astype(int))
-        g.set_axis_labels('Position rank', yquant)
         g.set_xticklabels([]) # by default the tick labels are drawn as floats, making them hard to read
         plt.show()
         
@@ -1054,14 +1025,14 @@ class MainPrompt(Cmd):
         for strat in self._known_strategies:
             pick = self._pick_rec(manager, strat, disabled_pos=self.disabled_pos)
             player = self.ap.loc[pick]
-            print(' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position))
+            print(' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['player'], player.team, player.position))
         if self.manager_picks:
             vona_strats = ['vols', 'volb', 'vbsd', 'adp', 'ecp']
             # vona-vorp takes too long
             for strat in vona_strats:
                 pick = self._pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
                 player = self.ap.loc[pick]
-                print(' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['name'], player.team, player.position))
+                print(' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['player'], player.team, player.position))
                 
     def do_roster(self, args):
         """
@@ -1388,11 +1359,11 @@ def main():
         posdf['position'] = pos
         posdfs.append(posdf)
     # create dataframe of all available players
-    availdf = pd.concat(posdfs, ignore_index=True)
+    availdf = pd.concat(posdfs, ignore_index=True, sort=False)
 
     # add the team acronym to the DST entries for consistency/elegance
     teamlist = availdf[~availdf.team.isnull()]['team'].sort_values().unique()
-    availdf.loc[availdf.position == 'DST','team'] = availdf.loc[availdf.position == 'DST','name'].map(lambda n: get_team_abbrev(n, teamlist))
+    availdf.loc[availdf.position == 'DST','team'] = availdf.loc[availdf.position == 'DST','player'].map(lambda n: get_team_abbrev(n, teamlist))
 
     # if they have no stats listed (NaN) we can treat that as a zero
     # this should be called before ADP is added, since it has some missing values that we want to keep as NaN for clarity
@@ -1404,12 +1375,12 @@ def main():
     # add team acronym on ECP/ADP data too, so that we can use "team" as an additional merge key
     # dpdf.drop(columns=['rank', 'WSID'],inplace=True)
     dpdf = dpdf[~dpdf.pos.str.contains('TOL')]
-    dpdf.loc[dpdf.team.isnull(),'team'] = dpdf.loc[dpdf.team.isnull(),'name'].map(lambda n: get_team_abbrev(n, teamlist))
+    dpdf.loc[dpdf.team.isnull(),'team'] = dpdf.loc[dpdf.team.isnull(),'player'].map(lambda n: get_team_abbrev(n, teamlist))
 
     # print dpdf
     # only merge with the columns we are interested in for now.
     # combine on both name and team because there are sometimes multiple players w/ same name
-    availdf = availdf.merge(dpdf[['name', 'team', 'ecp', 'adp']], how='left', on=['name','team'])
+    availdf = availdf.merge(dpdf[['player', 'team', 'ecp', 'adp']], how='left', on=['player','team'])
     
     # fill in zeros for the additional stats that aren't included in FP projections
     # this will make computing the points for the ruleset simpler
@@ -1426,7 +1397,7 @@ def main():
     # for DST, just take the FP projection.
     availdf.loc[availdf.position == 'DST', 'projection'] = availdf['fp_projection']
     # can go ahead and filter out stats once we have projections
-    availdf = availdf[['name', 'team', 'position', 'adp', 'ecp', 'projection']]    
+    availdf = availdf[['player', 'team', 'position', 'adp', 'ecp', 'projection']]    
 
     # label nominal (non-flex) starters by their class
     for pos in main_positions:
