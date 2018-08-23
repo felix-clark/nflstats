@@ -167,6 +167,7 @@ class TrialModel(Model):
         return var
 
     def ppf(self, att, uni):
+        if att == 0: return 0
         succ = 0
         cdf = dist_fit.beta_binomial(0, att, *self.ab)
         while cdf < uni:
