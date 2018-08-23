@@ -135,7 +135,7 @@ def main():
                 pgames -= int(gsus)
                 logging.info(' -- {} game suspension'.format(gsus))
             else:
-                logging.info('suspension ammount unknown.')
+                logging.info('suspension time unknown.')
 
         if scale_touch:
             re_ev_dict = {}
@@ -168,16 +168,19 @@ def main():
         evdat['ex_pred'] = exproj['fp_projection']
         evdat['fpts_ev'] = get_points( rules, evdat )
         evdat['fpts_sim'] = fps.mean()*pgames
+        evdat['fpts_med'] = fp_med
         evdat['fpts_simstd'] = fps.std()*np.sqrt(pgames)
         evdat['volatility'] = np.sqrt(np.mean(pcterrs**2))
         if fp_med > 0:
             evdat['vol1'] = 0.5*(fp_1u - fp_1d)/fp_med
             evdat['vol2'] = 0.5*(fp_2u - fp_2d)/fp_med
+        evdat['fpts_u1'] = fp_1u
+        evdat['fpts_d1'] = fp_1d
         
         evdf = evdf.append(evdat, ignore_index=True)
         
     print(evdf.sort_values('fpts_ev', ascending=False))
-    evdf.to_csv('data/{}_simulations_{}.csv'.format(pos.lower(), current_year))
+    evdf.to_csv('data/{}_simulations_{}.csv'.format(pos.lower(), current_year), index=False)
     
     return
 
