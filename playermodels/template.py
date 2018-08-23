@@ -88,6 +88,9 @@ class CountsModel(Model):
         # most rush attempts is 45, pass attempts is 70, and most targets is >= 18.
         # the fact that we have to do this is really ugly, so a next big step
         # might be modeling touches as percentages of game plays.
+        if self.ab[0] == 0:
+            # this can happen if we revert the ev to zero
+            return 0
         maxatt = 35 if self.name == 'rush_att' else \
                  65 if self.name == 'pass_att' else \
                  20 if self.name == 'targets' else 100

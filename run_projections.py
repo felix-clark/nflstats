@@ -20,6 +20,9 @@ def get_player_from_df(df, pname, pos=None, team=None):
         pl = df[pix]
         assert(len(pl) == 1)
         return pl.iloc[0]
+    # try removing jr. / sr.
+    if pname[-3:].lower() in ['jr.', 'sr.']:
+        return get_player_from_df(df, pname[:-3].strip(), pos=pos, team=team)
     return None
     
 
@@ -53,7 +56,9 @@ def main():
 
     # get player index
     pidx = get_pos_players(pos)
-    pidx = pidx[(pidx['pos'] == pos) & (pidx['year_max'] >= current_year-1)]
+    # players like Luck who didn't play last year will be ruled out here.
+    # we have the expert list to compare to so we can allow another year back.
+    pidx = pidx[(pidx['pos'] == pos) & (pidx['year_max'] >= current_year-2)]
     ngames = 16
     nseasons = args.n_seasons
 
@@ -91,32 +96,46 @@ def main():
         for st in stat_vars:
             if st not in pdf:
                 pdf[st] = 0 # set non-existent values to zero
-                
+
         years = pdf['year'].unique()
+        # if len(years) == 0:
+            # then we need to debug why this player isn't being read, tho this should be fine for rookies
+            # logging.error(' no player data for {}!'.format(pname))
+            
         assert((np.diff(years) > 0).all())
         pcterrs = []
         for year in years:
             ydf = pdf[pdf['year'] == year]
             games = ydf['game_num']
             assert((np.diff(games) > 0).all()) # this sometimes fails when players are traded mid-week. we could just pick the one with the most points (so far just manually deleting)
+            meanpts = get_points(rules, ydf).mean()
+            
             for _,game in ydf.iterrows():
-                evs = pmod.evs() # expected outcome
-                expt = get_points(rules, evs) # works from dict too?
-                actpt = get_points(rules, game)
-                pcterrs.append((actpt-expt)/expt)
+                # evs = pmod.evs() # expected outcome
+                # expt = get_points(rules, evs) # works from dict too?
+                if meanpts != 0:
+                    actpt = get_points(rules, game)
+                    pcterrs.append((actpt-meanpts)/meanpts)
                 pmod.update_game(game)
             pmod.new_season()
 
+        pcterrs = np.array(pcterrs)
+        if np.isnan(pcterrs).any():
+            print(pcterrs)
+            exit(1)
+    
         # now we're done training; do simulations next
         # get the number of games a player is expected to play
         pgames = ngames # number of games this player expects to play. we'll check suspensions:
         psus = get_player_from_df(sussdf, pname, pos)
         if psus is not None:
             gsus = psus.games_suspended
-            print(psus.details)
+            logging.info(psus.details)
             if not np.isnan(gsus):
                 pgames -= int(gsus)
-                print(' -- {} game suspension'.format(gsus))
+                logging.info(' -- {} game suspension'.format(gsus))
+            else:
+                logging.info('suspension ammount unknown.')
 
         if scale_touch:
             re_ev_dict = {}
@@ -128,8 +147,9 @@ def main():
                 re_ev_dict['targets'] = modevs['targets'] * exproj['rec'] / modevs['rec'] / pgames
             pmod.revert_evs(re_ev_dict)
         
-        if pname in ['Todd Gurley', 'Ezekiel Elliott', 'Le\'Veon Bell', 'Saquon Barkley', 'Royce Freeman']:
-            print(pmod)
+        # if pname in ['Todd Gurley', 'Ezekiel Elliott', 'Le\'Veon Bell', 'Saquon Barkley', 'Royce Freeman']:
+        # if pname in ['dDeAndre Hopkins', 'Odell Beckham Jr.']:
+        #     print(pmod)
 
         fpdf = pd.concat([pd.DataFrame((pmod.gen_game() for _ in range(pgames))) for _ in range(nseasons)], ignore_index=True)
         # fps = pd.concat((get_points( rules, fpdf )), ignore_index=True)
@@ -140,7 +160,6 @@ def main():
             print(pname)
             print(fpdf[largegames])
         
-        # print('std dev / mean: {}'.format(fps.std()/fps.mean()))
         fp_2d,fp_1d,fp_med,fp_1u,fp_2u = fps.quantile((0.02275, 0.15865, 0.5, 0.84135, 0.97725))
         evdat = {key:(pgames*val) for key,val in pmod.evs().items()}
         evdat['player'] = pname
@@ -150,11 +169,10 @@ def main():
         evdat['fpts_ev'] = get_points( rules, evdat )
         evdat['fpts_sim'] = fps.mean()*pgames
         evdat['fpts_simstd'] = fps.std()*np.sqrt(pgames)
-        evdat['volatility'] = np.sqrt(np.mean(np.array(pcterrs)**2))
+        evdat['volatility'] = np.sqrt(np.mean(pcterrs**2))
         if fp_med > 0:
             evdat['vol1'] = 0.5*(fp_1u - fp_1d)/fp_med
             evdat['vol2'] = 0.5*(fp_2u - fp_2d)/fp_med
-        # evdat['fpts'] = fps.sum() # this is random
         
         evdf = evdf.append(evdat, ignore_index=True)
         

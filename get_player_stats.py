@@ -6,6 +6,7 @@ import pandas as pd
 import logging
 import os
 from retrying import retry
+from math import sqrt
 
 
 def _make_dirs():
@@ -149,6 +150,8 @@ def _undrafted_players():
         ['Arian Foster', 'FostAr00', 'RB', 2009, 2016],
         ['Isaiah Crowell', 'CrowIs00', 'RB', 2014, 2017],
         ['LeGarrette Blount', 'BlouLe00', 'RB', 2010, 2017],
+        ['Doug Baldwin', 'BaldDo00', 'WR', 2011, 2017],
+        ['Adam Thielen', 'TheiAd00', 'WR', 2014, 2017],
     ]
     return pd.DataFrame(columns=columns, data=players)
 
@@ -174,9 +177,11 @@ def get_fantasy_player_dict(startyear=1992):
         keepix = (draftdf['years_as_primary_starter'] > 0) & (draftdf['years_as_primary_starter'] >= years_in_league // 4)
         # we could consider a more refined cutoff
         # allow some players who have gotten decent volume
-        keepix |= (draftdf['pass_att'] >= (128 * years_in_league))
-        keepix |= (draftdf['rush_att'] >= (64  * years_in_league))
-        keepix |= (draftdf['rec']      >= (32  * years_in_league))
+        # we really want to figure this out w/ something like a max,
+        # but that requires looking in other sources that may not yet be available
+        keepix |= (draftdf['pass_att'] >= (128 * (1+years_in_league//3)))
+        keepix |= (draftdf['rush_att'] >= (64  * (1+years_in_league//3)))
+        keepix |= (draftdf['rec']      >= (32  * (1+years_in_league//3)))
         draftdf = draftdf[keepix]
         df = df.append(draftdf[keepcols])
     df.to_csv(fname, index=False)
