@@ -152,6 +152,7 @@ def _undrafted_players():
         ['LeGarrette Blount', 'BlouLe00', 'RB', 2010, 2017],
         ['Doug Baldwin', 'BaldDo00', 'WR', 2011, 2017],
         ['Adam Thielen', 'TheiAd00', 'WR', 2014, 2017],
+        ['Josh Gordon', 'GordJo02', 'WR', 2012, 2017], # he was in the supplemental draft
     ]
     return pd.DataFrame(columns=columns, data=players)
 
