@@ -81,7 +81,10 @@ class CountsModel(Model):
         if self.ab[0] > newev*self.ab[1]: # if current ev > new ev
             self.ab[0] = newev*self.ab[1] # reduce alpha to compensate
         else:
-            self.ab[1] = self.ab[0]/newev
+            # if we need to increase, we should be careful to not increase the variance too much.
+            # we'll try increasing keeping the sum of alpha and beta constant
+            c = self.ab.sum()
+            self.ab = np.array((newev,1))*c/(1+newev)
             
     def ppf(self, uni):
         # this yields a gamma convoluted w/ a poisson
