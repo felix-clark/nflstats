@@ -55,11 +55,14 @@ def main():
                      .format(model, klds.sum(), chisqs.sum(),
                              klds.size, klds.mean(), chisqs.mean()))
         # print(posdf['{}_chisq'.format(model)].mean()) # yes, this gives the same result
-        plot_vars = ['kld', 'cdf']
+        # plt.figure()
+        # game_plt = sns.boxenplot(data=posdf, x='game_num', y=model+'_kld', hue='career_year')
+        # plt.show(block=True)
+        # plot_vars = ['kld', 'cdf']
         # for pname in plot_vars:
-            # plt.figure()
-            # year_plt = sns.boxenplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
-            # year_plt = sns.lvplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
+        #     plt.figure()
+        #     year_plt = sns.boxenplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
+        #     # year_plt = sns.lvplot(data=posdf, x='career_year', y=model+'_'+pname) # hue = model # when we compare models (baseline would be nice)
         # plt.show(block=True)
 
     # print(posdf[posdf['rush_att'] == 0])
@@ -93,6 +96,13 @@ def main():
                                 # diag_kind='hist', # causes error
                                 hue='career_year'
         )
+        # plt_corr = sns.pairplot(posdf, # height = 4,
+        #                         dropna=True,
+        #                         vars=resnames,
+        #                         # kind='reg', # do linear regression to look for correlations
+        #                         # diag_kind='hist', # causes error
+        #                         hue='game_num'
+        # )
         # plt_corr.map_diag(plt.hist)
         # plt_corr.map_offdiag(sns.kdeplot, n_levels=6)
         plt.show(block=True)
