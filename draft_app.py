@@ -11,6 +11,7 @@ import argparse
 import random
 import logging
 from itertools import takewhile
+from difflib import get_close_matches
 from cmd import Cmd
 import pandas as pd
 import seaborn as sns
@@ -48,16 +49,16 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None):
     i_st = [] # the indices of the players we have counted so far
     for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
         n_starters = n_roster_per_team[pos]
-        rospos = rosdf[rosdf.pos == pos].sort_values('projection', ascending=False)
+        rospos = rosdf[rosdf.pos == pos].sort_values('exp_proj', ascending=False)
         i_stpos = rospos.index[:n_starters]
-        val = rospos[rospos.index.isin(i_stpos)]['projection'].sum()
+        val = rospos[rospos.index.isin(i_stpos)]['exp_proj'].sum()
         starterval = starterval + val
         i_st.extend(i_stpos)
 
     n_flex = n_roster_per_team['FLEX']
-    rosflex = rosdf[(~rosdf.index.isin(i_st)) & (rosdf.pos.isin(flex_pos))].sort_values('projection', ascending=False)
+    rosflex = rosdf[(~rosdf.index.isin(i_st)) & (rosdf.pos.isin(flex_pos))].sort_values('exp_proj', ascending=False)
     i_flex = rosflex.index[:n_flex]
-    starterval = starterval + rosflex[rosflex.index.isin(i_flex)]['projection'].sum()
+    starterval = starterval + rosflex[rosflex.index.isin(i_flex)]['exp_proj'].sum()
     i_st.extend(i_flex)
     
     print('  starting lineup:', file=outfile)
@@ -81,7 +82,7 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None):
         pos = row.pos
         start_to_bench_ratio = len(startdf[startdf.pos == pos]) * 1.0 / len(benchdf[benchdf.pos == pos])
         # TODO: evaluate bench players (and other players) with the same method used for VBSD / auction price.
-        benchval = benchval + (1 - bye_factor*pos_injury_factor[pos])*row.projection
+        benchval = benchval + (1 - bye_factor*pos_injury_factor[pos])*row.exp_proj
         
     auctionval = rosdf['auction'].sum()
 
@@ -113,15 +114,15 @@ def find_handcuff(index, ap, pp):
     ap: dataframe of available players
     pp: dataframe of picked players
     """
-    player = pd.concat([ap, pp]).loc[index]
+    player = pd.concat([ap, pp], sort=False).loc[index]
     ## the "name" attribute is the index, so need dictionary syntax to grab actual name
     name, pos, team = player['player'], player.pos, player.team
     print('Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos))
-    ah = ap[(ap.pos == pos) & (ap.team == team) & (ap.name != name)]
+    ah = ap[(ap.pos == pos) & (ap.team == team) & (ap.player != name)]
     if len(ah) > 0:
         print('The following potential handcuffs are available:')
         print(ah.drop(['volb'], axis=1))
-    ph = pp[(pp.pos == pos) & (pp.team == team) & (pp.name != name)]
+    ph = pp[(pp.pos == pos) & (pp.team == team) & (pp.player != name)]
     if len(ph) > 0:
         print('The following handcuffs have already been picked:')
         print(ph.drop(['volb'], axis=1))
@@ -130,7 +131,7 @@ def find_handcuff(index, ap, pp):
 # adding features to search by team name/city/abbreviation might be nice,
 #   but probably not worth the time for the additional usefulness.
 #   It could also complicate the logic and create edge cases.
-def find_player(search_words, ap, pp):
+def find_player(search_str, ap, pp):
     """
     prints the players with one of the words in search_words in their name.
     useful for finding which index certain players are if they are not in the top when drafted.
@@ -138,16 +139,18 @@ def find_player(search_words, ap, pp):
     ap: dataframe of available players
     pp: dataframe of picked players
     """
+    # clean periods, since they aren't consistent between sources
+    search_str = search_str.replace('.', '')
     # check if any of the search words are in the full name
-    checkfunc = lambda name: any([sw in name.strip().lower() for sw in search_words])
-    filtered_pp = pp[pp['player'].map(checkfunc)]
-    if len(filtered_pp) > 0:
-        # print '  Could not find any picked players.'
-    # else:
+    checkfunc = lambda name: all([sw in name.lower().replace('.', '') for sw in search_str.lower().split(' ')])
+    filt_mask = pp.player.map(checkfunc) | pp.player.str.lower().isin( get_close_matches(search_str.lower(), pp.player.str.lower(), cutoff=0.8) )
+    filtered_pp = pp[filt_mask]
+    if filtered_pp.shape[0] > 0:
         print('\n  Picked players:')
         print(filtered_pp)
-    filtered_ap = ap[ap['player'].map(checkfunc)] # map creates a boolean mask
-    if len(filtered_ap) == 0:
+    filt_mask = ap.player.map(checkfunc) | ap.player.str.lower().isin( get_close_matches(search_str.lower(), ap.player.str.lower(), cutoff=0.8) )
+    filtered_ap = ap[filt_mask]
+    if filtered_ap.shape[0] == 0:
         print('\n  Could not find any available players.')
     else:
         print('\n  Available players:')
@@ -176,10 +179,10 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
     # were using iloc, but the data may get re-organized so this should be safer
     if pp is not None:
         if len(pp[pp.index == index]) > 0:
-            print('It seems like the index of the player is already in the picked player list.')
-            print('Someone needs to clean up the logic...')
-            print('DEBUG: picked players w/index:', pp.loc[index])
-            print('DEBUG: available players w/index:', ap.loc[index])
+            logging.error('It seems like the index of the player is already in the picked player list.')
+            logging.error('Someone needs to clean up the logic...')
+            logging.debug('picked players w/index:', pp.loc[index])
+            logging.debug('available players w/index:', ap.loc[index])
         pp.loc[index] = player
         if manager is not None:
             pp.loc[index, 'manager'] = manager
@@ -217,9 +220,8 @@ def print_teams(ap, pp):
     """
     prints a list of teams in both the available and picked player lists
     """
-    teams = pd.concat([ap, pp])['team']
-    # unique() does not sort, but assumes a sorted list
-    print(teams.sort_values().unique())
+    teams = pd.concat([ap, pp], sort=False)['team']
+    print(teams.unique())
 
 # this method will be our main output
 def print_top_choices(df, ntop=10, npos=3, sort_key='vols', sort_asc=False, drop_stats=None, hide_pos=None):
@@ -237,7 +239,7 @@ def print_top_choices(df, ntop=10, npos=3, sort_key='vols', sort_asc=False, drop
         print(df[~df.pos.isin(hide_pos)].drop(drop_stats, inplace=False, axis=1).head(ntop))
     if npos > 0:
         positions = [pos for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST'] if pos not in hide_pos]
-        # print df[df.pos.isin(positions)].groupby('pos')# .agg({'projection':sum}).nlargest(npos) # can't figure out groupby right now -- might tidy up the output
+        # print df[df.pos.isin(positions)].groupby('pos')# .agg({'exp_proj':sum}).nlargest(npos) # can't figure out groupby right now -- might tidy up the output
         for pos in positions:
             print(df[df.pos == pos].drop(drop_stats, inplace=False, axis=1).head(npos))
 
@@ -283,7 +285,7 @@ def push_to_player_list(index, ap, pp):
 def save_player_list(outname, ap, pp=None):
     """saves the available and picked player sets with label "outname"."""
     print('Saving with label {}.'.format(outname))
-    ap.to_csv(outname+'.csv')
+    ap.to_csv(outname+'.csv', index=False)
     if pp is not None:
         pp.to_csv(outname+'_picked.csv', index=False)
 
@@ -539,7 +541,7 @@ class MainPrompt(Cmd):
                 # vona_asc = vona_strat in ['adp', 'ecp']
                 # topvonapos = ap[ap.pos == pos].sort_values(vona_strat, vona_asc)
                 # take our projection over ADP/ECP. 
-                topvonapos = ap[ap.pos == pos].sort_values('projection', ascending=False)
+                topvonapos = ap[ap.pos == pos].sort_values('exp_proj', ascending=False)
                 if len(topvonapos) <= 0:
                     print('error: could not get a list of availble position that maximizes VONA.')
                     print('switch to regulat strat?')
@@ -599,13 +601,13 @@ class MainPrompt(Cmd):
             vorp_baseline = 0
             if n_pos_draftable <= 0:
                 # no more "draftable" players -- vorp should be zero for top
-                vorp_baseline = ap[ap.pos == pos]['projection'].max()
+                vorp_baseline = ap[ap.pos == pos]['exp_proj'].max()
             else:
                 frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
                 backup_mask = pos_draftable['tier'] == 'BU'
                 # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
-                worst_starters = pos_draftable[~backup_mask].sort_values('projection', ascending=True)
-                # best_waivers = pos_draftable[backup_mask].sort_values('projection', ascending=False)
+                worst_starters = pos_draftable[~backup_mask].sort_values('exp_proj', ascending=True)
+                # best_waivers = pos_draftable[backup_mask].sort_values('exp_proj', ascending=False)
                 ls_index = None # index of worst starter in position
                 # fw_index = None # index of best wavier option in position (assuming ADP)
                 if len(worst_starters) > 0:
@@ -624,8 +626,8 @@ class MainPrompt(Cmd):
                 if index >= len(pos_baseline):
                     print('warning: check index here later')
                     index = len(pos_baseline-1)
-                vorp_baseline = pos_baseline['projection'].sort_values( ascending=False ).iloc[index]
-            ap.loc[ap.pos == pos, 'vorp'] = ap['projection'] - vorp_baseline
+                vorp_baseline = pos_baseline['exp_proj'].sort_values( ascending=False ).iloc[index]
+            ap.loc[ap.pos == pos, 'vorp'] = ap['exp_proj'] - vorp_baseline
 
     def do_disable_pos(self, args):
         """
@@ -730,8 +732,9 @@ class MainPrompt(Cmd):
         usage: find NAME...
         finds and prints players with the string(s) NAME in their name.
         """
-        search_words = [word for word in args.replace('_', ' ').split(' ') if word]
-        find_player(search_words, self.ap, self.pp)
+        # search_words = [word for word in args.replace('_', ' ').split(' ') if word]
+        search_str = args.replace('_', ' ')
+        find_player(search_str, self.ap, self.pp)
     def complete_find(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
         avail_names = pd.concat([self.ap, self.pp], sort=False)['player']
@@ -752,7 +755,7 @@ class MainPrompt(Cmd):
         try:
             index = int(args)
         except ValueError as e:
-            all_players = pd.concat([self.ap, self.pp])
+            all_players = pd.concat([self.ap, self.pp], sort=False)
             criterion = all_players['player'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
             filtered = all_players[criterion]
             if len(filtered) <= 0:
@@ -768,7 +771,7 @@ class MainPrompt(Cmd):
     def complete_handcuff(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
         # avail_names = pd.concat([self.ap, self.pp])['player']
-        avail_names = pd.concat([self.ap['player'], self.pp['player']])
+        avail_names = pd.concat([self.ap['player'], self.pp['player']], sort=False)
         mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
                            for name in avail_names]
         if text:
@@ -1261,12 +1264,12 @@ class MainPrompt(Cmd):
             positions = [pos for (pos,numpos) in list(self.n_roster_per_team.items())
                          if pos not in ['FLEX', 'BENCH'] and numpos > 0]
             for pos in positions:
-                topval = self.ap[self.ap.pos == pos]['projection'].max()
+                topval = self.ap[self.ap.pos == pos]['exp_proj'].max()
                 # get "next available" assuming other managers use strategy "strat" to pick
                 managers = self._get_managers_til_next()
                 managers.extend(managers[::-1])
                 na_ap, na_pp = self._step_vona(self.ap, self.pp, managers, strat)
-                naval = na_ap[na_ap.pos == pos]['projection'].max()
+                naval = na_ap[na_ap.pos == pos]['exp_proj'].max()
                 print('{}: {}'.format(pos,topval-naval))
     def _get_max_vona_in(self, positions, strat, disabled_pos=None):
         # vona_dict = {pos:0 for pos in positions)
@@ -1275,12 +1278,12 @@ class MainPrompt(Cmd):
         max_vona = -1000.0
         max_vona_pos = None
         for pos in positions:
-            topval = self.ap[self.ap.pos == pos]['projection'].max()
+            topval = self.ap[self.ap.pos == pos]['exp_proj'].max()
             # get "next available" assuming other managers use strategy "strat" to pick
             managers = self._get_managers_til_next()
             managers.extend(managers[::-1])
             na_ap, _ = self._step_vona(self.ap, self.pp, managers, strat)
-            naval = na_ap[na_ap.pos == pos]['projection'].max()
+            naval = na_ap[na_ap.pos == pos]['exp_proj'].max()
             vona = topval - naval
             if vona > max_vona and pos not in disabled_pos:
                 max_vona, max_vona_pos = vona, pos
@@ -1378,29 +1381,37 @@ def main():
     # only merge with the columns we are interested in for now.
     # combine on both name and team because there are sometimes multiple players w/ same name
     availdf = availdf.merge(dpdf[['player', 'team', 'ecp', 'adp']], how='left', on=['player','team'])
+    availdf.loc[:,'n'] = ''
     
     # decorate the dataframe with projections for our ruleset
     # use 15/16 for bye factor, since we're only considering 16 weeks of the season (w/ 1 bye)
-    availdf.loc[availdf.pos != 'DST', 'projection'] = get_points(rules, availdf)
+    availdf.loc[availdf.pos != 'DST', 'exp_proj'] = get_points(rules, availdf)
     # for DST, just take the FP projection.
-    availdf.loc[availdf.pos == 'DST', 'projection'] = availdf['fp_projection']
+    availdf.loc[availdf.pos == 'DST', 'exp_proj'] = availdf['fp_projection']
     # can go ahead and filter out stats once we have projections
-    availdf = availdf[['player', 'team', 'pos', 'adp', 'ecp', 'projection']]    
+    availdf = availdf[['player', 'n', 'team', 'pos', 'adp', 'ecp', 'exp_proj']]    
 
 
     ## flag players with news items
     newsdf = pd.read_csv('data/news.csv')
     newsdf = newsdf[newsdf.pos.isin(main_positions)]
-    availdf.loc[:,'n'] = ''
     for _,pnews in newsdf.iterrows():
         pnamenews,pteamnews,posnews = pnews[['player', 'team', 'pos']]
-        pix = (availdf.player == pnamenews) & (availdf.pos == posnews)
+        pix = (availdf.pos == posnews)
+        pix &= (availdf.player == pnamenews)
         # pix &= (availdf.team == pteamsus) # the team abbreviations are not always uniform #TODO: make it well-defined
-        if len(availdf[pix]) > 1:
-            logging.warning('multiple matches found for news item!')
+        if availdf[pix].shape[0] > 1:
+            logging.warning('multiple matches found for news item about {}!'.format(pnamenews))
             print(availdf[pix])
-        if len(availdf[pix]) == 0:
-            logging.error('there is news about {} ({}) {}, but this player could not be found!'.format(pnamenews, pteamnews, posnews))
+        if availdf[pix].shape[0] == 0:
+            pix = (availdf.pos == posnews)
+            cutoff = 0.8 # default is 0.6, but this seems too loose
+            pix &= (availdf.player.isin(get_close_matches(pnamenews, availdf[pix]['player'].values, cutoff=cutoff)))
+            if availdf[pix].shape[0] > 1:
+                logging.warning('multiple matches found for news item about {}!'.format(pnamenews))
+                print(availdf[pix])
+            if availdf[pix].shape[0] == 0:
+                logging.error('there is news about {} ({}) {}, but this player could not be found!'.format(pnamenews, pteamnews, posnews))
         availdf.loc[pix,'n'] = '*' # flag this column
 
     
@@ -1427,8 +1438,8 @@ def main():
     # this is just a static calculation right now.
     # in the future we could adjust this for draft position and dynamically
     #  update in the case of other teams making "mistakes".
-    gamesdf = availdf[['pos', 'projection', 'g']].copy()
-    gamesdf['ppg'] = gamesdf['projection'] / gamesdf['g']
+    gamesdf = availdf[['pos', 'exp_proj', 'g']].copy()
+    gamesdf['ppg'] = gamesdf['exp_proj'] / gamesdf['g']
     gamesdf.sort_values('ppg', ascending=False)
 
     ppg_baseline = {}
@@ -1463,13 +1474,13 @@ def main():
             
     for pos in main_positions:
         # the baseline itself should not be subject to too much variance
-        # worst_starter_value = starterdf[starterdf.pos == pos]['projection'].min()
+        # worst_starter_value = starterdf[starterdf.pos == pos]['exp_proj'].min()
         worst_starter_pg = ppg_baseline[pos]
         if pos in flex_pos:
             worst_starter_pg = min(worst_starter_pg, ppg_baseline['FLEX'])
         # the projections are typically for all 16 games, but we only use 15 in fantasy.
         gs = availdf['g']
-        availdf.loc[availdf.pos == pos, 'vols'] = gs*(availdf['projection']/(gs+1) - worst_starter_pg)
+        availdf.loc[availdf.pos == pos, 'vols'] = gs*(availdf['exp_proj']/(gs+1) - worst_starter_pg)
     
     # label nominal (non-flex) starters by their class
     for pos in main_positions:
@@ -1535,7 +1546,7 @@ def main():
         # we'll say players at the baseline have about a 50% chance of starting. it's a pretty arbitrary envelope.
         # we should really figure out this envelope function w/ simulations, but they need to be more reliable.
         # auction_multiplier = lambda x: max(1.0 -  x*0.5*pos_prob_play/pos_rank_benchmark, 0.0)
-        auction_multiplier = lambda x: max(1.0/(1.0 + (x*0.5*pos_prob_play/pos_rank_benchmark)**2), 0.0)
+        auction_multiplier = lambda x: max(1.0/(1.0 + (x/pos_required)**2), 0.0)
         # auction_multiplier = lambda x: max(1.0 - 0.5*(x*pos_prob_play/pos_rank_benchmark)**2, 0.0)
         if pos in ['K', 'DST']: auction_multiplier = lambda x: 0 #these are random and have lots of variance, so lets keep the envelop flat and low. should not pay more than $1 for these. 
             
