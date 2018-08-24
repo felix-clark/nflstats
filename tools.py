@@ -101,3 +101,10 @@ def get_team_abbrev(full_team_name, team_abbrevs):
     
     logging.error('could not find abbreviation for {}'.format(full_team_name))
     
+def rm_name_suffix(name):
+    spln = name.split(' ')
+    last = spln[-1].strip('.')
+    if last.lower() in ['jr', 'sr'] or all((l in 'IVX' for l in last)):
+        sfl = ' '.join(spln[:-1])
+        return sfl
+    return name
