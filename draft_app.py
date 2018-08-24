@@ -289,6 +289,12 @@ def save_player_list(outname, ap, pp=None):
     if pp is not None:
         pp.to_csv(outname+'_picked.csv', index=False)
 
+def simplify_name(name):
+    """
+    maps "A.J. Smith Jr." to "aj_smith_jr"
+    """
+    return name.strip().lower().replace(' ', '_').replace('\'', '').replace('.', '')
+        
 def verify_and_quit():
     user_verify = input('Are you sure you want to quit and lose all progress [y/N]? ')
     if user_verify.strip() == 'y':
@@ -312,8 +318,9 @@ class MainPrompt(Cmd):
     # member variables to have access to the player dataframes
     ap = pd.DataFrame()
     pp = pd.DataFrame()
+    newsdf = None
 
-    _sort_key = 'vbsd' # 'vbsd' #'vols'
+    _sort_key = 'auction' # 'vbsd' #'vols'
     _sort_asc = False
     
     flex_pos = ['RB', 'WR', 'TE']
@@ -601,7 +608,7 @@ class MainPrompt(Cmd):
             vorp_baseline = 0
             if n_pos_draftable <= 0:
                 # no more "draftable" players -- vorp should be zero for top
-                vorp_baseline = ap[ap.pos == pos]['exp_proj'].max()
+                vorp_baseline = ap[ap.pos == pos]['vols'].max()
             else:
                 frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
                 backup_mask = pos_draftable['tier'] == 'BU'
@@ -738,7 +745,7 @@ class MainPrompt(Cmd):
     def complete_find(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
         avail_names = pd.concat([self.ap, self.pp], sort=False)['player']
-        mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
+        mod_avail_names = [simplify_name(name)
                            for name in avail_names]
         if text:
             return [name for name in mod_avail_names
@@ -756,7 +763,8 @@ class MainPrompt(Cmd):
             index = int(args)
         except ValueError as e:
             all_players = pd.concat([self.ap, self.pp], sort=False)
-            criterion = all_players['player'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
+            # criterion = all_players['player'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
+            criterion = all_players['player'].map(simplify_name).str.contains(simplify_name(args))
             filtered = all_players[criterion]
             if len(filtered) <= 0:
                 print('Could not find available player with name {}.'.format(args))
@@ -771,14 +779,12 @@ class MainPrompt(Cmd):
     def complete_handcuff(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
         # avail_names = pd.concat([self.ap, self.pp])['player']
-        avail_names = pd.concat([self.ap['player'], self.pp['player']], sort=False)
-        mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
-                           for name in avail_names]
+        avail_names = pd.concat([self.ap['player'], self.pp['player']], sort=False).map(simplify_name)
         if text:
-            return [name for name in mod_avail_names
-                    if name.startswith(text.lower())]
+            return [name for name in avail_names
+                    if name.startswith(simplify_name(text))]
         else:
-            return mod_avail_names
+            return avail_names
 
     def do_hide(self, args):
         """
@@ -812,6 +818,40 @@ class MainPrompt(Cmd):
         else:
             return [name.lower() for name in avail_hides]
 
+    def do_info(self, args):
+        """print full data and news about player"""
+        criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
+        filtered = self.ap[criterion]
+        if len(filtered) <= 0:
+            print('Could not find available player with name {}.'.format(args))
+            return
+        if len(filtered) > 1:
+            print('Found multiple players:')
+            print(filtered.drop(self.hide_stats, axis=1))
+            return
+        assert(len(filtered) == 1)
+        index = filtered.index[0]
+        pl = self.ap.iloc[index]
+        print()
+        for data in pl.items():
+            out = '{}:      \t{:.4f}' if type(data[1]) is np.float64 else '{}:      \t{}'
+            print(out.format(*data))
+        if pl['n'] == '*' and self.newsdf is not None:
+            # then there is a news story that we need the details of
+            newsnames = self.newsdf.player.map(simplify_name)
+            pix = (newsnames.isin(get_close_matches(simplify_name(pl.player),
+                                                    newsnames.values)))
+            if newsnames[pix].shape[0] != 1:
+                logging.error('did not unambiguously identify news item')
+            for _,nrow in self.newsdf[pix].iterrows():
+                print('\n  {}: {}'.format(nrow.player, nrow.details))
+        print()
+    def complete_info(self, text, line, begidk, endidx):
+        """implements auto-complete for player names"""
+        names = pd.concat((self.ap.player, self.pp.player)).map(simplify_name)
+        return [name for name in names
+                if name.startswith(text.lower())] if text else names
+        
     def do_list(self, args):
         """alias for `ls`"""
         self.do_ls(args)
@@ -952,7 +992,8 @@ class MainPrompt(Cmd):
             if index is None:
                 index = int(args) 
         except ValueError as e:
-            criterion = self.ap['player'].map(lambda n: args.lower().replace('_', ' ') in n.lower().replace('\'', ''))
+            # criterion = self.ap['player'].map(lambda n: simplify_name(args) in n.lower().replace('\'', ''))
+            criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
             filtered = self.ap[criterion]
             if len(filtered) <= 0:
                 print('Could not find available player with name {}.'.format(args))
@@ -978,7 +1019,7 @@ class MainPrompt(Cmd):
         # TODO: make it look a bit prettier by allowing spaces instead of underscores.
         # see: https://stackoverflow.com/questions/4001708/change-how-python-cmd-module-handles-autocompletion
         # clean up the list a bit, removing ' characters and replacing spaces with underscores
-        mod_avail_names = [name.lower().replace(' ', '_').replace('\'', '')
+        mod_avail_names = [simplify_name(name)
                            for name in avail_names]
         if text:
             return [name for name in mod_avail_names
@@ -1297,9 +1338,9 @@ def main():
     
     ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc'], default='phys',
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc'], default='bro',
                         help='which ruleset to use of the leagues I am in')
-    parser.add_argument('--n-teams', type=int, default=12, help='number of teams in the league')
+    parser.add_argument('--n-teams', type=int, default=14, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of QB per team')
     parser.add_argument('--n-rb', type=int, default=2, help='number of RB per team')
     parser.add_argument('--n-wr', type=int, default=2, help='number of WR per team')
@@ -1405,13 +1446,15 @@ def main():
             print(availdf[pix])
         if availdf[pix].shape[0] == 0:
             pix = (availdf.pos == posnews)
-            cutoff = 0.8 # default is 0.6, but this seems too loose
-            pix &= (availdf.player.isin(get_close_matches(pnamenews, availdf[pix]['player'].values, cutoff=cutoff)))
+            cutoff = 0.75 # default is 0.6, but this seems too loose
+            rmsuff =availdf.player.map(rm_name_suffix) 
+            pix &= (rmsuff.isin(get_close_matches(rm_name_suffix(pnamenews),
+                                                  rmsuff.values, cutoff=cutoff)))
             if availdf[pix].shape[0] > 1:
                 logging.warning('multiple matches found for news item about {}!'.format(pnamenews))
                 print(availdf[pix])
             if availdf[pix].shape[0] == 0:
-                logging.error('there is news about {} ({}) {}, but this player could not be found!'.format(pnamenews, pteamnews, posnews))
+                logging.warning('there is news about {} ({}) {}, but this player could not be found!'.format(pnamenews, pteamnews, posnews))
         availdf.loc[pix,'n'] = '*' # flag this column
 
     
@@ -1425,10 +1468,18 @@ def main():
             logging.warning('multiple matches found for suspension!')
             print(availdf[pix])
         if len(availdf[pix]) == 0:
-            logging.error('Could not find {} ({}) {}, suspended for {} games!'.format(pnamesus, pteamsus, possus, gsus))
+            pix = (availdf.pos == posnews)
+            cutoff = 0.75 # default is 0.6, but this seems too loose
+            rmsuff =availdf.player.map(rm_name_suffix)
+            pix &= (rmsuff.isin(get_close_matches(rm_name_suffix(pnamenews),
+                                                  rmsuff.values, cutoff=cutoff)))
+            if availdf[pix].shape[0] > 1:
+                logging.warning('multiple matches found for suspension of {}!'.format(pnamenews))
+                print(availdf[pix])
+            if availdf[pix].shape[0] == 0:
+                logging.error('Could not find {} ({}) {}, suspended for {} games!'.format(pnamesus, pteamsus, possus, gsus))
         if np.isnan(gsus):
             logging.warning('unknown suspension time for {}'.format(pnamesus))
-            logging.warning('no default set!')
         else:
             availdf.loc[pix,'g'] = availdf[pix]['g'] - gsus
     
@@ -1440,11 +1491,14 @@ def main():
     #  update in the case of other teams making "mistakes".
     gamesdf = availdf[['pos', 'exp_proj', 'g']].copy()
     gamesdf['ppg'] = gamesdf['exp_proj'] / gamesdf['g']
-    gamesdf.sort_values('ppg', ascending=False)
+    gamesdf.sort_values('ppg', inplace=True, ascending=False)
+
+    # print (gamesdf)
 
     ppg_baseline = {}
     games_needed = {pos:(16*n_roster_per_league[pos]) for pos in main_positions}
     games_needed['FLEX'] = 16*n_roster_per_league['FLEX']
+    # print(games_needed)
 
     for index,row in gamesdf.iterrows():
         pos,games = row[['pos', 'g']]
@@ -1480,6 +1534,7 @@ def main():
             worst_starter_pg = min(worst_starter_pg, ppg_baseline['FLEX'])
         # the projections are typically for all 16 games, but we only use 15 in fantasy.
         gs = availdf['g']
+        # this is more like "total expected value", since it assumes a constant template of worst starter every game
         availdf.loc[availdf.pos == pos, 'vols'] = gs*(availdf['exp_proj']/(gs+1) - worst_starter_pg)
     
     # label nominal (non-flex) starters by their class
@@ -1498,6 +1553,15 @@ def main():
         icls = availdf.index.isin(itoppos)
         availdf.loc[icls, 'tier'] = 'FLEX{}'.format(i_class+1)
 
+    # now we need to reset the baseline again based on the tiers
+    # previously the "vols" value assumes you can pick from any of the top games in the season
+    for pos in main_positions:
+        worst_starter_season = availdf.loc[(availdf.pos == pos) & (availdf.tier.notnull()), 'vols'].min()
+        if pos in flex_pos:
+            worst_starter_season_flex = availdf.loc[(availdf.pos.isin(flex_pos) & availdf.tier.notnull()), 'vols'].min()
+            worst_starter_season = min(worst_starter_season, worst_starter_season_flex)
+        availdf.loc[availdf.pos == pos, 'vols'] = availdf['vols'] - worst_starter_season
+        
     
     ## find a baseline based on supply/demand by positions
     # http://www.rotoworld.com/articles/nfl/41100/71/draft-analysis
@@ -1521,7 +1585,7 @@ def main():
         pos_required = len(posdf[posdf.tier.notnull()]) # number of man-games needed in this position # need this to include flex
         pos_prob_play = prob_play[pos]
         pos_rank_benchmark = rank_benchmark[pos]
-        logging.info('benchmark considered for {}: {}'.format(pos, pos_rank_benchmark))
+        logging.debug('benchmark considered for {}: {}'.format(pos, pos_rank_benchmark))
         pos_benchmark = posdf.head(pos_rank_benchmark)['vols'].min()
         # projections account for bye weeks but not for positional injuries
         availdf.loc[availdf.pos == pos, 'vbsd'] = (availdf['vols'] - pos_benchmark) * pos_injury_factor[pos]
@@ -1605,6 +1669,7 @@ def main():
     prompt = MainPrompt()
     prompt.ap = availdf
     prompt.pp = pickdf
+    prompt.newsdf = newsdf
     prompt.n_teams = n_teams
     prompt.n_roster_per_team = n_roster_per_team
     try:
