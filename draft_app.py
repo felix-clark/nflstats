@@ -606,8 +606,8 @@ class MainPrompt(Cmd):
                 frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
                 backup_mask = pos_draftable['tier'] == 'BU'
                 # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
-                worst_starters = pos_draftable[~backup_mask].sort_values('exp_proj', ascending=True)
-                # best_waivers = pos_draftable[backup_mask].sort_values('exp_proj', ascending=False)
+                worst_starters = pos_draftable[~backup_mask].sort_values('vols', ascending=True)
+                # best_waivers = pos_draftable[backup_mask].sort_values('vols', ascending=False)
                 ls_index = None # index of worst starter in position
                 # fw_index = None # index of best wavier option in position (assuming ADP)
                 if len(worst_starters) > 0:
@@ -626,8 +626,8 @@ class MainPrompt(Cmd):
                 if index >= len(pos_baseline):
                     print('warning: check index here later')
                     index = len(pos_baseline-1)
-                vorp_baseline = pos_baseline['exp_proj'].sort_values( ascending=False ).iloc[index]
-            ap.loc[ap.pos == pos, 'vorp'] = ap['exp_proj'] - vorp_baseline
+                vorp_baseline = pos_baseline['vols'].sort_values( ascending=False ).iloc[index]
+            ap.loc[ap.pos == pos, 'vorp'] = ap['vols'] - vorp_baseline
 
     def do_disable_pos(self, args):
         """
@@ -1538,17 +1538,16 @@ def main():
         # print(worst_draftable_value)
         availdf.loc[availdf.pos == pos, 'volb'] = availdf['vols'] - worst_draftable_value
 
-        # this auction factor is 1 for starters. is probably too harsh of a bend and should be smeared, since a QB10 at draft may easily not end up in the top-10.
         # this factor should represent the fraction of games a player at that position and rank should play, outside of injuries which are already accounted for in the vbsd.
-        # could linearize it from top to bottom drafted analytically? would introduce dependence on ADP
-        # smearing this function out would be nice... maybe just a box average of 5-10?
-        # replace_chance = lambda x: 1 if x <= pos_required else (1 - pos_prob_play**pos_required)**(x - pos_required)
         # we'll say players at the baseline have about a 50% chance of starting. it's a pretty arbitrary envelope.
+        # it is good to be flat at the top and gradually go to zero,
+        # so with the constraint of 50% at the edge this may not be terrible
         # we should really figure out this envelope function w/ simulations, but they need to be more reliable.
-        # auction_multiplier = lambda x: max(1.0 -  x*0.5*pos_prob_play/pos_rank_benchmark, 0.0)
-        auction_multiplier = lambda x: max(1.0/(1.0 + (x/pos_required)**2), 0.0)
-        # auction_multiplier = lambda x: max(1.0 - 0.5*(x*pos_prob_play/pos_rank_benchmark)**2, 0.0)
-        if pos in ['K', 'DST']: auction_multiplier = lambda x: 0 #these are random and have lots of variance, so lets keep the envelop flat and low. should not pay more than $1 for these. 
+        # auction_multiplier = lambda x: max(1/(1 + (x/pos_rank_benchmark)**2), 0.0)
+        # auction_multiplier = lambda x: max(1 - 0.5*(x/pos_required)**2, 0.0)
+        auction_multiplier = lambda x: max(1/(1 + (x/pos_required)**2), 0.0)
+        # K and DST are random and have lots of variance, so manually constrain at the minimum bid.
+        if pos in ['K', 'DST']: auction_multiplier = lambda x: 0
             
         # grab this again because now it has vbsd
         # rank by vols and not raw projections to account for suspended players
