@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 
 from tools import *
 from get_fantasy_points import get_points
-from ruleset import bro_league, phys_league, dude_league, nycfc_league
+from ruleset import bro_league, phys_league, dude_league, nycfc_league, ram_league
 
 
 ## slap these bye/injury factors up here for now
@@ -1036,9 +1036,6 @@ class MainPrompt(Cmd):
             return
         plotdf = self.ap[self.ap.tier != 'FA'][['pos', yquant]] # ?
         for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
-            # posplotdf = plotdf[plotdf.pos == 'pos']
-            # posplotdf.loc[:,'posrank'] = scipy.stats.rankdata(posplotdf['vols'])
-            # print (plotdf[plotdf.pos == pos].sort_values('vols', ascending=False) )
             pos_idxs = plotdf[plotdf.pos == pos].sort_values(yquant, ascending=False).index
             for rank,idx in enumerate(pos_idxs):
                 plotdf.loc[idx,'posrank'] = rank
@@ -1336,7 +1333,7 @@ def main():
     
     ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc'], default='bro',
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc', 'ram'], default='ram',
                         help='which ruleset to use of the leagues I am in')
     parser.add_argument('--n-teams', type=int, default=14, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of QB per team')
@@ -1366,6 +1363,7 @@ def main():
     # so we'll leave this definition local so that we might change it later.
     flex_pos = ['RB', 'WR', 'TE']
 
+    # TODO: set this up in its own function in the ruleset file
     if args.ruleset == 'phys':
         rules = phys_league
     if args.ruleset == 'dude':
@@ -1374,6 +1372,8 @@ def main():
         rules = bro_league
     if args.ruleset == 'nycfc':
         rules = nycfc_league
+    if args.ruleset == 'ram':
+        rules = ram_league
 
     logging.info('Initializing with ruleset:')
     # print some output to verify the ruleset we are working with
@@ -1438,7 +1438,7 @@ def main():
         pnamenews,pteamnews,posnews = pnews[['player', 'team', 'pos']]
         pix = (availdf.pos == posnews)
         pix &= (availdf.player == pnamenews)
-        # pix &= (availdf.team == pteamsus) # the team abbreviations are not always uniform #TODO: make it well-defined
+        # pix &= (availdf.team == pteamnews) # the team abbreviations are not always uniform #TODO: make it well-defined
         if availdf[pix].shape[0] > 1:
             logging.warning('multiple matches found for news item about {}!'.format(pnamenews))
             print(availdf[pix])
@@ -1458,9 +1458,12 @@ def main():
     
     availdf.loc[:, 'g'] = 15 # default is 15 games; we'll check for suspensions.
     sussdf = pd.read_csv('data/suspensions.csv')
+    rmsuff = availdf.player.map(rm_name_suffix).map(simplify_name).copy()
     for _,psus in sussdf.iterrows():
         pnamesus,pteamsus,possus,gsus = psus[['player', 'team', 'pos', 'games_suspended']]
-        pix = (availdf.player == pnamesus) & (availdf.pos == possus)
+        pnamesimp = simplify_name(rm_name_suffix(pnamesus))
+        pix = (rmsuff == pnamesimp) & (availdf.pos == possus)
+        # pix = (availdf.player == pnamesus) & (availdf.pos == possus)
         # pix &= (availdf.team == pteamsus) # the team abbreviations are not always uniform #TODO: make it well-defined
         if len(availdf[pix]) > 1:
             logging.warning('multiple matches found for suspension!')
@@ -1468,9 +1471,8 @@ def main():
         if len(availdf[pix]) == 0:
             pix = (availdf.pos == posnews)
             cutoff = 0.75 # default is 0.6, but this seems too loose
-            rmsuff =availdf.player.map(rm_name_suffix)
-            pix &= (rmsuff.isin(get_close_matches(rm_name_suffix(pnamenews),
-                                                  rmsuff.values, cutoff=cutoff)))
+            pix &= (rmsuff.isin(get_close_matches(pnamesimp,
+                                                  rmsuff.values, cutoff=cutoff)[:1]))
             if availdf[pix].shape[0] > 1:
                 logging.warning('multiple matches found for suspension of {}!'.format(pnamenews))
                 print(availdf[pix])
