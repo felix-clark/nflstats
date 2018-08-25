@@ -640,10 +640,11 @@ class MainPrompt(Cmd):
         """
         right now, this just spits out some auction information
         """
-        print('  available value:')
-        print(self.ap.groupby('pos')['auction'].sum())
-        print('  picked value:')
-        print(self.pp.groupby('pos')['auction'].sum())
+        print('  available value per team:')
+        print(self.ap.groupby('pos')['auction'].sum()/self.n_teams)
+        if self.pp.shape[0] > 0:
+            print('\n  picked value per team:')
+            print(self.pp.groupby('pos')['auction'].sum()/self.n_teams)
             
     def do_disable_pos(self, args):
         """
