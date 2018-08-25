@@ -830,8 +830,7 @@ class MainPrompt(Cmd):
             print(filtered.drop(self.hide_stats, axis=1))
             return
         assert(len(filtered) == 1)
-        index = filtered.index[0]
-        pl = self.ap.iloc[index]
+        pl = filtered.iloc[0]
         print()
         for data in pl.items():
             out = '{}:      \t{:.4f}' if type(data[1]) is np.float64 else '{}:      \t{}'
