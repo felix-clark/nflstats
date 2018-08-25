@@ -636,6 +636,15 @@ class MainPrompt(Cmd):
                 vorp_baseline = pos_baseline['vols'].sort_values( ascending=False ).iloc[index]
             ap.loc[ap.pos == pos, 'vorp'] = ap['vols'] - vorp_baseline
 
+    def do_auction(self, _):
+        """
+        right now, this just spits out some auction information
+        """
+        print('  available value:')
+        print(self.ap.groupby('pos')['auction'].sum())
+        print('  picked value:')
+        print(self.pp.groupby('pos')['auction'].sum())
+            
     def do_disable_pos(self, args):
         """
         disable positions from recommended picks
@@ -1343,7 +1352,7 @@ def main():
     parser.add_argument('--n-flex', type=int, default=1, help='number of FLEX per team')
     parser.add_argument('--n-dst', type=int, default=1, help='number of D/ST per team')
     parser.add_argument('--n-k', type=int, default=1, help='number of K per team')
-    parser.add_argument('--n-bench', type=int, default=5, help='number of bench slots per team')
+    parser.add_argument('--n-bench', type=int, default=7, help='number of bench slots per team')
 
     args = parser.parse_args()
     n_teams = args.n_teams
