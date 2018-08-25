@@ -150,3 +150,25 @@ nycfc_league = Ruleset(
     ppFG40=4,
     ppFG50=5
     )
+
+# fairly standard HPPR, but with 6 pts for a passing TD
+ram_league = Ruleset(
+    ppPY=0.04,
+    ppPTD=6,
+    ppINT=-2,
+    pp2PC=2,
+    ppRY=0.1,
+    ppRTD=6,
+    pp2PR=2,
+    ppREY=0.1,
+    ppREC=0.5,
+    ppRETD=6,
+    pp2PRE=2,
+    ppFUML=-2,
+    ppPAT=1,
+    ppPATM=-1,
+    ppFGM=-1,
+    ppFG0=3,
+    ppFG40=3,
+    ppFG50=3
+    )
