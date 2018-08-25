@@ -1181,7 +1181,7 @@ class MainPrompt(Cmd):
             print('It is recommended that you quit and start fresh. Draft command will be canceled.')
             return
         numprompt = 'Enter your position in the snake draft [1,...,{}]: '.format(self.n_teams)
-        argstr = args.split(' ') if args else input(numprompt)
+        argstr = args.split(' ') if args else [input(numprompt)]
         numstr = argstr[0]
         # TODO: low priority: we could allow for multiple users
         try:
@@ -1193,8 +1193,7 @@ class MainPrompt(Cmd):
             print('Could not cast argument to draft.')
             print('Use a single number from 1 to {}'.format(self.n_teams))        
             return
-        
-        # set the automatic strategies for non-user managers
+
         if argstr[1:]:
             strats = [s.lower() for s in argstr[1:] if s.lower() in self._known_strategies]
             for manager in [man for man in range(1,self.n_teams+1)
