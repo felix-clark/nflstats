@@ -155,7 +155,7 @@ def find_player(search_str, ap, pp):
     else:
         print('\n  Available players:')
         print(filtered_ap)
-
+        
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
     print('Loading with label {}.'.format(outname))
@@ -169,7 +169,7 @@ def load_player_list(outname):
         logging.error('Could not find file {}_picked.csv!'.format(outname))
     return ap, pp
   
-def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
+def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None, price=None):
     """
     index: index of player to be removed from available
     """
@@ -192,6 +192,8 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None):
             pp.loc[index, 'pick'] = pickno
             pp.pick = pp.pick.astype(int)
         # player = df.pop(index) # DataFrame.pop pops a column, not a row
+        if price is not None:
+            pp.loc[index, 'price'] = price
     name = player['player']
     pos = player['pos']
     team = player['team']
@@ -320,7 +322,7 @@ class MainPrompt(Cmd):
     pp = pd.DataFrame()
     newsdf = None
 
-    _sort_key = 'auction' # 'vbsd' #'vols'
+    _sort_key = 'vbsd' # 'vols'
     _sort_asc = False
     
     flex_pos = ['RB', 'WR', 'TE']
@@ -645,6 +647,14 @@ class MainPrompt(Cmd):
         if self.pp.shape[0] > 0:
             print('\n  picked value per team:')
             print(self.pp.groupby('pos')['auction'].sum()/self.n_teams)
+            if 'price' in self.pp:
+                print('\n  average price per team:')
+                print(self.pp.groupby('pos')['price'].sum()/self.n_teams)
+        total_budget = self.n_teams * 200
+        remaining_budget = total_budget - self.pp.price.sum()
+        ## TODO: print out inflation stats by position
+        # TODO: make max budget configurable
+        
             
     def do_disable_pos(self, args):
         """
@@ -831,6 +841,12 @@ class MainPrompt(Cmd):
     def do_info(self, args):
         """print full data and news about player"""
         criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
+        try:
+            index = int(args)
+            criterion = self.ap.index == index
+        except ValueError:
+            # if not an index, it should be a name
+            pass
         filtered = self.ap[criterion]
         if len(filtered) <= 0:
             print('Could not find available player with name {}.'.format(args))
@@ -980,28 +996,49 @@ class MainPrompt(Cmd):
 
     def do_pick(self, args):
         """
-        usage: pick I
+        usage: pick <player>
                pick <strategy>  (in snake draft mode)
                pick <strategy> auto
-        remove player with index I from available player list
+               pick <player> price (to save auction price)
+        remove player with index or name from available player list
         in snake draft mode, `pick vols` can be used to pick the VOLS recommended player.
         if "auto" is provided then this manager will automatically pick following this strategy
         """
+        # try to strip the price off, if there are multiple arguments and the last one is a number
+        price = None
+        argl = args.lower().split(' ')
+        if len(argl) > 1:
+            try:
+                price = int(argl[-1])
+                argl.pop(-1)
+            except:
+                try:
+                    price = float(argl[-1])
+                    argl.pop(-1)
+                except:
+                    pass
+        if price is None and 'price' in self.pp:
+            logging.warning('price field detected but none is provided.')
+            logging.warning('usage:')
+            logging.warning('pick <player> <price>')
+            return
+                    
         manager = self._get_current_manager()
         index = None
         if manager is not None:
-            argl = args.lower().split(' ')
             if argl and argl[0] in self._known_strategies:
                 index = self._pick_rec(manager, argl[0])
             if len(argl) > 1 and argl[1] == 'auto':
                 self.manager_auto_strats[manager] = argl[0]
-        elif args.lower().split(' ')[0] in self._known_strategies:
+        elif argl[0] in self._known_strategies:
             print('Must be in draft mode to set an automatic strategy.')
+            
+        args = ' '.join(argl) # remaining args after possibly popping off price
+        
         try:
             if index is None:
                 index = int(args) 
         except ValueError as e:
-            # criterion = self.ap['player'].map(lambda n: simplify_name(args) in n.lower().replace('\'', ''))
             criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
             filtered = self.ap[criterion]
             if len(filtered) <= 0:
@@ -1015,7 +1052,7 @@ class MainPrompt(Cmd):
             index = filtered.index[0]
         try:
             pickno = self.i_manager_turn + 1 if self.draft_mode else None
-            pop_from_player_list(index, self.ap, self.pp, manager=manager, pickno=pickno)
+            pop_from_player_list(index, self.ap, self.pp, manager=manager, pickno=pickno, price=price)
             self._update_vorp()
             if self.draft_mode:
                 self._advance_snake()
@@ -1343,9 +1380,9 @@ def main():
     
     ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc', 'ram'], default='ram',
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc', 'ram'], default='phys',
                         help='which ruleset to use of the leagues I am in')
-    parser.add_argument('--n-teams', type=int, default=14, help='number of teams in the league')
+    parser.add_argument('--n-teams', type=int, default=12, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of starting QBs per team')
     parser.add_argument('--n-rb', type=int, default=2, help='number of starting RBs per team')
     parser.add_argument('--n-wr', type=int, default=2, help='number of starting WRs per team')
@@ -1353,7 +1390,7 @@ def main():
     parser.add_argument('--n-flex', type=int, default=1, help='number of FLEX spots per team')
     parser.add_argument('--n-dst', type=int, default=1, help='number of D/ST spots per team')
     parser.add_argument('--n-k', type=int, default=1, help='number of starting Ks per team')
-    parser.add_argument('--n-bench', type=int, default=7, help='number of bench spots per team')
+    parser.add_argument('--n-bench', type=int, default=5, help='number of bench spots per team')
 
     args = parser.parse_args()
     n_teams = args.n_teams
@@ -1660,7 +1697,7 @@ def main():
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'FA'
 
     ## finally sort by our stat of choice for display
-    sort_stat = 'auction' # 'vbsd'
+    sort_stat = 'vbsd' #'auction' # 'vbsd'
     availdf = availdf.sort_values(sort_stat, ascending=False)
     availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by our stat
     
