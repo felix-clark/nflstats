@@ -168,7 +168,23 @@ def load_player_list(outname):
     else:
         logging.error('Could not find file {}_picked.csv!'.format(outname))
     return ap, pp
-  
+
+def _highlight(col):
+    hl_max = ['vols', 'volb', 'vbsd', 'auction', 'vorp']
+    hl_min = ['adp', 'ecp']
+    result = pd.Series('', index=col.index)
+    if col.name == 'g':
+        result[col < col.max()] = 'background-color: red'
+    if col.name in hl_max:
+        result[col == col.max()] = 'background-color: yellow'
+    if col.name in hl_min:
+        result[col == col.min()] = 'background-color: yellow'
+    return result
+
+def _textcol(row, stat='auction'):
+    result = pd.Series('', index=row.index)
+    return result
+
 def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None, price=None):
     """
     index: index of player to be removed from available
@@ -570,6 +586,42 @@ class MainPrompt(Cmd):
         # player = topstart.iloc[0] # this is the player itself
         player_index = toppicks.index[0]
         return player_index
+
+    def update_draft_html(self):
+        # should make this separate function
+        ntop = 32
+        df = self.ap[~self.ap.pos.isin(self.hide_pos)].drop(self.hide_stats, inplace=False, axis=1).head(ntop)
+        # some columns look better with custom formatting
+        format_dict = {
+            'exp_proj':'{:.1f}',
+            'vols':'{:.0f}',
+            'vbsd':'{:.0f}',
+            'vorp':'{:.0f}',
+            'auction':'${:.0f}',
+        }
+        # right now, textcol() doesn't do anything
+        sty = df.style.format(format_dict)
+        # 'palegreen' is too light for a light palette, but it looks nice
+        # get full list from matplotlib.colors.cnames
+        cm = sns.light_palette('mediumseagreen', as_cmap=True)
+        # TODO: diverging palettes for negative values ?
+        hl_cols_rise = df.columns.isin(['exp_proj', 'vols', 'vbsd', 'auction', 'vorp'])
+        hl_cols_fall = df.columns.isin(['adp', 'ecp'])
+        sty = sty.background_gradient(cmap=cm,
+                                      subset=hl_cols_rise,
+                                      low=0.)
+        sty = sty.background_gradient(cmap=sns.light_palette('slateblue', as_cmap=True, reverse=True),
+                                      subset=hl_cols_fall)
+        sty = sty.background_gradient(cmap=sns.light_palette('red', as_cmap=True, reverse=True),
+                                      subset='g', high=0, low=1)
+        # sty = sty.apply(_highlight).apply(_textcol)
+        sty = sty.highlight_min(subset=hl_cols_fall)
+        sty = sty.highlight_max(subset=hl_cols_rise)
+        # open and write the styled html
+        f = open('draft_board.html', 'w')
+        f.write(sty.render())
+        f.close()
+
     
     def _update_vorp(self, ap=None, pp=None):
         """
@@ -1067,6 +1119,8 @@ class MainPrompt(Cmd):
         except IndexError as e:
             print(e)
             print('could not pick player from list.')
+        self.update_draft_html()
+            
     def complete_pick(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
         avail_names = self.ap['player']
@@ -1322,6 +1376,7 @@ class MainPrompt(Cmd):
                 print('could not put player ({}) back in available list.'.format(lasti))
         else:
             print('No players have been picked.')
+        self.update_draft_html()
 
     # anticipating non-trivialities in the autocomplete here as well, we will simply disable this alias.
     # def do_unpop(self, args):
@@ -1476,6 +1531,8 @@ def main():
     # combine on both name and team because there are sometimes multiple players w/ same name
     availdf = availdf.merge(dpdf[['player', 'team', 'ecp', 'adp']], how='left', on=['player','team'])
     availdf.loc[:,'n'] = ''
+    availdf.loc[:,'rank'] = ''
+    availdf.loc[:,'g'] = ''
     
     # decorate the dataframe with projections for our ruleset
     # use 15/16 for bye factor, since we're only considering 16 weeks of the season (w/ 1 bye)
@@ -1483,7 +1540,7 @@ def main():
     # for DST, just take the FP projection.
     availdf.loc[availdf.pos == 'DST', 'exp_proj'] = availdf['fp_projection']
     # can go ahead and filter out stats once we have projections
-    availdf = availdf[['player', 'n', 'team', 'pos', 'adp', 'ecp', 'exp_proj']]    
+    availdf = availdf[['player', 'n', 'team', 'pos', 'rank', 'g', 'adp', 'ecp', 'exp_proj']]    
 
 
     ## flag players with news items
@@ -1705,7 +1762,7 @@ def main():
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'FA'
 
     ## finally sort by our stat of choice for display
-    sort_stat = 'vbsd' #'auction' # 'vbsd'
+    sort_stat = ['auction', 'vbsd']
     availdf = availdf.sort_values(sort_stat, ascending=False)
     availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by our stat
     
@@ -1727,6 +1784,7 @@ def main():
     prompt.newsdf = newsdf
     prompt.n_teams = n_teams
     prompt.n_roster_per_team = n_roster_per_team
+    prompt.update_draft_html()
     try:
         prompt.cmdloop()
     except (SystemExit, KeyboardInterrupt, EOFError):
@@ -1749,4 +1807,3 @@ if __name__ == '__main__':
 ## vomb: value over middle of bench, assuming ADP (removed?)
 ## vorp: right now, this is a dynamic scale with the baseline moving linearly through player positions as players are drafted in that position. the baseline moves from worst starter to worst bench.
 ## vbsd: value-based supply/demand : extends starter threshold to further in the bench by a factor accounting for bye weeks and position-dependent injury factors. independent of ADP.
-## todo: value over 1.5x starters?
