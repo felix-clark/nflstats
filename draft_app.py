@@ -642,19 +642,27 @@ class MainPrompt(Cmd):
         """
         right now, this just spits out some auction information
         """
+        def print_gb(grouped):
+            for pi in grouped.items():
+                print('{}\t{:.2f}'.format(*pi))
+            print()
         print('  available value per team:')
-        print(self.ap.groupby('pos')['auction'].sum()/self.n_teams)
+        avail_pos_val = self.ap.groupby('pos')['auction'].sum()
+        print_gb(avail_pos_val/self.n_teams)
         if self.pp.shape[0] > 0:
             print('\n  picked value per team:')
-            print(self.pp.groupby('pos')['auction'].sum()/self.n_teams)
+            print_gb(self.pp.groupby('pos')['auction'].sum()/self.n_teams)
             if 'price' in self.pp:
                 print('\n  average price per team:')
-                print(self.pp.groupby('pos')['price'].sum()/self.n_teams)
-        total_budget = self.n_teams * 200
-        remaining_budget = total_budget - self.pp.price.sum()
-        ## TODO: print out inflation stats by position
-        # TODO: make max budget configurable
-        
+                picked_pos_price = self.pp.groupby('pos')['price'].sum()
+                print_gb(picked_pos_price/self.n_teams)
+                # TODO: make max budget configurable
+                total_budget = self.n_teams * 200
+                remaining_budget = total_budget - self.pp.price.sum()
+                print('\n  inflation (total = {:.2f}):'.format(remaining_budget / self.ap.auction.sum()))
+                allp = pd.concat((self.ap, self.pp), sort=False)
+                infl_pos = allp.groupby('pos')['auction'].sum().subtract(picked_pos_price, fill_value = 0.0) / avail_pos_val
+                print_gb(infl_pos)
             
     def do_disable_pos(self, args):
         """
