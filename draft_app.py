@@ -927,7 +927,10 @@ class MainPrompt(Cmd):
             pix = (newsnames.isin(get_close_matches(simplify_name(pl.player),
                                                     newsnames.values)))
             if newsnames[pix].shape[0] != 1:
-                logging.error('did not unambiguously identify news item')
+                logging.warning('did not unambiguously identify news item:')
+                print(newsnames[pix])
+                pix = newsnames == get_close_matches(simplify_name(pl.player),
+                                                     newsnames.values)[0]
             for _,nrow in self.newsdf[pix].iterrows():
                 print('\n  {}: {}'.format(nrow.player, nrow.details))
         print()
