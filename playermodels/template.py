@@ -307,22 +307,23 @@ class YdsPerAttModel(Model):
         assert(0 < uni < 1)
         if att == 0: return 0 # we won't try to simulate laterals
         df,nc = att,self.skew
-        # constrain to make sure we don't roll ridiculous values
-        # really, this is a hack and we need a better way to model yards / attempt,
-        # e.g. rush-by-rush.
-        # most rush yards is 295 by AP; most receiving is 336 by Willie Anderson
-        minuni = self.cdf(-5*att, att)
-        maxyds = 500 if self.name == 'pass_yds' else 250   
-        maxuni = self.cdf(min(50*att, maxyds), att)
-        uni *= (maxuni-minuni)
-        uni += minuni
+        # # # nevermind - don't bias this now.
+        # # constrain to make sure we don't roll ridiculous values
+        # # really, this is a hack and we need a better way to model yards / attempt,
+        # # e.g. rush-by-rush.
+        # # most rush yards is 295 by AP; most receiving is 336 by Willie Anderson
+        # minuni = self.cdf(-5*att, att)
+        # maxyds = 500 if self.name == 'pass_yds' else 250   
+        # maxuni = self.cdf(min(50*att, maxyds), att)
+        # uni *= (maxuni-minuni)
+        # uni += minuni
         ypa = st.nct.ppf(uni, df, nc,
                          loc=self._loc(att),
                          scale=self._scale(att),)
-        if ypa > 90 or ypa < -5:
-            # we might need to check to make sure this isn't possible
-            logging.warning('{} yards per attempt in {} attempts for {}'.format(ypa, att, self.name))
-            logging.warning('{} out of {}/{}'.format(uni, minuni, maxuni))
+        # if ypa > 90 or ypa < -5:
+        #     # we might need to check to make sure this isn't possible
+        #     logging.warning('{} yards per attempt in {} attempts for {}'.format(ypa, att, self.name))
+        #     logging.warning('{} out of {}/{}'.format(uni, minuni, maxuni))
         yds = att*ypa
         return yds
     

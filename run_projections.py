@@ -36,7 +36,7 @@ def main():
     parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc'],
                         default='phys', help='which ruleset to use')
     parser.add_argument('--year',nargs='?', type=int, default=2018, help='what is the current year')
-    parser.add_argument('--expert-touch', nargs='?', type=bool, default=True, help='scale models to meet expert consensus for rush attempts and targets')
+    parser.add_argument('--expert-touch', nargs='?', type=bool, default=False, help='scale models to meet expert consensus for rush attempts and targets')
     parser.add_argument('--n-seasons',nargs='?', type=int, default=128, help='number of seasons to simulate')
 
     args = parser.parse_args()
@@ -107,7 +107,9 @@ def main():
         for year in years:
             ydf = pdf[pdf['year'] == year]
             games = ydf['game_num']
-            assert((np.diff(games) > 0).all()) # this sometimes fails when players are traded mid-week. we could just pick the one with the most points (so far just manually deleting)
+            if not (np.diff(games) > 0).all():
+                # this sometimes fails when players are traded mid-week. we could just pick the one with the most points (so far just manually deleting)
+                logging.error('{} has a strange weekly schedule in {} (traded mid-season?)'.format(pname, year) )
             meanpts = get_points(rules, ydf).mean()
             
             for _,game in ydf.iterrows():
@@ -117,7 +119,8 @@ def main():
                     actpt = get_points(rules, game)
                     pcterrs.append((actpt-meanpts)/meanpts)
                 pmod.update_game(game)
-            pmod.new_season()
+            if year != current_year:
+                pmod.new_season()
 
         pcterrs = np.array(pcterrs)
         if np.isnan(pcterrs).any():
@@ -148,7 +151,7 @@ def main():
             pmod.revert_evs(re_ev_dict)
         
         # if pname in ['Todd Gurley', 'Ezekiel Elliott', 'Le\'Veon Bell', 'Saquon Barkley', 'Royce Freeman']:
-        # if pname in ['dDeAndre Hopkins', 'Odell Beckham Jr.']:
+        # if pname in ['DeAndre Hopkins', 'Odell Beckham Jr.']:
         #     print(pmod)
 
         fpdf = pd.concat([pd.DataFrame((pmod.gen_game() for _ in range(pgames))) for _ in range(nseasons)], ignore_index=True)

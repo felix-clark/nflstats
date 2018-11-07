@@ -180,9 +180,9 @@ def get_fantasy_player_dict(startyear=1992):
         # allow some players who have gotten decent volume
         # we really want to figure this out w/ something like a max,
         # but that requires looking in other sources that may not yet be available
-        keepix |= (draftdf['pass_att'] >= (128 * (1+years_in_league//3)))
-        keepix |= (draftdf['rush_att'] >= (64  * (1+years_in_league//3)))
-        keepix |= (draftdf['rec']      >= (32  * (1+years_in_league//3)))
+        keepix |= (draftdf['pass_att'] >= (256 * (1+years_in_league//3)))
+        keepix |= (draftdf['rush_att'] >= (128 * (1+years_in_league//3)))
+        keepix |= (draftdf['rec']      >= (64  * (1+years_in_league//3)))
         draftdf = draftdf[keepix]
         df = df.append(draftdf[keepcols])
     df.to_csv(fname, index=False)
