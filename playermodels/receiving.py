@@ -20,6 +20,7 @@ class RecTgtModel(CountsModel):
         if pos == 'WR':
             return np.array((
                 1.153, 0.294,
+                1.153, 0.294,
                 0.289, # lr
                 0.378, # season mem
                 0.858, # game mem
@@ -27,12 +28,14 @@ class RecTgtModel(CountsModel):
         if pos == 'TE':
             return np.array((
                 0.839, 0.409,
+                0.839, 0.409,
                 0.304,
                 0.374,
                 0.887,
                 ))
         if pos == 'RB':
             return np.array((
+                0.88, 0.457,
                 0.88, 0.457,
                 0.276,
                 0.401,
@@ -62,18 +65,21 @@ class RecModel(TrialModel):
         if pos == 'WR':
             return np.array((
                 30.04, 23.96, # initial bayes parameters
+                30.04, 23.96, # attractor bayes parameters
                 0.398, # learn rate
                 0.698, 0.995 # season,game memory
             ))
         if pos == 'TE':
             return np.array((
                 37.72, 21.87, # initial bayes parameters
+                37.72, 21.87, # attractor bayes parameters
                 0.280, # learn rate
                 0.899, 1.0 # season,game memory
             ))
         if pos == 'RB':
             return np.array((
                 37.47, 13.95, # initial bayes parameters
+                37.47, 13.95, # attractor bayes parameters
                 0.185, # learn rate
                 0.922, 1.0 # season,game memory
             ))
@@ -96,6 +102,7 @@ class RecTdModel(TrialModel):
         if pos == 'WR':
             return np.array((
                 8.90, 100.19, # initial bayes parameters
+                8.90, 100.19, # attractor bayes parameters
                 0.542, # learn rate
                 0.903, 1.0 # season,game memory
             ))
@@ -104,12 +111,14 @@ class RecTdModel(TrialModel):
             # this type of thing suggests learn rate decay would be useful.
             return np.array((
                 4.87, 53.26, # initial bayes parameters
+                4.87, 53.26, # attractor bayes parameters
                 0.403, # learn rate
                 1.0, 1.0 # season,game memory
             )) # game mem
         if pos == 'RB':
             return np.array((
                 11.84, 361.48, # initial bayes parameters
+                11.84, 361.48, # attractor bayes parameters
                 0.659, # learn rate
                 0.784, 1.0 # season,game memory
             ))

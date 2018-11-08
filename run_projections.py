@@ -92,6 +92,8 @@ def main():
         pmod = gen_player_model(pos)
         
         pdf = get_player_stats(prow['pfr_id']).fillna(0) if prow is not None else pd.DataFrame(columns=['player', 'pos', 'team', 'year'])
+        if pdf.size == 0:
+            logging.error('Could not find record for {}'.format(pname))
         stat_vars = [model.pred_var for model in pmod.models]
         for st in stat_vars:
             if st not in pdf:
@@ -105,6 +107,7 @@ def main():
         assert((np.diff(years) > 0).all())
         pcterrs = []
         for year in years:
+            # logging.debug('training for year {}'.format(year))
             ydf = pdf[pdf['year'] == year]
             games = ydf['game_num']
             if not (np.diff(games) > 0).all():
@@ -152,7 +155,7 @@ def main():
         
         # if pname in ['Todd Gurley', 'Ezekiel Elliott', 'Le\'Veon Bell', 'Saquon Barkley', 'Royce Freeman']:
         # if pname in ['DeAndre Hopkins', 'Odell Beckham Jr.']:
-        #     print(pmod)
+        # print(pmod)
 
         fpdf = pd.concat([pd.DataFrame((pmod.gen_game() for _ in range(pgames))) for _ in range(nseasons)], ignore_index=True)
         # fps = pd.concat((get_points( rules, fpdf )), ignore_index=True)
@@ -168,17 +171,17 @@ def main():
         evdat['player'] = pname
         evdat['pos'] = pos
         evdat['g'] = pgames
-        evdat['ex_pred'] = exproj['fp_projection']
+        # evdat['ex_pred'] = exproj['fp_projection']
         evdat['fpts_ev'] = get_points( rules, evdat )
         evdat['fpts_sim'] = fps.mean()*pgames
         evdat['fpts_med'] = fp_med
         evdat['fpts_simstd'] = fps.std()*np.sqrt(pgames)
         evdat['volatility'] = np.sqrt(np.mean(pcterrs**2))
-        if fp_med > 0:
-            evdat['vol1'] = 0.5*(fp_1u - fp_1d)/fp_med
-            evdat['vol2'] = 0.5*(fp_2u - fp_2d)/fp_med
-        evdat['fpts_u1'] = fp_1u
-        evdat['fpts_d1'] = fp_1d
+        # if fp_med > 0:
+        #     evdat['vol1'] = 0.5*(fp_1u - fp_1d)/fp_med
+        #     evdat['vol2'] = 0.5*(fp_2u - fp_2d)/fp_med
+        # evdat['fpts_u1'] = fp_1u
+        # evdat['fpts_d1'] = fp_1d
         
         evdf = evdf.append(evdat, ignore_index=True)
         

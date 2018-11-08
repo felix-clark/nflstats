@@ -19,20 +19,23 @@ class RushAttModel(CountsModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                0.641, 0.0746,
-                0.121,
-                0.464, # seasonal parameter decay
-                0.754, # game memory # this means the memory is only about 4 games. need more info.
+                0.680, 0.0835,
+                0.625, 0.0825,
+                0.125,
+                0.382, # seasonal parameter decay
+                0.720, # game memory # this means the memory is only about 4 games. need more info.
                 ))
         if pos == 'QB':
             return np.array((
-                1.76, 0.657,
-                0.225,
-                0.545,
+                1.40, 0.52,
+                0.90, 0.43,
+                0.233,
+                0.433,
                 0.953, # 0.0282,
             ))
         if pos == 'WR':
             return np.array((
+                0.78, 6.29,
                 0.78, 6.29,
                 0.759,
                 0.718,
@@ -67,11 +70,11 @@ class RushYdsModel(YdsPerAttModel):
             ))
         if pos == 'QB':
             return np.array(( # TODO: here and other positions
-                111.59, 42.13, 2.82, 50.32, # initial bayes parameters
-                0.0472, # skew # low due to sacks? and QBs don't often break away w/ big runs
-                0.940,  4.2e-5, # learn rates
-                0.805, 0.985, # munu/nu;a/b season memory
-                0.972, 0.942
+                2.15, 3.04, 2.12, 38.83, # initial bayes parameters
+                0.157, # skew # low due to sacks? and QBs don't often break away w/ big runs
+                0.872,  3.0e-7, # learn rates
+                0.747, 0.948, # munu/nu;a/b season memory
+                0.982, 0.905
             ))
         if pos == 'WR':
             # this has a reasonable flat CDF
@@ -104,19 +107,23 @@ class RushTdModel(TrialModel):
         pos = pos.upper()
         if pos == 'RB':
             return np.array((
-                20.51, 684.67, # initial bayes parameters
+                5.41, 188.2, # initial bayes parameters
+                6.12, 209.9, # attractor bayes parameters
                 1.0, # learn rate
-                0.633, # season memory
-                1.0)) # game mem
+                0.422, # season memory
+                1.0 # game mem
+            ))
         if pos == 'QB':
             return np.array((
-                12.67, 330.26, # initial bayes parameters
+                5.84, 126.0, # initial bayes parameters
+                5.45, 176.1, # attractor bayes parameters
                 1.0, # learn rate
-                0.862, # season memory
+                0.704, # season memory
                 1.0)) # game mem
         if pos == 'WR':
             return np.array((
                 1.14, 60.63, # initial bayes parameters
+                1.14, 60.63, # attractor bayes parameters
                 0.413, # learn rate
                 0.997, # season memory
                 0.989)) # game mem

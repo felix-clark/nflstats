@@ -33,11 +33,13 @@ class CountsModel(Model):
     """
     def __init__(self,
                  a0, b0, # initial bayes parameters
+                 ar, br, # attractor parameters
                  lr,     # learn rate per game
                  mem, gmem, # memory per season and game
                  # kldp, # decay penalty for high KLD (downside: takes much longer to update/train; can bias after a few good/bad games)
     ):
         self.ab = np.array((a0,b0))
+        self.abr = np.array((ar,br))
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.season_mem = mem
@@ -47,6 +49,7 @@ class CountsModel(Model):
     @classmethod
     def _hyperpar_bounds(self):
         return [
+            (1e-6,None),(1e-6,None),
             (1e-6,None),(1e-6,None),
             (0,1),
             (0.1,1.0),
@@ -65,12 +68,15 @@ class CountsModel(Model):
         # the KLD has an arbitrary constant term, but we need to ensure the denominator > 1
         # it could be guaranteed with a game_mem < 1, but it's not obvious how to do this naively
         # we really want to use "chi-sq" but this isn't well-defined for the neg. bin. distribution
+        # regress per-game to just increase uncertainty? is it now redundant with learn rate?
         self.ab *= self.game_mem
         self.ab += self.game_lr * np.array((att, 1.))
         # we could accumulate a KLD to diagnose when the model has been very off recently
 
     def new_season(self):
-        self.ab *= self.season_mem
+        # self.ab *= self.season_mem
+        # regress towards some global average
+        self.ab -= (self.ab - self.abr)*(1 - self.season_mem)
 
     def revert_ev(self, newev):
         """
@@ -94,11 +100,11 @@ class CountsModel(Model):
         if self.ab[0] == 0:
             # this can happen if we revert the ev to zero
             return 0
-        maxatt = 35 if self.name == 'rush_att' else \
-                 65 if self.name == 'pass_att' else \
-                 20 if self.name == 'targets' else 100
-        maxuni = self.cdf(maxatt) # maximum rush attempts ever was 45
-        uni *= maxuni
+        # maxatt = 35 if self.name == 'rush_att' else \
+        #          65 if self.name == 'pass_att' else \
+        #          20 if self.name == 'targets' else 100
+        # maxuni = self.cdf(maxatt) # maximum rush attempts ever was 45
+        # uni *= maxuni
         att = st.nbinom.ppf(uni, self.ab[0], self._p())
         return att
 
@@ -122,7 +128,8 @@ class CountsModel(Model):
         return - st.nbinom.logpmf(att, self.ab[0], self._p())
 
     def __str__(self):
-        pars = u'\u03B1\t= {:.2f}\n\u03B2\t= {:.2f}\n'.format(*self.ab)
+        pars = u'\u03B1\t= {:.2f}\n\u03B2\t= {:.2f}\n'.format(*self.ab) # no separate ab_0 saved?
+        pars += u'\u03B1_inf\t= {:.2f}\n\u03B2_inf\t= {:.2f}\n'.format(*self.abr)
         pars += 'lr\t= {:.3f}\nmem\t= {:.3f}\ngmem\t= {:.3f}\n'.format(self.game_lr, self.season_mem, self.game_mem)
         return pars
 
@@ -135,11 +142,13 @@ class TrialModel(Model):
     """
     def __init__(self,
                  a0, b0,
+                 ar, br,
                  lr,
                  mem,gmem,
                  # TODO: we could consider additional memory decay for large KLD in this type of model as well
     ):
         self.ab = np.array((a0,b0))
+        self.abr = np.array((ar,br))
         # we might want game_lr to be a function of the season?
         self.game_lr = lr
         self.season_mem = mem
@@ -149,6 +158,7 @@ class TrialModel(Model):
     def _hyperpar_bounds(self):
         return [
             (1e-6,None),(1e-6,None), # small positive lower bounds can prevent the fitter from going to invalid locations
+            (1e-6,None),(1e-6,None),
             (0.0,1.0), #  should probably cap learn rate to prevent overfitting
             (0.2,1.0),(0.5,1.0),
         ]
@@ -161,7 +171,8 @@ class TrialModel(Model):
         self.ab += self.game_lr * np.array((succ, att - succ))
 
     def new_season(self):
-        self.ab *= self.season_mem
+        # self.ab *= self.season_mem
+        self.ab -= (self.ab - self.abr) * (1 - self.season_mem)
         
     def ev(self, att):
         return self._p() * att
@@ -204,7 +215,8 @@ class TrialModel(Model):
 
     def __str__(self):
         pars = u'{:.2f}% rate\n\u03B1\t= {:.2f}\n\u03B2\t= {:.2f}\n'.format(100*self._p(), *self.ab)
-        hpars = 'lr\t= {:.3f}\n'.format(self.game_lr)
+        hpars = u'\u03B1_inf\t= {:.2f}\n\u03B2_inf\t= {:.2f}\n'.format(*self.abr)
+        hpars += 'lr\t= {:.3f}\n'.format(self.game_lr)
         hpars += 'smem\t= {:.3f}\ngmem\t= {:.3f}\n'.format(self.season_mem, self.game_mem)
         return pars + hpars
 
@@ -213,6 +225,7 @@ class YdsPerAttModel(Model):
     model for yards per attempt (though it could be more general than that).
     it uses a non-central student-t distribution to allow positive skew.
     the skewness goes to zero as the number of samples rises.
+    this really isn't a good model, since it does not actually represent multiple draws from one t-distribution.
     """
     def __init__(self,
                  mn0, n0, a0, b0,
@@ -249,14 +262,13 @@ class YdsPerAttModel(Model):
         
     def update_game(self, yds, att):
         # assert((0 < self.game_mem).all() and (self.game_mem <= 1.0).all())
-        # mu does not decay simply like the others, but mu*nu does
+        # mu does not decay simply like the others, but rather mu*nu does
         ev = self.ev(att)
         self.mnab *= self.game_mem
         self.mnab += self.game_lr * np.array((yds, att,
                                               0.5*att,
                                               0.5*(yds-ev)**2/max(1,att)))
         # the max() function is just to avoid a divide-by-zero error when everything is zero
-        # we could accumulate a KLD to diagnose when the model has been very wrong recently
 
     def new_season(self):
         self.mnab *= self.season_mem
@@ -284,11 +296,13 @@ class YdsPerAttModel(Model):
     def _loc(self, att):
         df = self._df(att)
         ncmean = self._ncmean(att)
-        return (self.mnab[0] / self.mnab[1] - self._scale(att)*ncmean) # * att
+        # return (self.mnab[0] / self.mnab[1] - self._scale(att)*ncmean) # * att
+        return (self.mnab[0] / self.mnab[1] - np.sqrt(self._sigma2())*ncmean) * att
     
     def _scale(self, att):
         df = self._df(att)
-        sigma = np.sqrt(self._sigma2())
+        # sigma = np.sqrt(self._sigma2())
+        sigma = np.sqrt(self.var(att)) # this should scale properly
         return sigma
         # now we want low df to explicitly increase the variance, so don't divide out the nu factor
         # prevent a zero to remove a warning, even tho it doesn't change any calculations:
@@ -312,19 +326,23 @@ class YdsPerAttModel(Model):
         # # really, this is a hack and we need a better way to model yards / attempt,
         # # e.g. rush-by-rush.
         # # most rush yards is 295 by AP; most receiving is 336 by Willie Anderson
-        # minuni = self.cdf(-5*att, att)
+        minyds,maxyds = -20,100
+        minuni = self.cdf(minyds*att, att)
         # maxyds = 500 if self.name == 'pass_yds' else 250   
-        # maxuni = self.cdf(min(50*att, maxyds), att)
-        # uni *= (maxuni-minuni)
-        # uni += minuni
-        ypa = st.nct.ppf(uni, df, nc,
+        maxuni = self.cdf(maxyds*att, att)
+        uni *= (maxuni-minuni)
+        uni += minuni
+        # ypa = st.nct.ppf(uni, df, nc,
+        #                  loc=self._loc(att),
+        #                  scale=self._scale(att),)
+        # yds = att*ypa
+        yds = st.nct.ppf(uni, df, nc,
                          loc=self._loc(att),
                          scale=self._scale(att),)
         # if ypa > 90 or ypa < -5:
         #     # we might need to check to make sure this isn't possible
         #     logging.warning('{} yards per attempt in {} attempts for {}'.format(ypa, att, self.name))
         #     logging.warning('{} out of {}/{}'.format(uni, minuni, maxuni))
-        yds = att*ypa
         return yds
     
     def ev(self, att):
@@ -337,9 +355,9 @@ class YdsPerAttModel(Model):
         return ev
 
     def var(self, att):
-        # to maintain a useful and finite variance, just return sigma^2.
         # right now this is only used for printing, anyway.
-        return self._sigma2()
+        # the std deviation of the yards should scale like the sqrt of the attempts
+        return att * self._sigma2()
         # # sig2 = self._sigma2()
         # # nu = self.mnab[1]
         # nc = self.skew
@@ -357,15 +375,20 @@ class YdsPerAttModel(Model):
             # there can be nonzero rushing yards w/out an attempt due to laterals. just skip these.
             # cdf is the number below, though, so it should return 1.
             return 1.
-        cdf = st.nct.cdf(yds/att, df, nc,
+        cdf = st.nct.cdf(yds, df, nc,
                          loc=self._loc(att),
                          scale=self._scale(att))
+        # cdf = st.nct.cdf(yds/att, df, nc,
+        #                  loc=self._loc(att),
+        #                  scale=self._scale(att))
         # if np.isnan(cdf):
         #     print('nan cdf')
         #     print(self.name)
         return cdf
     
     def chi_sq(self, yds, att):
+        if att == 0:
+            return 0
         df = self._df(att)
         # using nct.mean results in undefined when df = 1
         nc = self.skew
@@ -387,7 +410,9 @@ class YdsPerAttModel(Model):
         # the skew parameter is in between the mode and mean, so let's just use this
         loc = self._loc(att)
         scale = self._scale(att)
-        result = - st.nct.logpdf(yds/att, df, nc, loc=loc,
+        # result = - st.nct.logpdf(yds/att, df, nc, loc=loc,
+        #                          scale=scale)
+        result = - st.nct.logpdf(yds, df, nc, loc=loc,
                                  scale=scale)
         return result
 
