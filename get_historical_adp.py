@@ -8,7 +8,7 @@ def main():
     if not os.path.isdir('adp_historical'):
         logging.info('creating directory adp_historical')
         os.mkdir('adp_historical')
-    
+
     # first year on this site is 1998. first year with any data is 1999.
     years = (1999, 2018+1)
     poscounts = [('QB',20), ('RB', 64), ('WR', 64), ('TE', 20), ('PK', 16), ('Def',16)]
