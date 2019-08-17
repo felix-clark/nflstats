@@ -10,6 +10,8 @@ numpy = "*"
 scipy = "*"
 seaborn = "*"
 jinja2 = "*"
+pandas = "*"
+beautifulsoup4 = "*"
 
 [requires]
 python_version = "3.7"
