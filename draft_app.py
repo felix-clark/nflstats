@@ -35,7 +35,7 @@ bye_factor = (16-1)/16
 pos_injury_factor = {'QB':0.94, 'RB':0.85, 'WR':0.89, 'TE':0.89, 'DST':1.0, 'K':1.0}
 
 
-def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None):
+def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None, simulations=None):
     """
     applies projection for season points, with an approximation for bench value
     returns tuple of starter, bench value
@@ -47,13 +47,15 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None):
     if numplayers > numroster:
         print('This roster has too many players.', file=outfile)
 
+    main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+
     starterval, benchval = 0, 0
     i_st = [] # the indices of the players we have counted so far
-    for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
+    for pos in main_positions:
         n_starters = n_roster_per_team[pos]
         rospos = rosdf[rosdf.pos == pos].sort_values('exp_proj', ascending=False)
         i_stpos = rospos.index[:n_starters]
-        val = rospos[rospos.index.isin(i_stpos)]['exp_proj'].sum()
+        val = bye_factor * pos_injury_factor[pos] * rospos[rospos.index.isin(i_stpos)]['exp_proj'].sum()
         starterval = starterval + val
         i_st.extend(i_stpos)
 
@@ -88,11 +90,29 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None):
         
     auctionval = rosdf['auction'].sum()
 
+    simulated_seasons = None
+    if simulations is not None:
+        sim_idx = startdf[['player', 'team', 'pos']].values
+        start_proj = simulations.loc[[tuple(idx) for idx in sim_idx]].drop(columns=['g'])
+        sim_idx = benchdf[['player', 'team', 'pos']].values
+        bench_proj = simulations.loc[[tuple(idx) for idx in sim_idx]].drop(columns=['g'])
+        # "correct" for bye and injuries
+        for pos in main_positions:
+            start_proj.iloc[start_proj.index.get_level_values('pos') == pos] *= bye_factor*pos_injury_factor[pos]
+            bench_proj.iloc[bench_proj.index.get_level_values('pos') == pos] *= (1 - bye_factor)*pos_injury_factor[pos]
+        # for _, row in startdf:
+        simulated_seasons = start_proj.sum(axis=0) + bench_proj.sum(axis=0)
+
+
     # round values to whole numbers for josh, who doesn't like fractions :)
     print('\nprojected starter points:\t{}'.format(int(round(starterval))), file=outfile)
     print('estimated bench value:\t\t{}'.format(int(round(benchval))), file=outfile)
     print('total points:\t\t\t{}'.format(int(round(benchval + starterval))), file=outfile)
     print('approximate auction value:\t${:.2f}\n'.format(auctionval), file=outfile)
+    if simulated_seasons is not None:
+        print('Simulation:\n', file=outfile)
+        print(simulated_seasons.describe(), file=outfile)
+        return starterval, benchval, simulated_seasons
     return starterval, benchval
 
 def find_by_team(team, ap, pp):
@@ -513,6 +533,7 @@ class MainPrompt(Cmd):
     ap = pd.DataFrame()
     pp = pd.DataFrame()
     newsdf = None
+    simulations = None
 
     _sort_key = 'vbsd' # 'vols'
     _sort_asc = False
@@ -960,12 +981,38 @@ class MainPrompt(Cmd):
                 logging.error('Could not interpret managers to evaluate.')
                 logging.error(err)
         manager_vals = {}
+        manager_sims = {}
         for i in indices:
             print('{}\'s roster:'.format(self._get_manager_name(i)), file=outfile)
-            stval, benchval = evaluate_roster(self._get_manager_roster(i),
-                                              self.n_roster_per_team,
-                                              self.flex_pos, outfile=outfile)
+            evaluation = evaluate_roster(self._get_manager_roster(i),
+                                   self.n_roster_per_team,
+                                   self.flex_pos, outfile=outfile,
+                                   simulations=self.simulations)
+            stval = evaluation[0]
+            benchval = evaluation[1]
+            simulations = None
+            if len(evaluation) > 2:
+                manager_sims[i] = evaluation[2]
             manager_vals[i] = stval + benchval
+
+        if manager_sims:
+            simdf = pd.DataFrame(manager_sims)
+            # for key, value in manager_sims.items():
+            #     simdf.iloc[key] = value
+            rankdf = simdf.rank(axis=1, ascending=False)
+            # print(simdf)
+            # print(rankdf)
+            print('\nRankings:', file=outfile)
+            print(rankdf.describe(), file=outfile)
+            frac_top = (rankdf == 1).sum(axis=0) / len(rankdf)
+            print('\nFraction best:', file=outfile)
+            print(frac_top, file=outfile)
+            frac_top4 = (rankdf <= 4).sum(axis=0) / len(rankdf)
+            print('\nFraction top 4:', file=outfile)
+            print(frac_top4, file=outfile)
+            frac_bot = (rankdf == rankdf.max()).sum(axis=0) / len(rankdf)
+            print('\nFraction worst:', file=outfile)
+            print(frac_bot, file=outfile)
 
         if len(indices) > 3:
             k = int(np.ceil(np.sqrt(1 + len(indices)))) + 2
@@ -1865,6 +1912,8 @@ def main():
             sim_vols.loc[:, col] = get_vols(simulations, n_roster_per_league, value_key=col)
         sim_vols.to_csv(vols_cache_name)
 
+    # index simulations by player, team, pos for easy lookup
+    simulations.set_index(['player', 'team', 'pos'], inplace=True)
 
     # Due to a rare bug in the baseline calculation, the VOLS may have nans. They should be ignored by the quantile calculation.
 
@@ -2003,6 +2052,7 @@ def main():
     prompt.ap = availdf
     prompt.pp = pickdf
     prompt.newsdf = newsdf
+    prompt.simulations = simulations
     prompt.n_teams = n_teams
     prompt.n_roster_per_team = n_roster_per_team
     prompt.update_draft_html()
