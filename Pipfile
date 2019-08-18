@@ -12,6 +12,11 @@ seaborn = "*"
 jinja2 = "*"
 pandas = "*"
 beautifulsoup4 = "*"
+progressbar2 = "*"
+lxml = "*"
+tk = "*"
+pycairo = "*"
+pygobject = "*"
 
 [requires]
 python_version = "3.7"
