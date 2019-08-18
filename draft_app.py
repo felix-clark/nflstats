@@ -65,7 +65,7 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None):
     print(startdf, file=outfile)
 
     benchdf = rosdf[~rosdf.index.isin(i_st)].drop(['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier'], axis=1)
-    if not benchdf.empty():
+    if not benchdf.empty:
         print('  bench:', file=outfile)
         print(benchdf, file=outfile)
 
@@ -118,11 +118,11 @@ def find_handcuff(index, ap, pp):
     name, pos, team = player['player'], player.pos, player.team
     print('Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos))
     ah = ap[(ap.pos == pos) & (ap.team == team) & (ap.player != name)]
-    if not ah.empty():
+    if not ah.empty:
         print('The following potential handcuffs are available:')
         print(ah.drop(['volb'], axis=1))
     ph = pp[(pp.pos == pos) & (pp.team == team) & (pp.player != name)]
-    if not ph.empty():
+    if not ph.empty:
         print('The following handcuffs have already been picked:')
         print(ph.drop(['volb'], axis=1))
     print() # end on a newline
@@ -193,7 +193,7 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None, price=No
     player = ap.loc[index] # a dictionary of the entry
     # were using iloc, but the data may get re-organized so this should be safer
     if pp is not None:
-        if not pp[pp.index == index].empty():
+        if not pp[pp.index == index].empty:
             logging.error('It seems like the index of the player is already in the picked player list.')
             logging.error('Someone needs to clean up the logic...')
             logging.debug('picked players w/index: %s', pp.loc[index])
@@ -287,7 +287,7 @@ def push_to_player_list(index, ap, pp):
     if index not in pp.index:
         raise IndexError('The index ({}) does not indicate a picked player!'.format(index))
     player = pp.loc[index]
-    if not ap[ap.index == index].empty():
+    if not ap[ap.index == index].empty:
         print('The index of the picked player is already in the available player list.')
         print('Someone needs to clean up the logic...')
         print('DEBUG: picked players w/index:', pp.loc[index])
@@ -674,7 +674,7 @@ class MainPrompt(Cmd):
                 # best_waivers = pos_draftable[backup_mask].sort_values('vols', ascending=False)
                 ls_index = None # index of worst starter in position
                 # fw_index = None # index of best wavier option in position (assuming ADP)
-                if not worst_starters.empty():
+                if not worst_starters.empty:
                     ls_index = worst_starters.index[0]
                 # if len(best_waivers) > 0:
                 #     fw_index = best_waivers.index[0]
@@ -1213,7 +1213,7 @@ class MainPrompt(Cmd):
         if not args:
             print('\n {}:'.format( self._get_manager_name() ))
             theroster = self._get_manager_roster(self._get_current_manager())
-            if not theroster.empty():
+            if not theroster.empty:
                 print(theroster.drop(self.hide_stats, axis=1))
                 print()
             else:
