@@ -13,6 +13,8 @@ from difflib import get_close_matches
 from cmd import Cmd
 import numpy as np
 import pandas as pd
+import scipy.stats as st
+from scipy.optimize import fsolve
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -154,6 +156,67 @@ def find_player(search_str, ap, pp):
     else:
         print('\n  Available players:')
         print(filtered_ap)
+
+def get_vols(df, n_roster_per_league, value_key='exp_proj', main_positions=None, flex_positions=None):
+    """
+    n_roster_per_league: dictionary with number of positions required in each starting lineup
+    """
+    main_positions = main_positions or ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+    flex_positions = flex_positions or ['RB', 'WR', 'TE']
+
+    # players that have been assigned a class so far are starters
+    # use this to find the worst value of each starter and subtract it
+    #  from the projection to get the "VOLS" (value over last starter).
+    # this is just a static calculation right now.
+    # in the future we could adjust this for draft position and dynamically
+    #  update in the case of other teams making "mistakes".
+    gamesdf = df[['pos', value_key, 'g']].copy()
+    gamesdf['ppg'] = gamesdf[value_key] / gamesdf['g']
+    gamesdf.sort_values('ppg', inplace=True, ascending=False)
+
+    ppg_baseline = {}
+    # assume a 16-game season
+    games_needed = {pos:(16*n_roster_per_league[pos]) for pos in main_positions}
+    games_needed.loc['FLEX'] = 16*n_roster_per_league['FLEX']
+    # print(games_needed)
+
+    for index, row in gamesdf.iterrows():
+        pos, games = row[['pos', 'g']]
+        gneeded = games_needed[pos]
+        if gneeded > games:
+            games_needed[pos] -= games
+        elif 0 < gneeded <= games:
+            games_needed[pos] = 0
+            ppg_baseline[pos] = row['ppg']
+            if pos in flex_pos:
+                gleft = games - gneeded
+                games_needed['FLEX'] -= gleft
+        else:
+            assert(gneeded == 0)
+            if pos in flex_pos:
+                gneeded = games_needed['FLEX']
+                if gneeded > games:
+                    games_needed['FLEX'] -= games
+                elif 0 < gneeded <= games:
+                    games_needed['FLEX'] = 0
+                    ppg_baseline['FLEX'] = row['ppg']
+                # if no games needed, we're done.
+
+    # print(ppg_baseline)
+    del gamesdf
+    del games_needed
+
+    vols = df[value_key].copy()
+
+    for i_player in df.index:
+        player = df.iloc[i_player]
+        pos = player['pos']
+        worst_starter_pg = ppg_baseline[pos]
+        if pos in flex_pos:
+            worst_starter_pg = min(worst_starter_pg, ppg_baseline['FLEX'])
+        gs = player['g']
+        vols.iloc[i_player] = gs*(df[value_key]/(gs+1) - worst_starter_pg) ### todo: fix
+    return vols
         
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
@@ -310,9 +373,90 @@ def save_player_list(outname, ap, pp=None):
 
 def simplify_name(name):
     """
-    maps "A.J. Smith Jr." to "aj_smith_jr"
+    maps e.g. "A.J. Smith Jr." to "aj_smith_jr"
     """
     return name.strip().lower().replace(' ', '_').replace('\'', '').replace('.', '')
+
+def _get_skew_norm_params(median, high, low, ci=0.8):
+    """
+    returns the skew-normal parameters for the given median, ceiling, and floor, for a single sample.
+    ci: the confidence interval to assume for the values between floor and ceiling.
+    """
+    vals = np.array([median, high, low])
+    cdf_levels = 0.5*np.array([1, 1+ci, 1-ci])
+    # guess for skew, loc, scale
+    # calculate the sample skew but clip it close to 1
+    sample_skew = np.clip(st.skew(vals, bias=False), -0.995, 0.995)
+    # this method of moments is on the wiki page
+    # it still doesn't give great estimates of the final, so perhaps it's not worth the calculation
+    init_skew = np.sign(sample_skew) * np.sqrt(
+        np.pi/2 * np.abs(sample_skew) ** (2/3) / ( np.abs(sample_skew)**(2/3) + ((2-np.pi/2)**(2/3)))
+    )
+    initial_guess = [init_skew, median, 0.5*(high-low)]
+    # TODO: try max-likelihood instead?
+    def func(args):
+        # assume the CDF is quicker to calculate than the ppf
+        return st.skewnorm.cdf(vals, *tuple(args)) - cdf_levels
+    # we should be able to compute the matrix jacobian from the ppf, but it takes some manual computation.
+    # This might help convergence.
+    # def grad(skew, loc, scale):
+    #     pass
+    # TODO: This doesn't always converge without warning. This may happen when there is little skew
+    result = fsolve(func, x0=initial_guess, )
+    # print(init_skew, result[0])
+    # print(median, result[1])
+    # print(0.5*(high-low), result[2])
+    return result
+
+def decorate_skew_norm_params(medians, highs, lows, value_key='exp_proj', ci=0.8, **kwargs):
+    """
+    decorates the "median" df with the skew normal parameters of each player, derived from the median, high, and low projections.
+    ci: confidence interval. For 5 experts we'll assume (poorly) that they're evenly distributed in the CDF.
+    """
+    print('in deco')
+    # for now just verify that the indices are all consistent
+    assert (medians['player'] == highs['player']).all(), 'High df inconsistent with EV'
+    assert (medians['player'] == lows['player']).all(), 'Low df inconsistent with EV'
+    ev_vals = medians[value_key].to_numpy()
+    high_vals = highs[value_key].to_numpy()
+    low_vals = lows[value_key].to_numpy()
+    assert (high_vals >= ev_vals).all(), 'High projections not all higher than nominal'
+    assert (low_vals <= ev_vals).all(), 'Low projections not all lower than nominal'
+    logging.info('Finding skew-normal description of players...')
+    # this triggers a warning, but appears to function as intended
+    # medians.loc[:, 'skew'] = np.nan
+    # medians.loc[:, 'loc'] = np.nan
+    # medians.loc[:, 'scale'] = np.nan
+    for i_player, med, high, low in zip(medians.index, ev_vals, high_vals, low_vals):
+        skew, loc, scale = _get_skew_norm_params(med, high, low, ci)
+        # TODO: these appear to be giving a warning on the 2nd pass, but seemingly operates as expected.
+        medians.loc[i_player, 'skew'] = skew
+        medians.loc[i_player, 'loc'] = loc
+        medians.loc[i_player, 'scale'] = scale
+        if  abs(skew) > 10:
+            logging.warning('Large skew:')
+            logging.warning(medians.loc[i_player])
+            logging.warning(highs.loc[i_player])
+            logging.warning(lows.loc[i_player])
+
+def simulate_seasons(df, n=10):
+    """
+    Simulate a number of seasons based on the expected, high, and low points.
+    """
+    # seed based on randomness
+    np.random.seed()
+    skews = df['skew'].to_numpy()
+    locs = df['loc'].to_numpy()
+    scales = df['scale'].to_numpy()
+    logging.info('Simulating %s seasons...', n)
+    simulations = df[['player', 'team', 'pos']].copy()
+    for i_sim in range(n):
+        points = st.skewnorm.rvs(skews, locs, scales)
+        simulations[str(i_sim)] = points
+        # below_zeros = points < 0
+        # if below_zeros.any():
+        #     print(df.iloc[below_zeros])
+    return simulations
 
 def verify_and_quit():
     user_verify = input('Are you sure you want to quit and lose all progress [y/N]? ')
@@ -1503,22 +1647,71 @@ def main():
 
     year = 2019
     posdfs = []
+    # also collect "floor" and "ceiling" data if it exists
+    posdfs_high = []
+    posdfs_low = []
     for pos in main_positions:
         filename = 'preseason_rankings/project_fp_{}_pre{}.csv'.format(pos.lower(), year)
         posdf = pd.read_csv(filename)
         ## TODO (low priority): try using a multi-indexed dataframe instead of decorating every entry with the position?
         posdf['pos'] = pos
         posdfs.append(posdf)
+
+        filename_high = filename.replace('.csv', '_high.csv')
+        filename_low = filename.replace('.csv', '_low.csv')
+        if os.path.isfile(filename_high):
+            posdf_high = pd.read_csv(filename_high)
+            posdf_high['pos'] = pos
+            posdfs_high.append(posdf_high)
+        if os.path.isfile(filename_low):
+            posdf_low = pd.read_csv(filename_low)
+            posdf_low['pos'] = pos
+            posdfs_low.append(posdf_low)
     # create dataframe of all available players
     availdf = pd.concat(posdfs, ignore_index=True, sort=False)
+    availdf_high = pd.concat(posdfs_high, ignore_index=True, sort=False) if posdfs_high else None
+    availdf_low = pd.concat(posdfs_low, ignore_index=True, sort=False) if posdfs_low else None
+
+    alldfs = [availdf]
+    if availdf_high is not None:
+        alldfs.append(availdf_high)
+    if availdf_low is not None:
+        alldfs.append(availdf_low)
 
     # add the team acronym to the DST entries for consistency/elegance
     teamlist = availdf[~availdf.team.isnull()]['team'].sort_values().unique()
-    availdf.loc[availdf.pos == 'DST','team'] = availdf.loc[availdf.pos == 'DST','player'].map(lambda n: get_team_abbrev(n, teamlist))
+    for df in alldfs:
+        df.loc[df.pos == 'DST', 'team'] = df.loc[df.pos == 'DST', 'player'].map(lambda n: get_team_abbrev(n, teamlist))
 
-    # if they have no stats listed (NaN) we can treat that as a zero
-    # this should be called before ADP is added, since it has some missing values that we want to keep as NaN for clarity
-    availdf.fillna(0, inplace=True)
+        # if they have no stats listed (NaN) we can treat that as a zero
+        # this should be called before ADP is added, since it has some missing values that we want to keep as NaN for clarity
+        df.fillna(0, inplace=True)
+
+    for df in alldfs:
+        # decorate the dataframe with projections for our ruleset
+        df.loc[df.pos != 'DST', 'exp_proj'] = get_points(rules, df)
+        # for DST, just take the FP projection.
+        df.loc[df.pos == 'DST', 'exp_proj'] = df['fp_projection']
+        keep_cols = ['player', 'team', 'pos', 'exp_proj']
+        drop_cols = [col for col in df.columns if col not in keep_cols]
+        # can go ahead and filter out stats once we have projections
+        df.drop(drop_cols, axis=1, inplace=True)
+
+    # Drop most players for testing the simulations
+    availdf = availdf.head(50)
+    availdf_high = availdf_high.head(50)
+    availdf_low = availdf_low.head(50)
+
+    # this function adds skew-normal parameters for each player based on the high/low
+    decorate_skew_norm_params(availdf, highs=availdf_high, lows=availdf_low, ci=0.8)
+
+    # do we actually want to delete? we might use these for error bars
+    del availdf_high
+    del availdf_low
+    print(availdf)
+    print('before sims')
+    simulations = simulate_seasons(availdf, n=100)
+    print(simulations)
 
     # get ECP/ADP
     dpfname = 'preseason_rankings/ecp_adp_fp_pre{}.csv'.format(year)
@@ -1528,27 +1721,20 @@ def main():
     dpdf = dpdf[~dpdf.pos.str.contains('TOL')]
     dpdf.loc[dpdf.team.isnull(),'team'] = dpdf.loc[dpdf.team.isnull(),'player'].map(lambda n: get_team_abbrev(n, teamlist))
 
-    # print dpdf
     # only merge with the columns we are interested in for now.
     # combine on both name and team because there are sometimes multiple players w/ same name
-    availdf = availdf.merge(dpdf[['player', 'team', 'ecp', 'adp']], how='left', on=['player','team'])
+    availdf = availdf.merge(dpdf[['player', 'team', 'ecp', 'adp']],
+                            how='left', on=['player', 'team'])
     availdf.loc[:,'n'] = ''
     availdf.loc[:,'rank'] = ''
     availdf.loc[:,'g'] = ''
-    
-    # decorate the dataframe with projections for our ruleset
-    # use 15/16 for bye factor, since we're only considering 16 weeks of the season (w/ 1 bye)
-    availdf.loc[availdf.pos != 'DST', 'exp_proj'] = get_points(rules, availdf)
-    # for DST, just take the FP projection.
-    availdf.loc[availdf.pos == 'DST', 'exp_proj'] = availdf['fp_projection']
-    # can go ahead and filter out stats once we have projections
-    availdf = availdf[['player', 'n', 'team', 'pos', 'rank', 'g', 'adp', 'ecp', 'exp_proj']]    
-
+    # re-order the columns
+    availdf = availdf[['player', 'n', 'team', 'pos', 'rank', 'g', 'adp', 'ecp', 'exp_proj']]
 
     ## flag players with news items
     newsdf = pd.read_csv('data/news.csv')
     newsdf = newsdf[newsdf.pos.isin(main_positions)]
-    for _,pnews in newsdf.iterrows():
+    for _, pnews in newsdf.iterrows():
         pnamenews,pteamnews,posnews = pnews[['player', 'team', 'pos']]
         pix = (availdf.pos == posnews)
         pix &= (availdf.player == pnamenews)
@@ -1559,7 +1745,7 @@ def main():
         if availdf[pix].shape[0] == 0:
             pix = (availdf.pos == posnews)
             cutoff = 0.75 # default is 0.6, but this seems too loose
-            rmsuff =availdf.player.map(rm_name_suffix) 
+            rmsuff = availdf.player.map(rm_name_suffix)
             pix &= (rmsuff.isin(get_close_matches(rm_name_suffix(pnamenews),
                                                   rmsuff.values, cutoff=cutoff)))
             if availdf[pix].shape[0] > 1:
@@ -1569,11 +1755,12 @@ def main():
                 logging.warning('there is news about {} ({}) {}, but this player could not be found!'.format(pnamenews, pteamnews, posnews))
         availdf.loc[pix,'n'] = '*' # flag this column
 
-    
+
+    print('after news')
     availdf.loc[:, 'g'] = 15 # default is 15 games; we'll check for suspensions.
     sussdf = pd.read_csv('data/suspensions.csv')
     rmsuff = availdf.player.map(rm_name_suffix).map(simplify_name).copy()
-    for _,psus in sussdf.iterrows():
+    for _, psus in sussdf.iterrows():
         pnamesus,pteamsus,possus,gsus = psus[['player', 'team', 'pos', 'games_suspended']]
         pnamesimp = simplify_name(rm_name_suffix(pnamesus))
         pix = (rmsuff == pnamesimp) & (availdf.pos == possus)
@@ -1596,60 +1783,69 @@ def main():
             logging.warning('unknown suspension time for {}'.format(pnamesus))
         else:
             availdf.loc[pix,'g'] = availdf[pix]['g'] - gsus
-    
-    # players that have been assigned a class so far are starters
-    # use this to find the worst value of each starter and subtract it
-    #  from the projection to get the "VOLS" (value over last starter).
-    # this is just a static calculation right now.
-    # in the future we could adjust this for draft position and dynamically
-    #  update in the case of other teams making "mistakes".
-    gamesdf = availdf[['pos', 'exp_proj', 'g']].copy()
-    gamesdf['ppg'] = gamesdf['exp_proj'] / gamesdf['g']
-    gamesdf.sort_values('ppg', inplace=True, ascending=False)
 
-    # print (gamesdf)
+    # TODO: clean up these comments once it's tested
 
-    ppg_baseline = {}
-    games_needed = {pos:(16*n_roster_per_league[pos]) for pos in main_positions}
-    games_needed['FLEX'] = 16*n_roster_per_league['FLEX']
-    # print(games_needed)
+    # # players that have been assigned a class so far are starters
+    # # use this to find the worst value of each starter and subtract it
+    # #  from the projection to get the "VOLS" (value over last starter).
+    # # this is just a static calculation right now.
+    # # in the future we could adjust this for draft position and dynamically
+    # #  update in the case of other teams making "mistakes".
+    # gamesdf = availdf[['pos', 'exp_proj', 'g']].copy()
+    # gamesdf['ppg'] = gamesdf['exp_proj'] / gamesdf['g']
+    # gamesdf.sort_values('ppg', inplace=True, ascending=False)
 
-    for index,row in gamesdf.iterrows():
-        pos,games = row[['pos', 'g']]
-        gneeded = games_needed[pos]
-        if gneeded > games:
-            games_needed[pos] -= games
-        elif 0 < gneeded <= games:
-            games_needed[pos] = 0
-            ppg_baseline[pos] = row['ppg']
-            if pos in flex_pos:
-                gleft = games - gneeded
-                games_needed['FLEX'] -= gleft
-        else:
-            assert(gneeded == 0)
-            if pos in flex_pos:
-                gneeded = games_needed['FLEX']
-                if gneeded > games:
-                    games_needed['FLEX'] -= games
-                elif 0 < gneeded <= games:
-                    games_needed['FLEX'] = 0
-                    ppg_baseline['FLEX'] = row['ppg']
-                # if no games needed, we're done.
+    # # print (gamesdf)
+
+    # ppg_baseline = {}
+    # # assume a 16-game season
+    # games_needed = {pos:(16*n_roster_per_league[pos]) for pos in main_positions}
+    # games_needed['FLEX'] = 16*n_roster_per_league['FLEX']
+    # # print(games_needed)
+
+    # for index, row in gamesdf.iterrows():
+    #     pos, games = row[['pos', 'g']]
+    #     gneeded = games_needed[pos]
+    #     if gneeded > games:
+    #         games_needed[pos] -= games
+    #     elif 0 < gneeded <= games:
+    #         games_needed[pos] = 0
+    #         ppg_baseline[pos] = row['ppg']
+    #         if pos in flex_pos:
+    #             gleft = games - gneeded
+    #             games_needed['FLEX'] -= gleft
+    #     else:
+    #         assert(gneeded == 0)
+    #         if pos in flex_pos:
+    #             gneeded = games_needed['FLEX']
+    #             if gneeded > games:
+    #                 games_needed['FLEX'] -= games
+    #             elif 0 < gneeded <= games:
+    #                 games_needed['FLEX'] = 0
+    #                 ppg_baseline['FLEX'] = row['ppg']
+    #             # if no games needed, we're done.
             
-    # print(ppg_baseline)
-    del gamesdf
-    del games_needed
+    # # print(ppg_baseline)
+    # del gamesdf
+    # del games_needed
             
-    for pos in main_positions:
-        # the baseline itself should not be subject to too much variance
-        # worst_starter_value = starterdf[starterdf.pos == pos]['exp_proj'].min()
-        worst_starter_pg = ppg_baseline[pos]
-        if pos in flex_pos:
-            worst_starter_pg = min(worst_starter_pg, ppg_baseline['FLEX'])
-        # the projections are typically for all 16 games, but we only use 15 in fantasy.
-        gs = availdf['g']
-        # this is more like "total expected value", since it assumes a constant template of worst starter every game
-        availdf.loc[availdf.pos == pos, 'vols'] = gs*(availdf['exp_proj']/(gs+1) - worst_starter_pg)
+    # for pos in main_positions:
+    #     # the baseline itself should not be subject to too much variance
+    #     # worst_starter_value = starterdf[starterdf.pos == pos]['exp_proj'].min()
+    #     worst_starter_pg = ppg_baseline[pos]
+    #     if pos in flex_pos:
+    #         worst_starter_pg = min(worst_starter_pg, ppg_baseline['FLEX'])
+    #     # the projections are typically for all 16 games, but we only use 15 in fantasy.
+    #     gs = availdf['g']
+    #     # this is more like "total expected value", since it assumes a constant template of worst starter every game
+    #     availdf.loc[availdf.pos == pos, 'vols'] = gs*(availdf['exp_proj']/(gs+1) - worst_starter_pg)
+
+    # TODO: use get_vols() instead of the past few blocks
+    availdf.loc['vols'] = get_vols(availdf, n_roster_per_league, value_key='exp_proj')
+
+    print('returning for test')
+    return
     
     # label nominal (non-flex) starters by their class
     for pos in main_positions:
