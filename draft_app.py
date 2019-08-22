@@ -101,7 +101,7 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None, simulation
 
     for _,row in benchdf.iterrows():
         pos = row.pos
-        start_to_bench_ratio = len(startdf[startdf.pos == pos]) * 1.0 / len(benchdf[benchdf.pos == pos])
+        # start_to_bench_ratio = len(startdf[startdf.pos == pos]) * 1.0 / len(benchdf[benchdf.pos == pos])
         # TODO: evaluate bench players (and other players) with the same method used for VBSD / auction price.
         benchval = benchval + (1 - bye_factor*pos_injury_factor[pos])*row.exp_proj
         
@@ -754,21 +754,6 @@ class MainPrompt(Cmd):
                                  < self.n_roster_per_team[pos]
                                  + self.n_roster_per_team['BENCH']//2]
             acceptable_positions = acceptable_backup + acceptable_crap
-        ## if it's still too kicker-happy we can get more specific by replacing the above:
-        # elif current_roster_size < starting_roster_spots - crap_starting_roster_spots:
-        #     ## get no more than 1 backup at each position before
-        #     needed_backup_positions = [pos for pos in key_positions
-        #                                if len(roster[roster.pos == pos])
-        #                                < self.n_roster_per_team[pos] + 1]
-        #     acceptable_positions = needed_backup_positions if needed_backup_positions else key_positions
-        # elif current_roster_size >= starting_roster_spots - crap_starting_roster_spots\
-        #      and current_roster_size < starting_roster_spots:
-        #     acceptable_positions = [pos for pos in crap_positions
-        #                             if len(roster[roster.pos == pos])
-        #                             < self.n_roster_per_team[pos]]
-        # else:
-        #     print 'roster is overfull.'
-        #     acceptable_positions = key_positions
         if strat == 'vona':
             pos = self._get_max_vona_in(acceptable_positions, strat=vona_strat, disabled_pos=disabled_pos)
             if pos is None:
@@ -902,6 +887,20 @@ class MainPrompt(Cmd):
                     index = len(pos_baseline-1)
                 vorp_baseline = pos_baseline['vols'].sort_values( ascending=False ).iloc[index]
             ap.loc[ap.pos == pos, 'vorp'] = ap['vols'] - vorp_baseline
+
+    def do_test(self):
+        """
+        A placeholder function to let us quickly test features
+        """
+        players_a, players_b = [], []
+        players_a.extend(self.ap[self.ap.pos == 'QB'].sample(n=1))
+        players_a.extend(self.ap[self.ap.pos == 'RB'].sample(n=3))
+        players_a.extend(self.ap[self.ap.pos == 'WR'].sample(n=3))
+        players_a.extend(self.ap[self.ap.pos == 'TE'].sample(n=1))
+        players_a.extend(self.ap[self.ap.pos == 'K'].sample(n=1))
+        players_a.extend(self.ap[self.ap.pos == 'DST'].sample(n=1))
+        roster_a = pd.DataFrame(players_a)
+        print(roster_a)
 
     def do_auction(self, _):
         """
