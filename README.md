@@ -12,17 +12,11 @@ no instructions right now because if you're in one of my leagues this I don't wa
 
 ## Requirements
 
-nflgame (by BurntSushi)
- - although this requirement is being phased out as it lacks python3 support and doesn't go back that far. working on BS4 scraping directly.
+Dependencies are now handled with pipenv. It is recommended to use pyenv to manage virtual environment. Install pipenv with pip, then `pipenv install` in this directory.
 
-pandas 0.22
-numpy
-scipy
-seaborn
-BeautifulSoup 4
-retrying
+Matplotlib has some requirements when being installed in a virtual environment. See the following link for instructions on how to install prerequisites for the GTK backend.
 
-in the future, a GUI w/ tk might be nice.
+https://matplotlib.org/3.1.1/faq/virtualenv_faq.html
 
 ## Instructions
 
