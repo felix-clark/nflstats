@@ -888,18 +888,20 @@ class MainPrompt(Cmd):
                 vorp_baseline = pos_baseline['vols'].sort_values( ascending=False ).iloc[index]
             ap.loc[ap.pos == pos, 'vorp'] = ap['vols'] - vorp_baseline
 
-    def do_test(self):
+    def do_test(self, _):
         """
         A placeholder function to let us quickly test features
         """
         players_a, players_b = [], []
-        players_a.extend(self.ap[self.ap.pos == 'QB'].sample(n=1))
-        players_a.extend(self.ap[self.ap.pos == 'RB'].sample(n=3))
+        print(self.ap.columns)
+        players_a.extend(self.ap[self.ap.pos == 'QB'].sample(n=1, axis=0))
+        players_a.extend(self.ap[self.ap.pos == 'RB'].sample(n=3, axis=1))
         players_a.extend(self.ap[self.ap.pos == 'WR'].sample(n=3))
         players_a.extend(self.ap[self.ap.pos == 'TE'].sample(n=1))
         players_a.extend(self.ap[self.ap.pos == 'K'].sample(n=1))
         players_a.extend(self.ap[self.ap.pos == 'DST'].sample(n=1))
-        roster_a = pd.DataFrame(players_a)
+        print(players_a)
+        roster_a = pd.concat(players_a)
         print(roster_a)
 
     def do_auction(self, _):
