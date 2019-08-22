@@ -894,7 +894,8 @@ class MainPrompt(Cmd):
         """
         players_a, players_b = [], []
         print(self.ap.columns)
-        players_a.extend(self.ap[self.ap.pos == 'QB'].sample(n=1, axis=0))
+        print(self.ap[self.ap.pos == 'QB'])
+        players_a.extend(self.ap[self.ap.pos == 'QB'].head(4).sample(n=1, axis=0))
         players_a.extend(self.ap[self.ap.pos == 'RB'].sample(n=3, axis=1))
         players_a.extend(self.ap[self.ap.pos == 'WR'].sample(n=3))
         players_a.extend(self.ap[self.ap.pos == 'TE'].sample(n=1))
