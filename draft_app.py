@@ -34,6 +34,23 @@ bye_factor = (16-1)/16
 # obviously rough, but captures trend and follows intuition
 pos_injury_factor = {'QB':0.94, 'RB':0.85, 'WR':0.89, 'TE':0.89, 'DST':1.0, 'K':1.0}
 
+def total_team_sims(startsims, benchsims, n_roster_per_team, position_baseline, flex_pos):
+    """
+    input: dataframes for starter and bench players with a number of simulated seasons
+    position_baseline: assumed number of points that can be gotten for free
+    returns a team score taking into account positions
+    TODO: shouldn't need to split into starter and bench if we pass in n_roster_per_team
+    """
+    # copy so we don't overwrite. Is this necessary?
+    startsims = startsims.copy()
+    benchsims = benchsims.copy()
+    # "correct" for bye and injuries
+    # TODO: make this smarter about replacing starters by position
+    for pos in main_positions:
+        startsims.iloc[start_proj.index.get_level_values('pos') == pos] *= bye_factor*pos_injury_factor[pos]
+        benchsims.iloc[bench_proj.index.get_level_values('pos') == pos] *= (1 - bye_factor)*pos_injury_factor[pos]
+    simulated_seasons = start_proj.sum(axis=0) + bench_proj.sum(axis=0)
+    return simulated_seasons
 
 def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None, simulations=None):
     """
@@ -96,12 +113,11 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None, simulation
         start_proj = simulations.loc[[tuple(idx) for idx in sim_idx]].drop(columns=['g'])
         sim_idx = benchdf[['player', 'team', 'pos']].values
         bench_proj = simulations.loc[[tuple(idx) for idx in sim_idx]].drop(columns=['g'])
-        # "correct" for bye and injuries
-        for pos in main_positions:
-            start_proj.iloc[start_proj.index.get_level_values('pos') == pos] *= bye_factor*pos_injury_factor[pos]
-            bench_proj.iloc[bench_proj.index.get_level_values('pos') == pos] *= (1 - bye_factor)*pos_injury_factor[pos]
-        # for _, row in startdf:
-        simulated_seasons = start_proj.sum(axis=0) + bench_proj.sum(axis=0)
+        # TODO: provide reasonable baseline
+        simulated_seasons = total_team_sims(start_proj, bench_proj,
+                                            n_roster_per_team,
+                                            position_baseline=None,
+                                            flex_pos=flex_pos,)
 
 
     # round values to whole numbers for josh, who doesn't like fractions :)
@@ -223,7 +239,6 @@ def get_vols(df, n_roster_per_league, value_key='exp_proj', main_positions=None,
                     ppg_baseline['FLEX'] = row['ppg']
                 # if no games needed, we're done.
 
-    # del gamesdf
     del games_needed
 
     vols = df[value_key].copy()
@@ -255,9 +270,8 @@ def get_vols(df, n_roster_per_league, value_key='exp_proj', main_positions=None,
         nth_best = nth_flex if pos in flex_positions else n_roster_per_league[pos]
         vols_baseline[pos] = vols[pos_players].sort_values(ascending=False).iloc[nth_best]
 
-    # TODO: this should be able to be expressed with an apply() over df['pos], since vols and df have the same indices
-    for i_player in df.index:
-        vols.iloc[i_player] -= vols_baseline[df.iloc[i_player]['pos']]
+    # subtract the remaining baseline from the values
+    vols -= df['pos'].apply(lambda pos: vols_baseline[pos])
 
     return vols
         
