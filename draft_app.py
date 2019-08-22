@@ -34,25 +34,25 @@ bye_factor = (16-1)/16
 # obviously rough, but captures trend and follows intuition
 pos_injury_factor = {'QB':0.94, 'RB':0.85, 'WR':0.89, 'TE':0.89, 'DST':1.0, 'K':1.0}
 
-def total_team_sims(startsims, benchsims, n_roster_per_team, position_baseline, flex_pos):
+def total_team_sims(simulations, n_roster_per_team, replacement_baseline, flex_pos):
     """
     input: dataframes for starter and bench players with a number of simulated seasons
     position_baseline: assumed number of points that can be gotten for free
     returns a team score taking into account positions
     TODO: shouldn't need to split into starter and bench if we pass in n_roster_per_team
     """
-    # copy so we don't overwrite. Is this necessary?
-    startsims = startsims.copy()
-    benchsims = benchsims.copy()
-    # "correct" for bye and injuries
+    main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
     # TODO: make this smarter about replacing starters by position
+    games = simulations['g']
+    sims = simulations.drop(columns=['g'])
+    # print(games, sims)
+    # TODO: randomize number of games played by binomial sampling based on positional injury
     for pos in main_positions:
-        startsims.iloc[start_proj.index.get_level_values('pos') == pos] *= bye_factor*pos_injury_factor[pos]
-        benchsims.iloc[bench_proj.index.get_level_values('pos') == pos] *= (1 - bye_factor)*pos_injury_factor[pos]
-    simulated_seasons = start_proj.sum(axis=0) + bench_proj.sum(axis=0)
+        sims.iloc[sims.index.get_level_values('pos') == pos] *= bye_factor*pos_injury_factor[pos]
+    simulated_seasons = sims.sum(axis=0)
     return simulated_seasons
 
-def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None, simulations=None):
+def evaluate_roster(rosdf, n_roster_per_team, replacement_baselines, flex_pos=None, outfile=None, simulations=None):
     """
     applies projection for season points, with an approximation for bench value
     returns tuple of starter, bench value
@@ -64,72 +64,54 @@ def evaluate_roster(rosdf, n_roster_per_team, flex_pos, outfile=None, simulation
     if numplayers > numroster:
         print('This roster has too many players.', file=outfile)
 
+    flex_pos = flex_pos or ['RB', 'WR', 'TE']
     main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
 
-    starterval, benchval = 0, 0
     i_st = [] # the indices of the players we have counted so far
     for pos in main_positions:
         n_starters = n_roster_per_team[pos]
         rospos = rosdf[rosdf.pos == pos].sort_values('exp_proj', ascending=False)
         i_stpos = rospos.index[:n_starters]
         val = bye_factor * pos_injury_factor[pos] * rospos[rospos.index.isin(i_stpos)]['exp_proj'].sum()
-        starterval = starterval + val
+        # starterval = starterval + val
         i_st.extend(i_stpos)
 
     n_flex = n_roster_per_team['FLEX']
     rosflex = rosdf[(~rosdf.index.isin(i_st)) & (rosdf.pos.isin(flex_pos))].sort_values('exp_proj', ascending=False)
     i_flex = rosflex.index[:n_flex]
-    starterval = starterval + rosflex[rosflex.index.isin(i_flex)]['exp_proj'].sum()
+    # starterval = starterval + rosflex[rosflex.index.isin(i_flex)]['exp_proj'].sum()
     i_st.extend(i_flex)
 
+    drop_cols = ['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier']
+
     print('  starting lineup:', file=outfile)
-    startdf = rosdf[rosdf.index.isin(i_st)].drop(['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier'], axis=1)
+    startdf = rosdf[rosdf.index.isin(i_st)].drop(drop_cols, axis=1)
     print(startdf, file=outfile)
 
-    benchdf = rosdf[~rosdf.index.isin(i_st)].drop(['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier'], axis=1)
+    benchdf = rosdf[~rosdf.index.isin(i_st)].drop(drop_cols, axis=1)
     if not benchdf.empty:
         print('  bench:', file=outfile)
         print(benchdf, file=outfile)
 
-    ## we're gonna do a really dumb estimation for bench value
-    # and pretend that the chance of a bench player being used
-    # is the same as that of a starter being out.
-    # we'll multiply by the number of starters at that position divided by
-    # the number of bench players to make this a little better.
-    # ignoring all complicated combinatorics and pretending the probabilities are small.
-    # we'll call this an "index" to avoid commiting to a meaning right now :)
-
-    for _,row in benchdf.iterrows():
-        pos = row.pos
-        # start_to_bench_ratio = len(startdf[startdf.pos == pos]) * 1.0 / len(benchdf[benchdf.pos == pos])
-        # TODO: evaluate bench players (and other players) with the same method used for VBSD / auction price.
-        benchval = benchval + (1 - bye_factor*pos_injury_factor[pos])*row.exp_proj
-        
     auctionval = rosdf['auction'].sum()
 
     simulated_seasons = None
     if simulations is not None:
-        sim_idx = startdf[['player', 'team', 'pos']].values
-        start_proj = simulations.loc[[tuple(idx) for idx in sim_idx]].drop(columns=['g'])
-        sim_idx = benchdf[['player', 'team', 'pos']].values
-        bench_proj = simulations.loc[[tuple(idx) for idx in sim_idx]].drop(columns=['g'])
-        # TODO: provide reasonable baseline
-        simulated_seasons = total_team_sims(start_proj, bench_proj,
-                                            n_roster_per_team,
-                                            position_baseline=None,
-                                            flex_pos=flex_pos,)
+        ros_idx = rosdf.drop(drop_cols, axis=1)[['player', 'team', 'pos']].values
+        proj = simulations.loc[[tuple(idx) for idx in ros_idx]]
+        simulated_seasons = total_team_sims(
+            proj,
+            n_roster_per_team,
+            replacement_baseline=replacement_baselines,
+            flex_pos=flex_pos,)
 
 
     # round values to whole numbers for josh, who doesn't like fractions :)
-    print('\nprojected starter points:\t{}'.format(int(round(starterval))), file=outfile)
-    print('estimated bench value:\t\t{}'.format(int(round(benchval))), file=outfile)
-    print('total points:\t\t\t{}'.format(int(round(benchval + starterval))), file=outfile)
     print('approximate auction value:\t${:.2f}\n'.format(auctionval), file=outfile)
     if simulated_seasons is not None:
         print('Simulation:\n', file=outfile)
         print(simulated_seasons.describe(), file=outfile)
-        return starterval, benchval, simulated_seasons
-    return starterval, benchval
+        return simulated_seasons
 
 def find_by_team(team, ap, pp):
     """
@@ -893,17 +875,18 @@ class MainPrompt(Cmd):
         A placeholder function to let us quickly test features
         """
         players_a, players_b = [], []
-        print(self.ap.columns)
-        print(self.ap[self.ap.pos == 'QB'])
-        players_a.extend(self.ap[self.ap.pos == 'QB'].head(4).sample(n=1, axis=0))
-        players_a.extend(self.ap[self.ap.pos == 'RB'].sample(n=3, axis=1))
-        players_a.extend(self.ap[self.ap.pos == 'WR'].sample(n=3))
-        players_a.extend(self.ap[self.ap.pos == 'TE'].sample(n=1))
-        players_a.extend(self.ap[self.ap.pos == 'K'].sample(n=1))
-        players_a.extend(self.ap[self.ap.pos == 'DST'].sample(n=1))
-        print(players_a)
+        main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+        n_draft = {pos:self.n_roster_per_team[pos] for pos in main_positions}
+        n_draft['RB'] += self.n_roster_per_team['FLEX'] +  self.n_roster_per_team['BENCH'] // 2
+        n_draft['WR'] += self.n_roster_per_team['BENCH'] - self.n_roster_per_team['BENCH'] // 2
+        for pos in main_positions:
+            players_a.append(self.ap[self.ap.pos == pos].head(24).sample(n=n_draft[pos]))
+            players_b.append(self.ap[self.ap.pos == pos].head(24).sample(n=n_draft[pos]))
         roster_a = pd.concat(players_a)
-        print(roster_a)
+        roster_b = pd.concat(players_b)
+        # print(roster_a)
+        # print(roster_b)
+        evaluate_roster(roster_a, self.n_roster_per_team, self.flex_pos, simulations=self.simulations)
 
     def do_auction(self, _):
         """
@@ -978,11 +961,19 @@ class MainPrompt(Cmd):
         type `evaluate all` to evaluate rosters of all managers
         """
         outfile = open('draft_evaluation.txt', 'w')
+
+        # calculate the replacement baselines
+        main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+        replacement_baselines = {
+            pos:self.ap[self.ap.pos == pos]['exp_proj'].sort_values(ascending=False).head(self.n_teams).mean()
+            for pos in main_positions
+        }
         if 'manager' not in self.pp:
             print('roster from selected players:', file=outfile)
             evaluate_roster(self.pp,
                             self.n_roster_per_team,
-                            self.flex_pos,
+                            replacement_baselines=replacement_baselines,
+                            flex_pos=self.flex_pos,
                             outfile=outfile)
             return
         indices = []
@@ -996,20 +987,18 @@ class MainPrompt(Cmd):
             except ValueError as err:
                 logging.error('Could not interpret managers to evaluate.')
                 logging.error(err)
-        manager_vals = {}
+        # manager_vals = {}
         manager_sims = {}
         for i in indices:
             print('{}\'s roster:'.format(self._get_manager_name(i)), file=outfile)
-            evaluation = evaluate_roster(self._get_manager_roster(i),
-                                   self.n_roster_per_team,
-                                   self.flex_pos, outfile=outfile,
-                                   simulations=self.simulations)
-            stval = evaluation[0]
-            benchval = evaluation[1]
-            simulations = None
-            if len(evaluation) > 2:
-                manager_sims[i] = evaluation[2]
-            manager_vals[i] = stval + benchval
+            evaluation = evaluate_roster(
+                self._get_manager_roster(i),
+                self.n_roster_per_team,
+                replacement_baselines=replacement_baselines,
+                flex_pos=self.flex_pos, outfile=outfile,
+                simulations=self.simulations)
+            if evaluation is not None:
+                manager_sims[i] = evaluation
 
         if manager_sims:
             simdf = pd.DataFrame(manager_sims)
@@ -1023,30 +1012,35 @@ class MainPrompt(Cmd):
             frac_top = (rankdf == 1).sum(axis=0) / len(rankdf)
             print('\nFraction best:', file=outfile)
             print(frac_top, file=outfile)
-            frac_top4 = (rankdf <= 4).sum(axis=0) / len(rankdf)
-            print('\nFraction top 4:', file=outfile)
-            print(frac_top4, file=outfile)
+            n_top = min(6, len(manager_sims) // 2)
+            frac_top_n = (rankdf <= n_top).sum(axis=0) / len(rankdf)
+            print(f'\nFraction top {n_top}:', file=outfile)
+            print(frac_top_n, file=outfile)
             frac_bot = (rankdf == rankdf.max()).sum(axis=0) / len(rankdf)
             print('\nFraction worst:', file=outfile)
             print(frac_bot, file=outfile)
 
-        if len(indices) > 3:
-            k = int(np.ceil(np.sqrt(1 + len(indices)))) + 2
-            totvals = np.array(list(manager_vals.values()))        
-            partitions = get_k_partition_boundaries(totvals, k-1)[::-1]
-            tier = 0
-            sorted_manager_vals = sorted(list(manager_vals.items()), key=lambda tup: tup[1], reverse=True)
-            while len(sorted_manager_vals) > 0:
-                tier = tier + 1
-                print('Tier {}:'.format(tier), file=outfile)
-                part_bound = partitions[0] if len(partitions) > 0 else -np.inf
-                tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
-                for manager,manval in tiermans:
-                    print('  {}: \t{}'.format(self._get_manager_name(manager), int(manval)), file=outfile)
-                    # print('  {}'.format(self._get_manager_name(manager)), file=outfile)
-                print('\n', file=outfile)
-                sorted_manager_vals = sorted_manager_vals[len(tiermans):]
-                partitions = partitions[1:]
+            # assign tiers based on expected value
+            if len(indices) > 3:
+                # do a clustering
+                k = int(np.ceil(np.sqrt(1 + 2*len(indices))))
+                manager_vals = simdf.mean(axis=0)
+                # totvals = np.array(list(manager_vals.values()))
+                totvals = manager_vals.to_numpy()
+                partitions = get_k_partition_boundaries(totvals, k-1)[::-1]
+                tier = 0
+                sorted_manager_vals = sorted(list(manager_vals.items()), key=lambda tup: tup[1], reverse=True)
+                while len(sorted_manager_vals) > 0:
+                    tier = tier + 1
+                    print('Tier {}:'.format(tier), file=outfile)
+                    part_bound = partitions[0] if len(partitions) > 0 else -np.inf
+                    tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
+                    for manager,manval in tiermans:
+                        print('  {}: \t{}'.format(self._get_manager_name(manager), int(manval)), file=outfile)
+                        # print('  {}'.format(self._get_manager_name(manager)), file=outfile)
+                    print('\n', file=outfile)
+                    sorted_manager_vals = sorted_manager_vals[len(tiermans):]
+                    partitions = partitions[1:]
         if outfile is not None:
             print('evaltuation saved to {}.'.format(outfile.name))
             outfile.close()
