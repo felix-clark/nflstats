@@ -65,15 +65,15 @@ if __name__=='__main__':
         else:
             elems = getElems(line)
             if len(elems) <= 1:
-                print 'This does not appear to be the type of .csv for which this script is intended.'
-                print elems
+                print('This does not appear to be the type of .csv for which this script is intended.')
+                print(elems)
                 exit(1)
             # rejoin with commas 
             line = ','.join( elems )
             # some empty fields may need removing (like WSID in ecp/adp)
             # line = line.replace(',,', ',') # actually fine to just have empty field
         if not outfile:
-            print line
+            print(line)
         else:
             outfile.write(line+'\n')
 
