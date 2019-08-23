@@ -969,6 +969,7 @@ class MainPrompt(Cmd):
             for pos in main_positions
         }
         if 'manager' not in self.pp:
+            # we aren't in a draft so just evaluate the full group of players
             print('roster from selected players:', file=outfile)
             evaluate_roster(self.pp,
                             self.n_roster_per_team,
@@ -990,7 +991,8 @@ class MainPrompt(Cmd):
         # manager_vals = {}
         manager_sims = {}
         for i in indices:
-            print('{}\'s roster:'.format(self._get_manager_name(i)), file=outfile)
+            manager_name = self._get_manager_name(i)
+            print(f'{manager_name}\'s roster:', file=outfile)
             evaluation = evaluate_roster(
                 self._get_manager_roster(i),
                 self.n_roster_per_team,
@@ -998,7 +1000,7 @@ class MainPrompt(Cmd):
                 flex_pos=self.flex_pos, outfile=outfile,
                 simulations=self.simulations)
             if evaluation is not None:
-                manager_sims[i] = evaluation
+                manager_sims[manager_name] = evaluation
 
         if manager_sims:
             simdf = pd.DataFrame(manager_sims)
@@ -1029,20 +1031,22 @@ class MainPrompt(Cmd):
                 totvals = manager_vals.to_numpy()
                 partitions = get_k_partition_boundaries(totvals, k-1)[::-1]
                 tier = 0
-                sorted_manager_vals = sorted(list(manager_vals.items()), key=lambda tup: tup[1], reverse=True)
+                sorted_manager_vals = sorted(list(manager_vals.items()),
+                                             key=lambda tup: tup[1],
+                                             reverse=True)
                 while len(sorted_manager_vals) > 0:
                     tier = tier + 1
                     print('Tier {}:'.format(tier), file=outfile)
                     part_bound = partitions[0] if len(partitions) > 0 else -np.inf
                     tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
                     for manager,manval in tiermans:
-                        print('  {}: \t{}'.format(self._get_manager_name(manager), int(manval)), file=outfile)
+                        print(f'  {manager}: \t{int(manval)}', file=outfile)
                         # print('  {}'.format(self._get_manager_name(manager)), file=outfile)
                     print('\n', file=outfile)
                     sorted_manager_vals = sorted_manager_vals[len(tiermans):]
                     partitions = partitions[1:]
         if outfile is not None:
-            print('evaltuation saved to {}.'.format(outfile.name))
+            print(f'evaltuation saved to {outfile.name}.')
             outfile.close()
 
     def do_exit(self, args):
