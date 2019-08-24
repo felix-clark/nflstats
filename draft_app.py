@@ -33,6 +33,21 @@ bye_factor = (16-1)/16
 # from sportinjurypredictor.net, based on average games missed assuming a 17 game season
 # obviously rough, but captures trend and follows intuition
 pos_injury_factor = {'QB':0.94, 'RB':0.85, 'WR':0.89, 'TE':0.89, 'DST':1.0, 'K':1.0}
+# From http://www.profootballlogic.com/articles/nfl-injury-rate-analysis/
+# we can get an expected number of games played by position (out of 16).
+# This was extracted from one year (2015) only.
+# Kickers are not included.
+pos_games_available = {
+    'QB': 14.9,
+    'RB': 13.3,
+    'WR': 14.0,
+    'TE': 14.2,
+    'DST': 16.0,
+    # The kicker factor is made up.
+    'K': 15.0,
+}
+# TODO: use https://www.footballoutsiders.com/stat-analysis/2015/nfl-injuries-part-i-overall-view for a distribution from which to get a variance on these (use beta-binomial rather than binomial).
+
 
 def total_team_sims(simulations, n_roster_per_team, replacement_baseline, flex_pos):
     """
@@ -136,16 +151,25 @@ def find_handcuff(index, ap, pp):
     """
     player = pd.concat([ap, pp], sort=False).loc[index]
     ## the "name" attribute is the index, so need dictionary syntax to grab actual name
-    name, pos, team = player['player'], player.pos, player.team
+    # name, pos, team = player['player'], player.pos, player.team
+    name, team, pos = index
     print('Looking for handcuffs for {} ({}) - {}...\n'.format(name, team, pos))
-    ah = ap[(ap.pos == pos) & (ap.team == team) & (ap.player != name)]
+    ah = ap[(ap.index.get_level_values('pos') == pos) &
+            (ap.index.get_level_values('team') == team) &
+            (ap.index.get_level_values('player') != name)] \
+            if not ap.empty else ap
     if not ah.empty:
         print('The following potential handcuffs are available:')
-        print(ah.drop(['volb'], axis=1))
-    ph = pp[(pp.pos == pos) & (pp.team == team) & (pp.player != name)]
+        # print(ah.drop(['volb'], axis=1))
+        print(ah)
+    ph = pp[(pp.index.get_level_values('pos') == pos) &
+            (pp.index.get_level_values('team') == team) &
+            (pp.index.get_level_values('player') != name)] \
+            if not pp.empty else pp
     if not ph.empty:
         print('The following handcuffs have already been picked:')
-        print(ph.drop(['volb'], axis=1))
+        # print(ph.drop(['volb'], axis=1))
+        print(ph)
     print() # end on a newline
 
 # adding features to search by team name/city/abbreviation might be nice,
@@ -163,34 +187,48 @@ def find_player(search_str, ap, pp):
     search_str = search_str.replace('.', '')
     # check if any of the search words are in the full name
     checkfunc = lambda name: all([sw in name.lower().replace('.', '') for sw in search_str.lower().split(' ')])
-    filt_mask = pp.player.map(checkfunc) | pp.player.str.lower().isin( get_close_matches(search_str.lower(), pp.player.str.lower(), cutoff=0.8) )
-    filtered_pp = pp[filt_mask]
-    if filtered_pp.shape[0] > 0:
+    picked_players = pp.index.get_level_values('player')
+    filt_mask = picked_players.map(checkfunc) | \
+        picked_players.str.lower().isin(
+            get_close_matches(search_str.lower(), picked_players.str.lower(), cutoff=0.8) ) \
+            if not pp.empty else None
+    filtered_pp = pp[filt_mask] if not pp.empty else pp
+    if not filtered_pp.empty > 0:
         print('\n  Picked players:')
         print(filtered_pp)
-    filt_mask = ap.player.map(checkfunc) | ap.player.str.lower().isin( get_close_matches(search_str.lower(), ap.player.str.lower(), cutoff=0.8) )
-    filtered_ap = ap[filt_mask]
-    if filtered_ap.shape[0] == 0:
+    available_players = ap.index.get_level_values('player')
+    filt_mask = available_players.map(checkfunc) | \
+        available_players.str.lower().isin(
+            get_close_matches(search_str.lower(), available_players.str.lower(), cutoff=0.8) ) \
+            if not ap.empty else None
+    filtered_ap = ap[filt_mask] if not ap.empty else ap
+    if filtered_ap.empty:
         print('\n  Could not find any available players.')
     else:
         print('\n  Available players:')
         print(filtered_ap)
 
-def get_vols(df, n_roster_per_league, value_key='exp_proj', main_positions=None, flex_positions=None):
+def get_player_values(ppg_df, games_df, n_roster_per_league, value_key='exp_proj', main_positions=None, flex_positions=None):
     """
+    ppg_df: a dataframe with the expected points per game
+    games_df: a dataframe with the games played
     n_roster_per_league: dictionary with number of positions required in each starting lineup
+    returns the expected number of points for contributing starters
     """
     main_positions = main_positions or ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
     flex_positions = flex_positions or ['RB', 'WR', 'TE']
 
-    # players that have been assigned a class so far are starters
-    # use this to find the worst value of each starter and subtract it
-    #  from the projection to get the "VOLS" (value over last starter).
-    # this is just a static calculation right now.
-    # in the future we could adjust this for draft position and dynamically
-    #  update in the case of other teams making "mistakes".
-    gamesdf = df[['pos', value_key, 'g']].copy()
-    gamesdf['ppg'] = gamesdf[value_key] / gamesdf['g']
+    assert (ppg_df.index == games_df.index).all(), 'PPG and games dataframes do not share indices'
+
+    # gamesdf = df[['pos', value_key, 'g']].copy()
+    # games = games_df[value_key]
+    # ppg = ppg_df[value_key]
+    gamesdf = pd.DataFrame(
+        index=ppg_df.index,
+        data={'ppg': ppg_df[value_key],
+              'g': games_df[value_key]}
+    )
+    # gamesdf['ppg'] = gamesdf[value_key] / gamesdf['g']
     # The points per game must be in descending order
     gamesdf.sort_values('ppg', inplace=True, ascending=False)
 
@@ -200,7 +238,9 @@ def get_vols(df, n_roster_per_league, value_key='exp_proj', main_positions=None,
     games_needed['FLEX'] = 16*n_roster_per_league['FLEX']
 
     for index, row in gamesdf.iterrows():
-        pos, games = row[['pos', 'g']]
+        _, _, pos = index
+        games = row['g']
+        # pos, games = row[['pos', 'g']]
         gneeded = games_needed[pos]
         if gneeded > games:
             games_needed[pos] -= games
@@ -209,7 +249,12 @@ def get_vols(df, n_roster_per_league, value_key='exp_proj', main_positions=None,
             ppg_baseline[pos] = row['ppg']
             if pos in flex_positions:
                 gleft = games - gneeded
-                games_needed['FLEX'] -= gleft
+                gneeded = games_needed['FLEX']
+                if gneeded > gleft:
+                    games_needed['FLEX'] -= gleft
+                elif 0 < gneeded <= gleft:
+                    games_needed['FLEX'] = 0
+                    ppg_baseline['FLEX'] = row['ppg']
         else:
             assert gneeded == 0
             if pos in flex_positions:
@@ -223,49 +268,74 @@ def get_vols(df, n_roster_per_league, value_key='exp_proj', main_positions=None,
 
     del games_needed
 
-    vols = df[value_key].copy()
-    for i_player in df.index:
-        player = df.iloc[i_player]
-        pos = player['pos']
+    values = ppg_df[value_key].copy()
+    for player in ppg_df.index:
+        # player = ppg_df.loc[i_player]
+        _, _, pos = player
+        # pos = player['pos']
         worst_starter_pg = ppg_baseline[pos]
         if pos in flex_positions:
             if 'FLEX' not in ppg_baseline:
                 # TODO: fix this case. If it happens, we should just return NaNs
+                # This should be fixed now.
                 logging.error('Flex not in ppg_baseline. Why does this happen???')
                 logging.error('Filling with NaNs to skip this point.')
                 vols.iloc[:] = np.nan
                 return vols
             worst_starter_pg = min(worst_starter_pg, ppg_baseline['FLEX'])
-        gs = player['g']
+        # gs = player['g']
+        gs = games_df.loc[player, value_key]
         # correct for the bye week
-        vols.iloc[i_player] = gs*(player[value_key]/(gs+1) - worst_starter_pg)
+        # the bye week should now be accounted for in the simulated games
+        # vols.iloc[i_player] = gs*(player[value_key]/(gs+1) - worst_starter_pg)
+        values.loc[player] = gs*(ppg_df.loc[player, value_key] - worst_starter_pg)
 
-    # now we need to reset the baseline again so that the worst starter has a VOLS of ~ 0
-    # previously the "vols" value assumes you can pick from any of the top games in the season
-    vols_baseline = {}
-    positions = gamesdf['pos'].unique()
-    # The Nth-best flex is a sum over several positions
-    nth_flex = n_roster_per_league['FLEX'] + sum([n_roster_per_league[flex_pos] for flex_pos in flex_positions])
-    for pos in positions:
-        # get the nth best result in the position
-        pos_players = df.pos.isin(flex_positions) if pos in flex_positions else (df.pos == pos)
-        nth_best = nth_flex if pos in flex_positions else n_roster_per_league[pos]
-        vols_baseline[pos] = vols[pos_players].sort_values(ascending=False).iloc[nth_best]
+    # TODO: clean up comments once we validate
 
-    # subtract the remaining baseline from the values
-    vols -= df['pos'].apply(lambda pos: vols_baseline[pos])
+    # print(ppg_baseline)
+    # print(values[values.index.get_level_values('pos') == 'RB'].head(20))
+    # print(ppg_df[value_key])
+    # print(games_df[value_key])
 
-    return vols
+    # # THIS PART SHOULDN'T BE NECESSARY:
+
+    # # now we need to reset the baseline again so that the worst starter has a VOLS of ~ 0
+    # # before this the value assumes you can pick from any of the top games in the season
+    # values_baseline = {}
+    # # positions = gamesdf['pos'].unique()
+    # positions = ppg_df.index.unique(level='pos')
+    # # The Nth-best flex is a sum over several positions
+    # nth_flex = n_roster_per_league['FLEX'] + sum([n_roster_per_league[flex_pos] for flex_pos in flex_positions])
+    # for pos in positions:
+    #     # get the nth best result in the position
+    #     # pos_players = df.pos.isin(flex_positions) if pos in flex_positions else (df.pos == pos)
+    #     pos_players = values.index.get_level_values('pos').isin(flex_positions) \
+    #         if pos in flex_positions else \
+    #            values.index.get_level_values('pos') == pos
+    #     # pos_players = df.pos.isin(flex_positions) if pos in flex_positions else (df.pos == pos)
+    #     nth_best = nth_flex if pos in flex_positions else n_roster_per_league[pos]
+    #     values_baseline[pos] = values[pos_players].sort_values(ascending=False).iloc[nth_best]
+
+    # # subtract the remaining baseline from the values
+    # # values -= df['pos'].apply(lambda pos: vols_baseline[pos])
+    # print(values.index.get_level_values('pos'))
+    # # print(values.index.get_level_values('pos').values)
+    # # values -= values.apply(lambda pos: values_baseline[pos.name[2]])
+    # values -= np.vectorize(lambda p: values_baseline[p])(values.index.get_level_values('pos').values)
+    # # values -= values.index.get_level_values('pos').apply(lambda pos: vols_baseline[pos])
+    # print(values)
+
+    return values
         
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
     print('Loading with label {}.'.format(outname))
     if os.path.isfile(outname+'.csv'):
-        ap = pd.read_csv(outname+'.csv')
+        ap = pd.read_csv(outname+'.csv', index_col=['player', 'team', 'pos'])
     else:
         logging.error('Could not find file %s.csv!', outname)
     if os.path.isfile(outname+'_picked.csv'):
-        pp = pd.read_csv(outname+'_picked.csv')
+        pp = pd.read_csv(outname+'_picked.csv', index_col=['player', 'team', 'pos'])
     else:
         logging.error('Could not find file %s_picked.csv!', outname)
     return ap, pp
@@ -295,7 +365,7 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None, price=No
     player = ap.loc[index] # a dictionary of the entry
     # were using iloc, but the data may get re-organized so this should be safer
     if pp is not None:
-        if not pp[pp.index == index].empty:
+        if index in pp.index:
             logging.error('It seems like the index of the player is already in the picked player list.')
             logging.error('Someone needs to clean up the logic...')
             logging.debug('picked players w/index: %s', pp.loc[index])
@@ -311,10 +381,11 @@ def pop_from_player_list(index, ap, pp=None, manager=None, pickno=None, price=No
         # player = df.pop(index) # DataFrame.pop pops a column, not a row
         if price is not None:
             pp.loc[index, 'price'] = price
-    name = player['player']
-    pos = player['pos']
-    team = player['team']
-    print('selecting {} ({}) - {}'.format(name, team, pos))
+    # name = player['player']
+    # pos = player['pos']
+    # team = player['team']
+    # print('selecting {} ({}) - {}'.format(name, team, pos))
+    print(f'selecting {index[0]} ({index[2]}) - {index[1]}')
     ap.drop(index, inplace=True)
 
 def print_picked_players(pp, ap=None):
@@ -331,10 +402,10 @@ def print_picked_players(pp, ap=None):
             print('\nTypically picked at this point (by ADP):')
             adpsort = pd.concat([pp, ap], sort=False).sort_values('adp', ascending=True).head(npicked)
             for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
-                print ('{}:\t{}'.format(pos, len(adpsort[adpsort.pos == pos])))
+                print ('{}:\t{}'.format(pos, len(adpsort[adpsort.index.get_level_values('pos') == pos])))
         print('\nPlayers picked by position:')
         # to_string() suppresses the last line w/ "name" and "dtype" output
-        print (pp.pos.value_counts().to_string())
+        print (pp.index.get_level_values('pos').value_counts().to_string())
 
 def print_teams(ap, pp):
     """
@@ -344,11 +415,8 @@ def print_teams(ap, pp):
     print(teams.unique())
 
 # this method will be our main output
-def print_top_choices(df, ntop=10, npos=3, sort_key='vols', sort_asc=False, drop_stats=None, hide_pos=None):
-    if sort_key is None:
-        print('sorting by index')
-        df.sort_index(ascending=sort_asc, inplace=True)
-    else:
+def print_top_choices(df, ntop=10, npos=3, sort_key='value', sort_asc=False, drop_stats=None, hide_pos=None):
+    if sort_key is not None:
         df.sort_values(sort_key, ascending=sort_asc, inplace=True)
     print('   DRAFT BOARD   '.center(pd.options.display.width, '*'))
     if drop_stats is None:
@@ -356,14 +424,14 @@ def print_top_choices(df, ntop=10, npos=3, sort_key='vols', sort_asc=False, drop
     if hide_pos is None:
         hide_pos = []
     with pd.option_context('display.max_rows', None):
-        print(df[~df.pos.isin(hide_pos)].drop(drop_stats, inplace=False, axis=1).head(ntop))
+        print(df[~df.index.get_level_values('pos').isin(hide_pos)].drop(drop_stats, inplace=False, axis=1).head(ntop))
     if npos > 0:
         positions = [pos for pos in ['QB', 'RB', 'WR', 'TE', 'K', 'DST'] if pos not in hide_pos]
         # print df[df.pos.isin(positions)].groupby('pos')# .agg({'exp_proj':sum}).nlargest(npos) # can't figure out groupby right now -- might tidy up the output
         for pos in positions:
-            print(df[df.pos == pos].drop(drop_stats, inplace=False, axis=1).head(npos))
+            print(df[df.index.get_level_values('pos') == pos].drop(drop_stats, inplace=False, axis=1).head(npos))
 
-def print_top_position(df, pos, ntop=24, sort_key='vols', sort_asc=False, drop_stats=None):
+def print_top_position(df, pos, ntop=24, sort_key='value', sort_asc=False, drop_stats=None):
     """prints the top `ntop` players in the position in dataframe df"""
     if sort_key is None:
         df.sort_index(ascending=sort_asc, inplace=True)
@@ -374,11 +442,11 @@ def print_top_position(df, pos, ntop=24, sort_key='vols', sort_asc=False, drop_s
     # drop_cols = ['volb', 'tier']
     if pos.upper() == 'FLEX':
         with pd.option_context('display.max_rows', None):
-            print(df.loc[df['pos'].isin(['RB', 'WR', 'TE'])]
+            print(df.loc[df.index.get_level_values('pos').isin(['RB', 'WR', 'TE'])]
                   .drop(drop_stats, inplace=False, axis=1).head(ntop))
     else:
         with pd.option_context('display.max_rows', None):
-            print(df[df.pos == pos.upper()].drop(drop_stats, inplace=False, axis=1).head(ntop))
+            print(df[df.index.get_level_values('pos') == pos.upper()].drop(drop_stats, inplace=False, axis=1).head(ntop))
 
 def push_to_player_list(index, ap, pp):
     """
@@ -389,26 +457,21 @@ def push_to_player_list(index, ap, pp):
     if index not in pp.index:
         raise IndexError('The index ({}) does not indicate a picked player!'.format(index))
     player = pp.loc[index]
-    if not ap[ap.index == index].empty:
+    if index in ap.index:
         print('The index of the picked player is already in the available player list.')
         print('Someone needs to clean up the logic...')
         print('DEBUG: picked players w/index:', pp.loc[index])
         print('DEBUG: available players w/index:', ap.loc[index])
-    # must use loc, not iloc, since positions may move
     ap.loc[index] = player
-    # ap.sort_values('vols', ascending=False, inplace=True) # don't re-sort here
-    name = player['player']
-    pos = player['pos']
-    team = player['team']
-    print('replacing {} ({}) - {}'.format(name, team, pos))
+    print(f'replacing {index[0]} ({index[2]}) - {index[1]}')
     pp.drop(index, inplace=True)
 
 def save_player_list(outname, ap, pp=None):
     """saves the available and picked player sets with label "outname"."""
     print('Saving with label {}.'.format(outname))
-    ap.to_csv(outname+'.csv', index=False)
+    ap.to_csv(outname+'.csv')
     if pp is not None:
-        pp.to_csv(outname+'_picked.csv', index=False)
+        pp.to_csv(outname+'_picked.csv')
 
 def simplify_name(name):
     """
@@ -455,9 +518,10 @@ def decorate_skew_norm_params(df, value_key='exp_proj', ci=0.8, **kwargs):
     cache_name = kwargs.get('cache', 'skew_normal_cache.csv')
     if os.path.isfile(cache_name):
         logging.info('Loading skew parameters from cache')
-        skew_param_df = pd.read_csv(cache_name)
+        skew_param_df = pd.read_csv(cache_name, index_col=['player', 'team', 'pos'])
         # if we don't specify the columns, the index is merged as well
-        df = df.merge(skew_param_df[['player', 'team', 'pos', 'skew', 'loc', 'scale']], how='left', on=['player', 'team', 'pos'])
+        # df = df.merge(skew_param_df[['player', 'team', 'pos', 'skew', 'loc', 'scale']], how='left', on=['player', 'team', 'pos'])
+        df = df.join(skew_param_df)
         return df
     ev_vals = df[value_key].to_numpy()
     high_vals = df[f'{value_key}_high'].to_numpy()
@@ -474,19 +538,25 @@ def decorate_skew_norm_params(df, value_key='exp_proj', ci=0.8, **kwargs):
         #     logging.warning('Large skew:')
         #     logging.warning(df.loc[i_player])
     # save the cache
-    df[['player', 'team', 'pos', 'skew', 'loc', 'scale']].to_csv(cache_name)
+    # df[['player', 'team', 'pos', 'skew', 'loc', 'scale']].to_csv(cache_name)
+    df[['skew', 'loc', 'scale']].to_csv(cache_name)
     return df
 
-def simulate_seasons(df, n=100, **kwargs):
+def simulate_seasons(df, n, **kwargs):
     """
     Simulate a number of seasons based on the expected, high, and low points.
+    The number of games will be simulated as well as the points per game.
+    Returns a tuple with a dataframe of simulated points per game and number of games.
     """
-    cache_name = kwargs.get('cache', 'simulation_cache.csv')
-    if os.path.isfile(cache_name):
-        sim_df = pd.read_csv(cache_name, index_col=0)
-        if len(sim_df.columns) - 4 >= n:
+    index_cols = ['player', 'team', 'pos']
+    ppg_cache = kwargs.get('cache', 'simulation_cache_ppg.csv')
+    games_cache = kwargs.get('cache', 'simulation_cache_games.csv')
+    if os.path.isfile(ppg_cache) and os.path.isfile(games_cache):
+        games_df = pd.read_csv(games_cache, index_col=index_cols)
+        ppg_df = pd.read_csv(ppg_cache, index_col=index_cols)
+        if len(games_df.columns) == len(ppg_df.columns) >= n:
             logging.info('Loading simulations from cache')
-            return sim_df
+            return ppg_df, games_df
         else:
             logging.info('Simulation cache does not have sufficient iterations.')
     # seed based on randomness
@@ -494,16 +564,30 @@ def simulate_seasons(df, n=100, **kwargs):
     skews = df['skew'].to_numpy()
     locs = df['loc'].to_numpy()
     scales = df['scale'].to_numpy()
+
+    # the "n" in the binomial drawing
+    max_games = df['g'].to_numpy()
+    # the "p" in the binomial drawing
+    # frac_games = df.index.get_level_values('pos').apply(lambda pos: pos_games_available[pos] / 16).to_numpy()
+    frac_games = np.vectorize(lambda pos: pos_games_available[pos] / 16)(df.index.get_level_values('pos'))
+
     logging.info('Simulating %s seasons...', n)
-    simulations = df[['player', 'team', 'pos', 'g']].copy()
+    # sim_games = df[['player', 'team', 'pos', 'g']].copy()
+    # sim_ppg = df[['player', 'team', 'pos', 'g']].copy()
+    sim_games = df[[]].copy()
+    sim_ppg = df[[]].copy()
+    # TODO: instead of looping, can we use the size parameter in scipy?
+    # This would generate a 2D array, which we'd have to put into columns
     for i_sim in range(n):
+        games = st.binom.rvs(max_games, frac_games)
         points = st.skewnorm.rvs(skews, locs, scales)
-        simulations[str(i_sim)] = points
-        # below_zeros = points < 0
-        # if below_zeros.any():
-        #     print(df.iloc[below_zeros])
-    simulations.to_csv(cache_name)
-    return simulations
+        sim_games[str(i_sim)] = games
+        # the imported projections assume that players will not miss time, so
+        # divide by the max possible games.
+        sim_ppg[str(i_sim)] = points / max_games
+    sim_games.to_csv(games_cache)
+    sim_ppg.to_csv(ppg_cache)
+    return sim_ppg, sim_games
 
 def verify_and_quit():
     user_verify = input('Are you sure you want to quit and lose all progress [y/N]? ')
@@ -529,19 +613,22 @@ class MainPrompt(Cmd):
     ap = pd.DataFrame()
     pp = pd.DataFrame()
     newsdf = None
-    simulations = None
+    sim_ppg = None
+    sim_games = None
 
-    _sort_key = 'vbsd' # 'vols'
+    _sort_key = 'value'
     _sort_asc = False
 
     flex_pos = ['RB', 'WR', 'TE']
 
     hide_pos = ['K', 'DST']
-    hide_stats = ['tier', 'pos', 'volb']
+    # hide_stats = ['tier', 'pos', 'volb']
+    hide_stats = ['tier']
 
     disabled_pos = ['K', 'DST']
 
-    _known_strategies = ['vols', 'vbsd', 'volb', 'vorp', 'adp', 'ecp']
+    # _known_strategies = ['vols', 'vbsd', 'volb', 'vorp', 'adp', 'ecp']
+    _known_strategies = ['value', 'vorp', 'adp', 'ecp']
 
     # member variables for DRAFT MODE !!!
     draft_mode = False
@@ -663,7 +750,7 @@ class MainPrompt(Cmd):
         comp_mans.remove(current_team) # don't include our own roster
         return comp_mans
 
-    def _pick_rec(self, manager, strat='vols', ap=None, pp=None, disabled_pos=None, vona_strat='adp'):
+    def _pick_rec(self, manager, strat='value', ap=None, pp=None, disabled_pos=None, vona_strat='adp'):
         """
         picks the recommended player with the highest strat value 
         returns the index of that player
@@ -678,6 +765,7 @@ class MainPrompt(Cmd):
             disabled_pos = []
         roster = self._get_manager_roster(manager, pp)
         total_roster_spots = sum([self.n_roster_per_team[pos] for pos in self.n_roster_per_team])
+        n_roster_picked_pos = {pos:len(roster[roster.index.get_level_values('pos') == pos]) for pos in self.n_roster_per_team}
         if len(roster) >= total_roster_spots:
             manname = self._get_manager_name()
             # print '{}\'s roster has no available spots left'.format(manname)
@@ -688,7 +776,7 @@ class MainPrompt(Cmd):
         crap_positions = ['K', 'DST'] # add DST when (or if) we bother
         # crap_starting_roster_spots = sum([self.n_roster_per_team[pos] for pos in crap_positions])
         needed_crap_starter_positions = [pos for pos in crap_positions
-                                         if len(roster[roster.pos == pos])
+                                         if n_roster_picked_pos[pos]
                                          < self.n_roster_per_team[pos]]
         # key_starting_roster_spots = starting_roster_spots - crap_starting_roster_spots
 
@@ -697,15 +785,15 @@ class MainPrompt(Cmd):
         key_nonflex_positions = [pos for pos in key_positions if pos not in self.flex_pos]
         needed_key_starter_positions = []
         needed_key_starter_positions.extend([pos for pos in key_nonflex_positions
-                                             if len(roster[roster.pos == pos])
+                                             if n_roster_picked_pos[pos]
                                              < self.n_roster_per_team[pos]])
         # print [len(roster[roster.pos == pos])
         #        > self.n_roster_per_team[pos] for pos in self.flex_pos]
-        used_flex_spot = any([len(roster[roster.pos == pos]) > self.n_roster_per_team[pos]
+        used_flex_spot = any([n_roster_picked_pos[pos] > self.n_roster_per_team[pos]
                               for pos in self.flex_pos])
         flex_mult = 0 if used_flex_spot else 1
         needed_key_starter_positions.extend([pos for pos in self.flex_pos
-                                             if len(roster[roster.pos == pos])
+                                             if n_roster_picked_pos[pos]
                                              < self.n_roster_per_team[pos]
                                              + flex_mult*self.n_roster_per_team['FLEX']])
         ## TODO: if picking for a flex spot, they should be evaluated by a
@@ -728,11 +816,11 @@ class MainPrompt(Cmd):
             # vorp does a decent job of not picking kickers too quickly, but we
             # do need to keep it from taking more than one.
             acceptable_crap = [pos for pos in crap_positions
-                               if len(roster[roster.pos == pos])
+                               if n_roster_picked_pos[pos]
                                < self.n_roster_per_team[pos]]
             # we allow backup players, but don't get more than half our bench with any one position
             acceptable_backup = [pos for pos in key_positions
-                                 if len(roster[roster.pos == pos])
+                                 if n_roster_picked_pos[pos]
                                  < self.n_roster_per_team[pos]
                                  + self.n_roster_per_team['BENCH']//2]
             acceptable_positions = acceptable_backup + acceptable_crap
@@ -741,12 +829,12 @@ class MainPrompt(Cmd):
             if pos is None:
                 # then the user probably has the next pick as well and we should just pick for value
                 print('do you have the next pick? VONA is not well-defined. will return VOLS.')
-                strat = 'vols' # vona_strat # this leads to bad recommendations for ADP and ECP
+                strat = 'value'
             else:
                 # vona_asc = vona_strat in ['adp', 'ecp']
                 # topvonapos = ap[ap.pos == pos].sort_values(vona_strat, vona_asc)
                 # take our projection over ADP/ECP. 
-                topvonapos = ap[ap.pos == pos].sort_values('exp_proj', ascending=False)
+                topvonapos = ap[ap.index.get_level_values('pos') == pos].sort_values('exp_proj', ascending=False)
                 if len(topvonapos) <= 0:
                     print('error: could not get a list of availble position that maximizes VONA.')
                     print('switch to regulat strat?')
@@ -760,7 +848,7 @@ class MainPrompt(Cmd):
             # if we've ruled out everything else, just pick one of the main positions
             acceptable_positions = key_positions
         asc = strat in ['adp', 'ecp']
-        toppicks = ap[ap.pos.isin(acceptable_positions)].sort_values(strat, ascending=asc)
+        toppicks = ap[ap.index.get_level_values('pos').isin(acceptable_positions)].sort_values(strat, ascending=asc)
         if len(toppicks) <= 0:
             print('error: no available players in any position in {}'.format(acceptable_positions))
         # player = topstart.iloc[0] # this is the player itself
@@ -770,10 +858,12 @@ class MainPrompt(Cmd):
     def update_draft_html(self):
         # should make this separate function
         ntop = 32
-        df = self.ap[~self.ap.pos.isin(self.hide_pos)].drop(self.hide_stats, inplace=False, axis=1).head(ntop)
+        df = self.ap[~self.ap.index.get_level_values('pos').isin(self.hide_pos)] \
+                 .drop(self.hide_stats, inplace=False, axis=1).head(ntop)
         # some columns look better with custom formatting
         format_dict = {
             'exp_proj':'{:.1f}',
+            'value':'{:.1f}',
             'vols':'{:.0f}',
             'vbsd':'{:.0f}',
             'vorp':'{:.0f}',
@@ -785,7 +875,7 @@ class MainPrompt(Cmd):
         # get full list from matplotlib.colors.cnames
         cm = sns.light_palette('mediumseagreen', as_cmap=True)
         # TODO: diverging palettes for negative values ?
-        hl_cols_rise = df.columns.isin(['exp_proj', 'vols', 'vbsd', 'auction', 'vorp'])
+        hl_cols_rise = df.columns.isin(['exp_proj', 'value', 'auction', 'vorp'])
         hl_cols_fall = df.columns.isin(['adp', 'ecp'])
         sty = sty.background_gradient(cmap=cm,
                                       subset=hl_cols_rise,
@@ -829,25 +919,26 @@ class MainPrompt(Cmd):
             # maximum probably won't matter for most drafts, so de-prioritize it
             # while your draft is in an hour :E
 
-            pos_picked = pp[pp.pos == pos]
+            pos_picked = pp[pp.index.get_level_values('pos') == pos] if not pp.empty else pp
             n_pos_picked = len(pos_picked.index)
             n_waiv_picked = len(pos_picked[pos_picked.tier == 'FA'].index)
             # if any managers picked waiver-tier players, then we can shed
             #  the next-worst bench player from our calculations
             # we can still shed all WAIV players since this case raises the value of the threshold
-            posdf = ap[ap.pos == pos]
+            posdf = ap[ap.index.get_level_values('pos') == pos] if not ap.empty else ap
             # pos_draftable = self.ap[(self.ap.pos == pos) & (self.ap.tier != 'FA')]
             pos_draftable = posdf[posdf.tier != 'FA']
             n_pos_draftable = len(pos_draftable.index) - n_waiv_picked
             vorp_baseline = 0
             if n_pos_draftable <= 0:
                 # no more "draftable" players -- vorp should be zero for top
-                vorp_baseline = ap[ap.pos == pos]['vols'].max()
+                vorp_baseline = ap[ap.index.get_level_values('pos') == pos]['value'].max()
             else:
                 frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
                 backup_mask = pos_draftable['tier'] == 'BU'
                 # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
-                worst_starters = pos_draftable[~backup_mask].sort_values('vols', ascending=True)
+                # worst_starters = pos_draftable[~backup_mask].sort_values('vols', ascending=True)
+                worst_starters = pos_draftable[~backup_mask].sort_values('value', ascending=True)
                 # best_waivers = pos_draftable[backup_mask].sort_values('vols', ascending=False)
                 ls_index = None # index of worst starter in position
                 # fw_index = None # index of best wavier option in position (assuming ADP)
@@ -861,14 +952,17 @@ class MainPrompt(Cmd):
                 n_pos_baseline = len(pos_baseline.index)
                 if n_pos_baseline == 0:
                     # this can happen, e.g. with kickers who have no "backup" tier players
-                    ap.loc[ap.pos == pos, 'vorp'] = ap['vols']
+                    # ap.loc[ap.pos == pos, 'vorp'] = ap['vols']
+                    ap.loc[ap.index.get_level_values('pos') == pos, 'vorp'] = ap['value']
                     continue
                 index = int(frac_through_bench * n_pos_baseline)
                 if index >= len(pos_baseline):
                     print('warning: check index here later')
                     index = len(pos_baseline-1)
-                vorp_baseline = pos_baseline['vols'].sort_values( ascending=False ).iloc[index]
-            ap.loc[ap.pos == pos, 'vorp'] = ap['vols'] - vorp_baseline
+                # vorp_baseline = pos_baseline['vols'].sort_values( ascending=False ).iloc[index]
+                vorp_baseline = pos_baseline['value'].sort_values(ascending=False).iloc[index]
+            # ap.loc[ap.pos == pos, 'vorp'] = ap['vols'] - vorp_baseline
+            ap.loc[ap.index.get_level_values('pos') == pos, 'vorp'] = ap['value'] - vorp_baseline
 
     def do_test(self, _):
         """
@@ -1063,7 +1157,7 @@ class MainPrompt(Cmd):
         find_player(search_str, self.ap, self.pp)
     def complete_find(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        avail_names = pd.concat([self.ap, self.pp], sort=False)['player']
+        avail_names = pd.concat([self.ap, self.pp], sort=False).index.unique(level='player')
         mod_avail_names = [simplify_name(name)
                            for name in avail_names]
         if text:
@@ -1081,7 +1175,7 @@ class MainPrompt(Cmd):
             index = int(args)
         except ValueError as e:
             all_players = pd.concat([self.ap, self.pp], sort=False)
-            criterion = all_players['player'].map(simplify_name).str.contains(simplify_name(args))
+            criterion = all_players.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args))
             filtered = all_players[criterion]
             if len(filtered) <= 0:
                 print('Could not find available player with name {}.'.format(args))
@@ -1334,21 +1428,19 @@ class MainPrompt(Cmd):
 
         args = ' '.join(argl) # remaining args after possibly popping off price
 
-        try:
-            if index is None:
-                index = int(args)
-        except ValueError as e:
-            criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
-            filtered = self.ap[criterion]
-            if len(filtered) <= 0:
-                print('Could not find available player with name {}.'.format(args))
-                return
-            if len(filtered) > 1:
-                print('Found multiple players:')
-                print(filtered.drop(self.hide_stats, axis=1))
-                return
-            assert(len(filtered) == 1)
-            index = filtered.index[0]
+        # criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
+        criterion = self.ap.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args)) \
+            if not self.ap.empty else None
+        filtered = self.ap[criterion] if not self.ap.empty else self.ap
+        if len(filtered) <= 0:
+            logging.error('Could not find available player with name {}.'.format(args))
+            return
+        if len(filtered) > 1:
+            print('Found multiple players:')
+            print(filtered.drop(self.hide_stats, axis=1))
+            return
+        assert(len(filtered) == 1)
+        index = filtered.index[0]
         try:
             pickno = self.i_manager_turn + 1 if self.draft_mode else None
             pop_from_player_list(index, self.ap, self.pp, manager=manager, pickno=pickno, price=price)
@@ -1362,7 +1454,8 @@ class MainPrompt(Cmd):
 
     def complete_pick(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        avail_names = self.ap['player']
+        # avail_names = self.ap['player']
+        avail_names = self.ap.index.get_level_values('player')
         # TODO: make it look a bit prettier by allowing spaces instead of underscores.
         # see: https://stackoverflow.com/questions/4001708/change-how-python-cmd-module-handles-autocompletion
         # clean up the list a bit, removing ' characters and replacing spaces with underscores
@@ -1378,20 +1471,20 @@ class MainPrompt(Cmd):
         """
         plot the dropoff of a quantity by position
         """
-        main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
-        # hackily make the palettes consistent
-        # TODO: fix
-        main_positions = ['RB', 'WR', 'TE', 'QB', 'K', 'DST']
+        # reverse the sort order for better colors on the important positions
+        main_positions = sorted(['QB', 'RB', 'WR', 'TE', 'K', 'DST'], reverse=True)
         yquant = args.strip().lower() if args else self._sort_key
         if yquant not in self.ap:
-            print('{} is not a quantity that can be plotted.'.format(yquant))
+            logging.error(f'{yquant} is not a quantity that can be plotted.')
             return
-        plot_cols = ['pos', yquant]
+        plot_cols = [yquant]
         for err_cols in set(['err_high', 'err_low']) & set(self.ap.columns):
             plot_cols.append(err_cols)
-        plotdf = self.ap[self.ap.tier != 'FA'][plot_cols] # ?
+        plotdf = self.ap[self.ap.tier != 'FA'][plot_cols]
+        plotdf.sort_values('pos', inplace=True, ascending=False)
+        plotdf['pos'] = plotdf.index.get_level_values('pos')
         for pos in main_positions:
-            pos_idxs = plotdf[plotdf.pos == pos].sort_values(yquant, ascending=False).index
+            pos_idxs = plotdf[plotdf.index.get_level_values('pos') == pos].sort_values(yquant, ascending=False).index
             for rank,idx in enumerate(pos_idxs):
                 plotdf.loc[idx,'posrank'] = rank
         g = sns.pointplot(data=plotdf, x='posrank', y=yquant,
@@ -1404,7 +1497,7 @@ class MainPrompt(Cmd):
         # print(dir(g))
         if 'err_high' in plotdf and 'err_low' in plotdf.columns:
             for pos in main_positions:
-                pos_data = plotdf[plotdf.pos == pos].sort_values(yquant, ascending=False)
+                pos_data = plotdf[plotdf.index.get_level_values('pos') == pos].sort_values(yquant, ascending=False)
                 g.fill_between(x=pos_data['posrank'],
                                y1=pos_data[yquant] - pos_data['err_low'],
                                y2=pos_data[yquant] + pos_data['err_high'],
@@ -1412,7 +1505,6 @@ class MainPrompt(Cmd):
         # else:
         g.set_xlabel('Position rank')
         g.set_ylabel(yquant)
-        # g.set_xticklabels(tick_labels.astype(int))
         g.set_xticklabels([]) # by default the tick labels are drawn as floats, making them hard to read
         plt.show()
         
@@ -1432,14 +1524,15 @@ class MainPrompt(Cmd):
         for strat in self._known_strategies:
             pick = self._pick_rec(manager, strat, disabled_pos=self.disabled_pos)
             player = self.ap.loc[pick]
-            print(' {} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['player'], player.team, player.pos))
+            print(f' {strat.upper()} recommended:\t  {pick[0]} ({pick[2]}) - {pick[1]}')
         if self.manager_picks:
-            vona_strats = ['vols', 'volb', 'vbsd', 'adp', 'ecp']
+            # should we put auction in here?
+            vona_strats = ['value', 'adp', 'ecp']
             # vona-vorp takes too long
             for strat in vona_strats:
                 pick = self._pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
                 player = self.ap.loc[pick]
-                print(' VONA-{} recommended:\t{}   {} ({}) - {}'.format(strat.upper(), pick, player['player'], player.team, player.pos))
+                print(f' VONA-{strat.upper()} recommended:\t  {pick[0]} ({pick[2]}) - {pick[1]}')
                 
     def do_roster(self, args):
         """
@@ -1666,12 +1759,12 @@ class MainPrompt(Cmd):
             positions = [pos for (pos, numpos) in list(self.n_roster_per_team.items())
                          if pos not in ['FLEX', 'BENCH'] and numpos > 0]
             for pos in positions:
-                topval = self.ap[self.ap.pos == pos]['exp_proj'].max()
+                topval = self.ap[self.ap.index.get_level_values('pos') == pos]['exp_proj'].max()
                 # get "next available" assuming other managers use strategy "strat" to pick
                 managers = self._get_managers_til_next()
                 managers.extend(managers[::-1])
                 na_ap, na_pp = self._step_vona(self.ap, self.pp, managers, strat)
-                naval = na_ap[na_ap.pos == pos]['exp_proj'].max()
+                naval = na_ap[na_ap.index.get_level_values('pos') == pos]['exp_proj'].max()
                 print('{}: {}'.format(pos,topval-naval))
     def _get_max_vona_in(self, positions, strat, disabled_pos=None):
         # vona_dict = {pos:0 for pos in positions)
@@ -1680,12 +1773,12 @@ class MainPrompt(Cmd):
         max_vona = -1000.0
         max_vona_pos = None
         for pos in positions:
-            topval = self.ap[self.ap.pos == pos]['exp_proj'].max()
+            topval = self.ap[self.ap.index.get_level_values('pos') == pos]['exp_proj'].max()
             # get "next available" assuming other managers use strategy "strat" to pick
             managers = self._get_managers_til_next()
             managers.extend(managers[::-1])
             na_ap, _ = self._step_vona(self.ap, self.pp, managers, strat)
-            naval = na_ap[na_ap.pos == pos]['exp_proj'].max()
+            naval = na_ap[na_ap.index.get_level_values('pos') == pos]['exp_proj'].max()
             vona = topval - naval
             if vona > max_vona and pos not in disabled_pos:
                 max_vona, max_vona_pos = vona, pos
@@ -1712,6 +1805,7 @@ def main():
     parser.add_argument('--n-bench', type=int, default=5, help='number of bench spots per team')
     parser.add_argument('--ci', type=float, default=0.8, help='confidence interval to assume for high/low')
     parser.add_argument('--simulations', type=int, default=50, help='number of simulations to run')
+    parser.add_argument('--auction-cap', type=int, default=200, help='auction budget per manager')
 
     args = parser.parse_args()
     n_teams = args.n_teams
@@ -1844,6 +1938,10 @@ def main():
     newsdf = newsdf[newsdf.pos.isin(main_positions)]
     for _, pnews in newsdf.iterrows():
         pnamenews, pteamnews, posnews = pnews[['player', 'team', 'pos']]
+        # pnamenews, pteamnews, posnews = index
+        # we should be able to just find the intersection of the indices, but the team names are inconsistent.
+        # pix = (availdf.index.get_level_values('pos') == posnews)
+        # pix &= (availdf.index.get_level_values('player') == pnamenews)
         pix = (availdf.pos == posnews)
         pix &= (availdf.player == pnamenews)
         # pix &= (availdf.team == pteamnews) # the team abbreviations are not always uniform #TODO: make it well-defined
@@ -1890,44 +1988,48 @@ def main():
         else:
             availdf.loc[pix,'g'] = availdf[pix]['g'] - gsus
 
-    # # Drop most players for testing the simulations
-    # # copy to avoid warnings
-    # availdf = availdf.head(50).copy()
-
-    # VOLS has to be computed after the number of games is assigned
-    # don't clutter it up now
-    # availdf.loc[:, 'vols_flat'] = get_vols(availdf, n_roster_per_league, value_key='exp_proj')
+    # re-index on player, team, pos
+    index_cols = ['player', 'team', 'pos']
+    availdf.set_index(index_cols, inplace=True)
 
     ci = args.ci
     # this function adds skew-normal parameters for each player based on the high/low
     availdf = decorate_skew_norm_params(availdf, ci=ci)
 
     n_sims = args.simulations
-    simulations = simulate_seasons(availdf, n=n_sims)
+    sim_ppg, sim_games = simulate_seasons(availdf, n=n_sims)
 
     # we can drop the high and low fields here
     availdf.drop(['exp_proj_high', 'exp_proj_low', 'skew', 'loc', 'scale'], axis=1, inplace=True)
 
-    sim_vols = None
-    vols_cache_name = 'sim_vols_cache.csv'
-    if os.path.isfile(vols_cache_name):
-        vols_df = pd.read_csv(vols_cache_name, index_col=0)
-        if len(vols_df.columns) - 4 >= n_sims:
-            logging.info('Loading simulated VOLS from cache')
-            sim_vols = vols_df
-    if sim_vols is None:
-        logging.info('Calculating VOLS for simulations')
-        sim_vols = simulations.copy()
-        for col in progressbar(simulations.columns.drop(['player', 'team', 'pos', 'g'])):
-            # if 'Unnamed' in col:
-            #     # there's some extraneous data that is carried along; drop these columns
-            #     continue
-            # print(col)
-            sim_vols.loc[:, col] = get_vols(simulations, n_roster_per_league, value_key=col)
-        sim_vols.to_csv(vols_cache_name)
+    sim_value = None
+    value_cache_name = 'sim_value_cache.csv'
+    if os.path.isfile(value_cache_name):
+        value_df = pd.read_csv(value_cache_name, index_col=['player', 'team', 'pos'])
+        # Is the games column still in here?
+        if len(value_df.columns) >= n_sims:
+            logging.info('Loading simulated value from cache')
+            sim_value = value_df
+    if sim_value is None:
+        logging.info('Calculating value from simulations')
+        # initialize the dataframe
+        sim_value = sim_ppg.copy()
+        sim_value[:] = 0
+        # The index is now set to player,team,pos
+        for col in progressbar(sim_ppg.columns):
+        # for col in progressbar(sim_ppg.columns.drop(['player', 'team', 'pos'])):
+        # for col in progressbar(simulations.columns.drop(['player', 'team', 'pos', 'g'])):
+            if 'Unnamed' in col:
+                # there's some extraneous data that is carried along; drop these columns
+                logging.warning(f'There is a strange column in the simulations: {col}')
+                continue
+            sim_value.loc[:, col] = get_player_values(sim_ppg, sim_games, n_roster_per_league, value_key=col)
+        sim_value.to_csv(value_cache_name)
 
     # index simulations by player, team, pos for easy lookup
-    simulations.set_index(['player', 'team', 'pos'], inplace=True)
+    # can we do this earlier?
+    # sim_ppg.set_index(['player', 'team', 'pos'], inplace=True)
+    # sim_games.set_index(['player', 'team', 'pos'], inplace=True)
 
     # Due to a rare bug in the baseline calculation, the VOLS may have nans. They should be ignored by the quantile calculation.
 
@@ -1935,125 +2037,166 @@ def main():
     # availdf.loc[:, 'vols_mean'] = sim_vols.drop(['player', 'team', 'pos', 'g'], axis=1).mean(axis=1)
     # use quantiles instead of mean
 
-    vols_cis = 0.5*np.array([1, 1+ci, 1-ci])
-    vols_quantiles = sim_vols.drop(['player', 'team', 'pos', 'g'], axis=1).quantile(vols_cis, axis=1)
-    availdf.loc[:, 'vols'] = vols_quantiles.iloc[0]
-    availdf.loc[:, 'err_high'] = vols_quantiles.iloc[1] - vols_quantiles.iloc[0]
-    availdf.loc[:, 'err_low'] = vols_quantiles.iloc[0] - vols_quantiles.iloc[2]
+    # define confidence intervals
+    values_cis = 0.5*np.array([1, 1+ci, 1-ci])
+    values_quantiles = sim_value.quantile(values_cis, axis=1)
+    medians = values_quantiles.loc[values_cis[0]]
+    availdf['value'] = medians
+    # availdf.loc[:, 'vols'] = medians
+    availdf.loc[:, 'err_high'] = values_quantiles.loc[values_cis[1]] - medians
+    availdf.loc[:, 'err_low'] = medians - values_quantiles.loc[values_cis[2]]
 
-    # Everything added for the variance should happen before here
+    # Everything added for the variance should happen before this point
 
     # label nominal (non-flex) starters by their class
     for pos in main_positions:
         # sort the players in each position so we can grab the top indices
-        availpos = availdf.loc[availdf.pos == pos, :].sort_values('vols', ascending=False)
+        availpos = availdf.loc[availdf.index.get_level_values('pos') == pos, :].sort_values('value', ascending=False)
         for i_class in range(n_roster_per_team[pos]):
             ia, ib = i_class*n_teams, (i_class+1)*n_teams
             itoppos = availpos.index[ia:ib]
             icls = availdf.index.isin(itoppos)
             availdf.loc[icls, 'tier'] = '{}{}'.format(pos, i_class+1)
-    availflex = availdf.loc[(availdf.pos.isin(flex_pos)) & (availdf['tier'].isnull()), :].sort_values('vols', ascending=False)
+    availflex = availdf.loc[(availdf.index.get_level_values('pos').isin(flex_pos)) & (availdf['tier'].isnull()), :].sort_values('value', ascending=False)
     for i_class in range(n_roster_per_team['FLEX']):
         ia, ib = i_class*n_teams, (i_class+1)*n_teams
         itoppos = availflex.index[ia:ib]
         icls = availdf.index.isin(itoppos)
         availdf.loc[icls, 'tier'] = 'FLEX{}'.format(i_class+1)
 
-    ## find a baseline based on supply/demand by positions
-    # http://www.rotoworld.com/articles/nfl/41100/71/draft-analysis
-    ## we will just use average injury by position, instead of accounting for dropoff by rank
-    # not dependent on bench size
-    
+    # label backup tier. this undervalues WR and RB
     total_bench_positions = n_roster_per_league['BENCH']
     total_start_positions = len(availdf[availdf.tier.notnull()])
-    # print('total start/bench/total positions: {} / {} / {}'.format(total_start_positions, total_bench_positions,
-    #                                                                total_start_positions + total_bench_positions))
-    prob_play = {pos:(bye_factor * pos_injury_factor[pos] if pos not in ['K', 'DST'] else 1.0) \
-                 for pos in main_positions}
-    # this is the benchmark for each position to use for the VBSD baseline
-    rank_benchmark = {pos:int(np.ceil(
-        len(availdf[(availdf.tier.notnull()) & (availdf.pos == pos)])/prob_play[pos]
-    )) for pos in main_positions}
-    sum_rank_benchmark = sum((val for _,val in rank_benchmark.items()))
-    
-    for pos in main_positions:
-        posdf = availdf[(availdf.pos == pos)].sort_values('vols', ascending=False)
-        pos_required = len(posdf[posdf.tier.notnull()]) # number of man-games needed in this position # need this to include flex
-        pos_prob_play = prob_play[pos]
-        pos_rank_benchmark = rank_benchmark[pos]
-        logging.debug('benchmark considered for {}: {}'.format(pos, pos_rank_benchmark))
-        pos_benchmark = posdf.head(pos_rank_benchmark)['vols'].min()
-        # projections account for bye weeks but not for positional injuries
-        availdf.loc[availdf.pos == pos, 'vbsd'] = (availdf['vols'] - pos_benchmark) * pos_injury_factor[pos]
-        
-        # now we've given the backups a class, the worst projection for each position is the worst bench value.
-        # we will define the value minus this to be the VOLB (value over last backup)
-        # this a static calculation, and the dynamically-computed VORP might do better.
-        # use VOLS and not absolute projection to account for suspensions
-        # the bench proportion should be selected
-        bench_rank_benchmark = pos_required + (pos_rank_benchmark - pos_required) * total_bench_positions // (sum_rank_benchmark - total_start_positions)
-        # nposbench = bench_rank_benchmark - pos_required
-
-        worst_draftable_value = posdf.head(bench_rank_benchmark)['vols'].min()
-        # print(worst_draftable_value)
-        availdf.loc[availdf.pos == pos, 'volb'] = availdf['vols'] - worst_draftable_value
-
-        # this factor should represent the fraction of games a player at that position and rank should play, outside of injuries which are already accounted for in the vbsd.
-        # we'll say players at the baseline have about a 50% chance of starting. it's a pretty arbitrary envelope.
-        # it is good to be flat at the top and gradually go to zero,
-        # so with the constraint of 50% at the edge this may not be terrible
-        # we should really figure out this envelope function w/ simulations, but they need to be more reliable.
-        # auction_multiplier = lambda x: max(1/(1 + (x/pos_rank_benchmark)**2), 0.0)
-        # auction_multiplier = lambda x: max(1 - 0.5*(x/pos_required)**2, 0.0)
-        auction_multiplier = lambda x: max(1/(1 + (x/pos_required)**2), 0.0)
-        # K and DST are random and have lots of variance, so manually constrain at the minimum bid.
-        if pos in ['K', 'DST']: auction_multiplier = lambda x: 0
-            
-        # grab this again because now it has vbsd
-        # rank by vols and not raw projections to account for suspended players
-        posdf = availdf[(availdf.pos == pos)].sort_values('vols', ascending=False)
-        for idx in range(posdf.shape[0]):
-            label = posdf.index[idx]
-            # vols = posdf.iloc[idx]['vols']*pos_prob_play
-            vbsd = posdf.iloc[idx]['vbsd'] # this was already multiplied by the injury factor
-            volb = posdf.iloc[idx]['volb'] * pos_injury_factor[pos]
-            availdf.loc[label, 'rank'] = '{}{}'.format(pos, idx+1)
-            # volb combined with the envelop above gives reasonable results.
-            availdf.loc[label, 'auction'] = auction_multiplier(idx)*max(0,np.mean([volb]))
-            # availdf.loc[label,'auction'] = auction_multiplier(idx)*max(0,np.mean([vbsd]))
-            
-    availdf.loc[(availdf.tier.isnull()) & (availdf['volb'] >= 0.), 'tier'] = 'BU'
     # there will be some extra spots since the integer division is not exact. fill these with more flex spots.
     n_more_backups = total_start_positions + total_bench_positions - availdf.tier.count() # count excludes nans
-    add_bu_ix = availdf.loc[availdf.tier.isnull()].head(n_more_backups).index
+    add_bu_ix = availdf.loc[availdf.tier.isnull() & (~availdf.index.get_level_values('pos').isin(['K', 'DST']))] \
+                       .sort_values('value', ascending=False).head(n_more_backups).index
     availdf.loc[add_bu_ix, 'tier'] = 'BU'
-
-    cap = 200 # auction cap per manager
-    minbid = 1
-    league_cap = n_teams * cap
-    # print(league_cap)
-    avail_cap = league_cap - minbid * sum((val for pos,val in n_roster_per_league.items()))
-    
-    total_auction_pts = availdf['auction'].sum() # the unscaled amount of value
-    availdf.loc[:,'auction'] *= avail_cap / total_auction_pts
-    # availdf.loc[(availdf.auction > 0),'auction'] += minbid
-    availdf.loc[~availdf.tier.isnull(),'auction'] += minbid
-    
-    if not abs(availdf['auction'].sum() - league_cap) < 0.5:
-        logging.error('auction totals do not match league cap!')
-    
     ## now label remaining players as waiver wire material
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'FA'
 
-    ## finally sort by our stat of choice for display
-    sort_stat = ['auction', 'vbsd']
-    availdf = availdf.sort_values(sort_stat, ascending=False)
-    availdf.reset_index(drop=True, inplace=True) # will re-number our list to sort by our stat
+    # print(availdf[availdf.tier == 'BU'])
+
+    # ## find a baseline based on supply/demand by positions
+    # # http://www.rotoworld.com/articles/nfl/41100/71/draft-analysis
+    # ## we will just use average injury by position, instead of accounting for dropoff by rank
+    # # not dependent on bench size
     
+    # total_bench_positions = n_roster_per_league['BENCH']
+    # total_start_positions = len(availdf[availdf.tier.notnull()])
+    # # print('total start/bench/total positions: {} / {} / {}'.format(total_start_positions, total_bench_positions,
+    # #                                                                total_start_positions + total_bench_positions))
+    # prob_play = {pos:(bye_factor * pos_injury_factor[pos] if pos not in ['K', 'DST'] else 1.0) \
+    #              for pos in main_positions}
+    # # this is the benchmark for each position to use for the VBSD baseline
+    # rank_benchmark = {pos:int(np.ceil(
+    #     len(availdf[(availdf.tier.notnull()) & (availdf.pos == pos)])/prob_play[pos]
+    # )) for pos in main_positions}
+    # sum_rank_benchmark = sum((val for _,val in rank_benchmark.items()))
+    
+    for pos in main_positions:
+        posdf = availdf[(availdf.index.get_level_values('pos') == pos)].sort_values('value', ascending=False)
+        for idx in range(posdf.shape[0]):
+            label = posdf.index[idx]
+            availdf.loc[label, 'rank'] = '{}{}'.format(pos, idx+1)
+
+    # for pos in main_positions:
+    #     posdf = availdf[(availdf.pos == pos)].sort_values('vols', ascending=False)
+    #     pos_required = len(posdf[posdf.tier.notnull()]) # number of man-games needed in this position # need this to include flex
+    #     pos_prob_play = prob_play[pos]
+    #     pos_rank_benchmark = rank_benchmark[pos]
+    #     logging.debug('benchmark considered for {}: {}'.format(pos, pos_rank_benchmark))
+    #     pos_benchmark = posdf.head(pos_rank_benchmark)['vols'].min()
+    #     # projections account for bye weeks but not for positional injuries
+    #     availdf.loc[availdf.pos == pos, 'vbsd'] = (availdf['vols'] - pos_benchmark) * pos_injury_factor[pos]
+        
+    #     # now we've given the backups a class, the worst projection for each position is the worst bench value.
+    #     # we will define the value minus this to be the VOLB (value over last backup)
+    #     # this a static calculation, and the dynamically-computed VORP might do better.
+    #     # use VOLS and not absolute projection to account for suspensions
+    #     # the bench proportion should be selected
+    #     bench_rank_benchmark = pos_required + (pos_rank_benchmark - pos_required) * total_bench_positions // (sum_rank_benchmark - total_start_positions)
+    #     # nposbench = bench_rank_benchmark - pos_required
+
+    #     worst_draftable_value = posdf.head(bench_rank_benchmark)['vols'].min()
+    #     # print(worst_draftable_value)
+    #     availdf.loc[availdf.pos == pos, 'volb'] = availdf['vols'] - worst_draftable_value
+
+        # # this factor should represent the fraction of games a player at that position and rank should play, outside of injuries which are already accounted for in the vbsd.
+        # # we'll say players at the baseline have about a 50% chance of starting. it's a pretty arbitrary envelope.
+        # # it is good to be flat at the top and gradually go to zero,
+        # # so with the constraint of 50% at the edge this may not be terrible
+        # # we should really figure out this envelope function w/ simulations, but they need to be more reliable.
+        # # auction_multiplier = lambda x: max(1/(1 + (x/pos_rank_benchmark)**2), 0.0)
+        # # auction_multiplier = lambda x: max(1 - 0.5*(x/pos_required)**2, 0.0)
+        # auction_multiplier = lambda x: max(1/(1 + (x/pos_required)**2), 0.0)
+        # # K and DST are random and have lots of variance, so manually constrain at the minimum bid.
+        # if pos in ['K', 'DST']: auction_multiplier = lambda x: 0
+            
+        # # grab this again because now it has vbsd
+        # posdf = availdf[(availdf.pos == pos)].sort_values('vols', ascending=False)
+        # for idx in range(posdf.shape[0]):
+        #     label = posdf.index[idx]
+        #     # vols = posdf.iloc[idx]['vols']*pos_prob_play
+        #     vbsd = posdf.iloc[idx]['vbsd'] # this was already multiplied by the injury factor
+        #     volb = posdf.iloc[idx]['volb'] * pos_injury_factor[pos]
+        #     availdf.loc[label, 'rank'] = '{}{}'.format(pos, idx+1)
+        # # rank by vols and not raw projections to account for suspended players
+        #     # volb combined with the envelop above gives reasonable results.
+        #     availdf.loc[label, 'auction'] = auction_multiplier(idx)*max(0,np.mean([volb]))
+        #     # availdf.loc[label,'auction'] = auction_multiplier(idx)*max(0,np.mean([vbsd]))
+            
+    # availdf.loc[(availdf.tier.isnull()) & (availdf['volb'] >= 0.), 'tier'] = 'BU'
+    # # there will be some extra spots since the integer division is not exact. fill these with more flex spots.
+    # n_more_backups = total_start_positions + total_bench_positions - availdf.tier.count() # count excludes nans
+    # add_bu_ix = availdf.loc[availdf.tier.isnull()].head(n_more_backups).index
+    # availdf.loc[add_bu_ix, 'tier'] = 'BU'
+
+    cap = args.auction_cap # auction cap per manager
+    minbid = 1
+    league_cap = n_teams * cap
+    # print(league_cap)
+    avail_cap = league_cap - minbid * sum((val for pos, val in n_roster_per_league.items()))
+
+    availdf.loc[:, 'auction'] = availdf['value'].clip(lower=0)
+    availdf.loc[availdf.tier == 'FA', 'auction'] = 0
+    total_auction_pts = availdf['auction'].sum() # the unscaled amount of value
+    availdf.loc[:, 'auction'] *= avail_cap / total_auction_pts
+
+    if not np.isclose(availdf['auction'].sum(), avail_cap):
+        print(avail_cap)
+        print(availdf['auction'].sum())
+        logging.error('auction totals do not match free cap!')
+
+    # these two should be equal and they're not
+    print(len(availdf.loc[(availdf.auction > 0), 'auction']))
+    print(league_cap - avail_cap)
+
+    availdf.loc[(availdf.auction > 0), 'auction'] += minbid
+    # availdf.loc[~(availdf.tier != 'FA'), 'auction'] += minbid
+
+    # if not abs(availdf['auction'].sum() - league_cap) < 0.5:
+    if not np.isclose(availdf['auction'].sum(), league_cap):
+        print(avail_cap)
+        print(availdf['auction'].sum())
+        print(league_cap)
+        logging.error('auction totals do not match league cap!')
+    
+    ## finally sort by our stat of choice for display
+    # sort_stat = ['auction', 'vbsd']
+    sort_stat = ['auction', 'value']
+    availdf = availdf.sort_values(sort_stat, ascending=False)
+
     # make an empty dataframe with these reduces columns to store the picked players
     # this might be better as another level of index in the dataframe, or simply as an additional variable in the dataframe.
     # In the latter case we'd need to explicitly exclude it from print statements.
-    pickdf = pd.DataFrame(columns=availdf.columns)
+    pickdf = pd.DataFrame(
+        columns=availdf.columns,
+        index=pd.MultiIndex(
+            levels=[[], [], []],
+            codes=[[], [], []],
+            names=index_cols
+        ))
 
     # set some pandas display options
     pd.options.display.precision = 2 # default is 6
@@ -2066,7 +2209,9 @@ def main():
     prompt.ap = availdf
     prompt.pp = pickdf
     prompt.newsdf = newsdf
-    prompt.simulations = simulations
+    # prompt.simulations = simulations
+    prompt.sim_games = sim_games
+    prompt.sim_ppg = sim_ppg
     prompt.n_teams = n_teams
     prompt.n_roster_per_team = n_roster_per_team
     prompt.update_draft_html()
@@ -2086,9 +2231,3 @@ def main():
         
 if __name__ == '__main__':
     main()
-
-## vols: value over last starter
-## volb: value over last bench (last drafted), assuming ADP
-## vomb: value over middle of bench, assuming ADP (removed?)
-## vorp: right now, this is a dynamic scale with the baseline moving linearly through player positions as players are drafted in that position. the baseline moves from worst starter to worst bench.
-## vbsd: value-based supply/demand : extends starter threshold to further in the bench by a factor accounting for bye weeks and position-dependent injury factors. independent of ADP.
