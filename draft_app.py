@@ -1535,18 +1535,22 @@ class MainPrompt(Cmd):
     def do_recommend(self, args):
         """print recommendations"""
         manager = self._get_current_manager()
-        for strat in self._known_strategies:
-            pick = self._pick_rec(manager, strat, disabled_pos=self.disabled_pos)
-            player = self.ap.loc[pick]
-            print(f' {strat.upper()} recommended:\t  {pick[0]} ({pick[2]}) - {pick[1]}')
-        if self.manager_picks:
-            # should we put auction in here?
-            vona_strats = ['value', 'adp', 'ecp']
-            # vona-vorp takes too long
-            for strat in vona_strats:
-                pick = self._pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
+        try:
+            for strat in self._known_strategies:
+                pick = self._pick_rec(manager, strat, disabled_pos=self.disabled_pos)
                 player = self.ap.loc[pick]
-                print(f' VONA-{strat.upper()} recommended:\t  {pick[0]} ({pick[2]}) - {pick[1]}')
+                print(f' {strat.upper()} recommended:\t  {pick[0]} ({pick[2]}) - {pick[1]}')
+            if self.manager_picks:
+                # should we put auction in here?
+                vona_strats = ['value', 'adp', 'ecp']
+                # vona-vorp takes too long
+                for strat in vona_strats:
+                    pick = self._pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
+                    player = self.ap.loc[pick]
+                    print(f' VONA-{strat.upper()} recommended:\t  {pick[0]} ({pick[2]}) - {pick[1]}')
+        except Exception as err:
+            logging.error('Bug in recommendations.')
+            logging.error(err)
                 
     def do_roster(self, args):
         """
