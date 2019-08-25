@@ -8,7 +8,7 @@ import os.path
 import argparse
 import random
 import logging
-from itertools import takewhile
+from itertools import chain, takewhile
 from difflib import get_close_matches
 from cmd import Cmd
 import numpy as np
@@ -43,31 +43,62 @@ pos_games_available = {
     'WR': 14.0,
     'TE': 14.2,
     'DST': 16.0,
-    # The kicker factor is made up.
+    # This kicker factor is made up.
     'K': 15.0,
 }
 # TODO: use https://www.footballoutsiders.com/stat-analysis/2015/nfl-injuries-part-i-overall-view for a distribution from which to get a variance on these (use beta-binomial rather than binomial).
 
+def single_team_sim(sim_ppg, sim_games, n_roster_per_team, replacement_baseline, flex_pos):
+    """
+    returns the single-season points for a team given points per game and games played for every position.
+    This function is not very efficient
+    """
+    # We'll use an optimistic prediction to get it off the ground, and assume
+    # that a manager can shuffle starters perfectly to fill all spots.
+    main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+    flex_pos = flex_pos or ['RB', 'WR', 'TE']
+    games_pos = {pos:[] for pos in main_positions}
+    for player, team, pos in sim_ppg.index:
+        n_games = sim_games[(player, team, pos)]
+        ppg = sim_ppg[(player, team, pos)]
+        games_pos[pos].extend([ppg] * n_games)
+    # extend the list of possible games with several at the baseline level
+    # this is hacky and inelegant and should be changed
+    for pos in games_pos:
+        games_pos[pos].extend([replacement_baseline[pos]] * 16 * n_roster_per_team[pos])
+        games_pos[pos].sort()
+    total_points = 0
+    # games_count = 0
+    for pos in main_positions:
+        n_games_needed = 16 * n_roster_per_team[pos]
+        for _ in range(n_games_needed):
+            total_points += games_pos[pos].pop() if games_pos[pos] else replacement_baseline[pos]
+            # games_count += 1
+    flex_games = sorted(chain(*[games_pos[pos] for pos in flex_pos]))
+    if 'FLEX' in n_roster_per_team:
+        n_games_needed = 16 * n_roster_per_team['FLEX']
+        for _ in range(n_games_needed):
+            total_points += flex_games.pop() if flex_games else max(replacement_baseline['RB'], replacement_baseline['WR'])
+            # games_count += 1
+    return total_points
 
-def total_team_sims(simulations, n_roster_per_team, replacement_baseline, flex_pos):
+
+def total_team_sims(sim_ppg, sim_games, n_roster_per_team, replacement_baseline, flex_pos):
     """
     input: dataframes for starter and bench players with a number of simulated seasons
     position_baseline: assumed number of points that can be gotten for free
-    returns a team score taking into account positions
-    TODO: shouldn't need to split into starter and bench if we pass in n_roster_per_team
+    returns a series of team scores taking into account positions
     """
-    main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
-    # TODO: make this smarter about replacing starters by position
-    games = simulations['g']
-    sims = simulations.drop(columns=['g'])
-    # print(games, sims)
-    # TODO: randomize number of games played by binomial sampling based on positional injury
-    for pos in main_positions:
-        sims.iloc[sims.index.get_level_values('pos') == pos] *= bye_factor*pos_injury_factor[pos]
-    simulated_seasons = sims.sum(axis=0)
+    simulated_seasons = pd.Series()
+    for sim_num in sim_ppg.columns:
+        simulated_seasons.loc[sim_num] = single_team_sim(
+            sim_ppg[sim_num], sim_games[sim_num],
+            n_roster_per_team, replacement_baseline, flex_pos)
     return simulated_seasons
 
-def evaluate_roster(rosdf, n_roster_per_team, replacement_baselines, flex_pos=None, outfile=None, simulations=None):
+def evaluate_roster(rosdf, n_roster_per_team, replacement_baselines,
+                    flex_pos=None, outfile=None,
+                    ppg_sims=None, games_sims=None):
     """
     applies projection for season points, with an approximation for bench value
     returns tuple of starter, bench value
@@ -85,19 +116,20 @@ def evaluate_roster(rosdf, n_roster_per_team, replacement_baselines, flex_pos=No
     i_st = [] # the indices of the players we have counted so far
     for pos in main_positions:
         n_starters = n_roster_per_team[pos]
-        rospos = rosdf[rosdf.pos == pos].sort_values('exp_proj', ascending=False)
+        rospos = rosdf[rosdf.index.get_level_values('pos') == pos].sort_values('exp_proj', ascending=False)
         i_stpos = rospos.index[:n_starters]
         val = bye_factor * pos_injury_factor[pos] * rospos[rospos.index.isin(i_stpos)]['exp_proj'].sum()
         # starterval = starterval + val
         i_st.extend(i_stpos)
 
     n_flex = n_roster_per_team['FLEX']
-    rosflex = rosdf[(~rosdf.index.isin(i_st)) & (rosdf.pos.isin(flex_pos))].sort_values('exp_proj', ascending=False)
+    rosflex = rosdf[(~rosdf.index.isin(i_st)) &
+                    (rosdf.index.get_level_values('pos').isin(flex_pos))].sort_values('exp_proj', ascending=False)
     i_flex = rosflex.index[:n_flex]
     # starterval = starterval + rosflex[rosflex.index.isin(i_flex)]['exp_proj'].sum()
     i_st.extend(i_flex)
 
-    drop_cols = ['vols', 'volb', 'vbsd', 'adp', 'ecp', 'tier']
+    drop_cols = ['adp', 'ecp', 'tier']
 
     print('  starting lineup:', file=outfile)
     startdf = rosdf[rosdf.index.isin(i_st)].drop(drop_cols, axis=1)
@@ -111,15 +143,16 @@ def evaluate_roster(rosdf, n_roster_per_team, replacement_baselines, flex_pos=No
     auctionval = rosdf['auction'].sum()
 
     simulated_seasons = None
-    if simulations is not None:
-        ros_idx = rosdf.drop(drop_cols, axis=1)[['player', 'team', 'pos']].values
-        proj = simulations.loc[[tuple(idx) for idx in ros_idx]]
+    if ppg_sims is not None and games_sims is not None:
+        # ros_idx = rosdf.drop(drop_cols, axis=1)[['player', 'team', 'pos']].values
+        ros_idx = rosdf.index
+        proj_ppg = ppg_sims.loc[ros_idx]
+        proj_games = games_sims.loc[ros_idx]
         simulated_seasons = total_team_sims(
-            proj,
+            proj_ppg, proj_games,
             n_roster_per_team,
             replacement_baseline=replacement_baselines,
             flex_pos=flex_pos,)
-
 
     # round values to whole numbers for josh, who doesn't like fractions :)
     print('approximate auction value:\t${:.2f}\n'.format(auctionval), file=outfile)
@@ -132,13 +165,13 @@ def find_by_team(team, ap, pp):
     """
     prints players on the given team
     """
-    available = ap[ap.team == team.upper()]
+    available = ap[ap.index.get_level_values('team') == team.upper()]
     if len(available) > 0:
         print('Available players:')
         print(available)
     else:
         print('No available players found on team {}'.format(team))
-    picked = pp[pp.team == team.upper()]
+    picked = pp[pp.index.get_level_values('team') == team.upper()]
     if len(picked) > 0:
         print('Picked players:')
         print(picked)
@@ -197,10 +230,13 @@ def find_player(search_str, ap, pp):
         print('\n  Picked players:')
         print(filtered_pp)
     available_players = ap.index.get_level_values('player')
-    filt_mask = available_players.map(checkfunc) | \
-        available_players.str.lower().isin(
-            get_close_matches(search_str.lower(), available_players.str.lower(), cutoff=0.8) ) \
-            if not ap.empty else None
+    checked_avail = available_players.map(checkfunc)
+    # print(checked_avail)
+    close_matches_avail = get_close_matches(search_str.lower(), available_players.str.lower(), cutoff=0.8)
+    # print(close_matches_avail)
+    close_matches_index = available_players.str.lower().isin(close_matches_avail) # this is a np array
+    # print(close_matches_index)
+    filt_mask = checked_avail | close_matches_index if not ap.empty else None
     filtered_ap = ap[filt_mask] if not ap.empty else ap
     if filtered_ap.empty:
         print('\n  Could not find any available players.')
@@ -265,7 +301,6 @@ def get_player_values(ppg_df, games_df, n_roster_per_league, value_key='exp_proj
                     games_needed['FLEX'] = 0
                     ppg_baseline['FLEX'] = row['ppg']
                 # if no games needed, we're done.
-
     del games_needed
 
     values = ppg_df[value_key].copy()
@@ -289,41 +324,6 @@ def get_player_values(ppg_df, games_df, n_roster_per_league, value_key='exp_proj
         # the bye week should now be accounted for in the simulated games
         # vols.iloc[i_player] = gs*(player[value_key]/(gs+1) - worst_starter_pg)
         values.loc[player] = gs*(ppg_df.loc[player, value_key] - worst_starter_pg)
-
-    # TODO: clean up comments once we validate
-
-    # print(ppg_baseline)
-    # print(values[values.index.get_level_values('pos') == 'RB'].head(20))
-    # print(ppg_df[value_key])
-    # print(games_df[value_key])
-
-    # # THIS PART SHOULDN'T BE NECESSARY:
-
-    # # now we need to reset the baseline again so that the worst starter has a VOLS of ~ 0
-    # # before this the value assumes you can pick from any of the top games in the season
-    # values_baseline = {}
-    # # positions = gamesdf['pos'].unique()
-    # positions = ppg_df.index.unique(level='pos')
-    # # The Nth-best flex is a sum over several positions
-    # nth_flex = n_roster_per_league['FLEX'] + sum([n_roster_per_league[flex_pos] for flex_pos in flex_positions])
-    # for pos in positions:
-    #     # get the nth best result in the position
-    #     # pos_players = df.pos.isin(flex_positions) if pos in flex_positions else (df.pos == pos)
-    #     pos_players = values.index.get_level_values('pos').isin(flex_positions) \
-    #         if pos in flex_positions else \
-    #            values.index.get_level_values('pos') == pos
-    #     # pos_players = df.pos.isin(flex_positions) if pos in flex_positions else (df.pos == pos)
-    #     nth_best = nth_flex if pos in flex_positions else n_roster_per_league[pos]
-    #     values_baseline[pos] = values[pos_players].sort_values(ascending=False).iloc[nth_best]
-
-    # # subtract the remaining baseline from the values
-    # # values -= df['pos'].apply(lambda pos: vols_baseline[pos])
-    # print(values.index.get_level_values('pos'))
-    # # print(values.index.get_level_values('pos').values)
-    # # values -= values.apply(lambda pos: values_baseline[pos.name[2]])
-    # values -= np.vectorize(lambda p: values_baseline[p])(values.index.get_level_values('pos').values)
-    # # values -= values.index.get_level_values('pos').apply(lambda pos: vols_baseline[pos])
-    # print(values)
 
     return values
         
@@ -411,8 +411,8 @@ def print_teams(ap, pp):
     """
     prints a list of teams in both the available and picked player lists
     """
-    teams = pd.concat([ap, pp], sort=False)['team']
-    print(teams.unique())
+    teams = pd.concat([ap, pp], sort=False).index.unique(level='team')
+    print(teams)
 
 # this method will be our main output
 def print_top_choices(df, ntop=10, npos=3, sort_key='value', sort_asc=False, drop_stats=None, hide_pos=None):
@@ -937,22 +937,21 @@ class MainPrompt(Cmd):
                 frac_through_bench = n_pos_picked * 1.0 / (n_pos_picked + n_pos_draftable)
                 backup_mask = pos_draftable['tier'] == 'BU'
                 # we also need to include the worst starter in our list to make it agree with VOLS before any picks are made
-                # worst_starters = pos_draftable[~backup_mask].sort_values('vols', ascending=True)
                 worst_starters = pos_draftable[~backup_mask].sort_values('value', ascending=True)
-                # best_waivers = pos_draftable[backup_mask].sort_values('vols', ascending=False)
                 ls_index = None # index of worst starter in position
                 # fw_index = None # index of best wavier option in position (assuming ADP)
                 if not worst_starters.empty:
                     ls_index = worst_starters.index[0]
                 # if len(best_waivers) > 0:
                 #     fw_index = best_waivers.index[0]
-                ls_mask = pos_draftable.index == ls_index
-                draftable_mask = backup_mask | ls_mask
+                # ls_mask = pos_draftable.index == ls_index
+                # draftable_mask = backup_mask | ls_mask
+                draftable_mask = backup_mask.copy()
+                draftable_mask.loc[ls_index] = True
                 pos_baseline = pos_draftable[draftable_mask]
                 n_pos_baseline = len(pos_baseline.index)
                 if n_pos_baseline == 0:
                     # this can happen, e.g. with kickers who have no "backup" tier players
-                    # ap.loc[ap.pos == pos, 'vorp'] = ap['vols']
                     ap.loc[ap.index.get_level_values('pos') == pos, 'vorp'] = ap['value']
                     continue
                 index = int(frac_through_bench * n_pos_baseline)
@@ -974,13 +973,17 @@ class MainPrompt(Cmd):
         n_draft['RB'] += self.n_roster_per_team['FLEX'] +  self.n_roster_per_team['BENCH'] // 2
         n_draft['WR'] += self.n_roster_per_team['BENCH'] - self.n_roster_per_team['BENCH'] // 2
         for pos in main_positions:
-            players_a.append(self.ap[self.ap.pos == pos].head(24).sample(n=n_draft[pos]))
-            players_b.append(self.ap[self.ap.pos == pos].head(24).sample(n=n_draft[pos]))
+            players_a.append(self.ap[self.ap.index.get_level_values('pos') == pos].head(24).sample(n=n_draft[pos]))
+            players_b.append(self.ap[self.ap.index.get_level_values('pos') == pos].head(24).sample(n=n_draft[pos]))
         roster_a = pd.concat(players_a)
         roster_b = pd.concat(players_b)
         # print(roster_a)
         # print(roster_b)
-        evaluate_roster(roster_a, self.n_roster_per_team, self.flex_pos, simulations=self.simulations)
+        baseline = {'QB': 20, 'RB': 10, 'WR': 10, 'TE': 7, 'K': 5, 'DST': 6}
+        evaluate_roster(roster_a, self.n_roster_per_team,
+                        replacement_baselines=baseline,
+                        flex_pos=self.flex_pos,
+                        ppg_sims=self.sim_ppg, games_sims=self.sim_games)
 
     def do_auction(self, _):
         """
@@ -1058,8 +1061,9 @@ class MainPrompt(Cmd):
 
         # calculate the replacement baselines
         main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+        # get approximate replacement baselines by taking the mean of the top few undrafted players
         replacement_baselines = {
-            pos:self.ap[self.ap.pos == pos]['exp_proj'].sort_values(ascending=False).head(self.n_teams).mean()
+            pos:self.ap[self.ap.index.get_level_values('pos') == pos]['exp_proj'].sort_values(ascending=False).head(self.n_teams).mean()/16
             for pos in main_positions
         }
         if 'manager' not in self.pp:
@@ -1069,7 +1073,10 @@ class MainPrompt(Cmd):
                             self.n_roster_per_team,
                             replacement_baselines=replacement_baselines,
                             flex_pos=self.flex_pos,
-                            outfile=outfile)
+                            outfile=outfile,
+                            ppg_sims=self.sim_ppg,
+                            games_sims=self.sim_games
+            )
             return
         indices = []
         if not args:
@@ -1092,7 +1099,9 @@ class MainPrompt(Cmd):
                 self.n_roster_per_team,
                 replacement_baselines=replacement_baselines,
                 flex_pos=self.flex_pos, outfile=outfile,
-                simulations=self.simulations)
+                ppg_sims=self.sim_ppg,
+                games_sims=self.sim_games,
+                )
             if evaluation is not None:
                 manager_sims[manager_name] = evaluation
 
@@ -1154,7 +1163,11 @@ class MainPrompt(Cmd):
         """
         # search_words = [word for word in args.replace('_', ' ').split(' ') if word]
         search_str = args.replace('_', ' ')
-        find_player(search_str, self.ap, self.pp)
+        try:
+            find_player(search_str, self.ap, self.pp)
+        except Exception as err:
+            logging.error('There is a bug in the find command.')
+            logging.error(err)
     def complete_find(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
         avail_names = pd.concat([self.ap, self.pp], sort=False).index.unique(level='player')
@@ -1428,19 +1441,20 @@ class MainPrompt(Cmd):
 
         args = ' '.join(argl) # remaining args after possibly popping off price
 
-        # criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
-        criterion = self.ap.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args)) \
-            if not self.ap.empty else None
-        filtered = self.ap[criterion] if not self.ap.empty else self.ap
-        if len(filtered) <= 0:
-            logging.error('Could not find available player with name {}.'.format(args))
-            return
-        if len(filtered) > 1:
-            print('Found multiple players:')
-            print(filtered.drop(self.hide_stats, axis=1))
-            return
-        assert(len(filtered) == 1)
-        index = filtered.index[0]
+        if index is None:
+            # criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
+            criterion = self.ap.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args)) \
+                if not self.ap.empty else None
+            filtered = self.ap[criterion] if not self.ap.empty else self.ap
+            if len(filtered) <= 0:
+                logging.error('Could not find available player with name {}.'.format(args))
+                return
+            if len(filtered) > 1:
+                print('Found multiple players:')
+                print(filtered.drop(self.hide_stats, axis=1))
+                return
+            assert(len(filtered) == 1)
+            index = filtered.index[0]
         try:
             pickno = self.i_manager_turn + 1 if self.draft_mode else None
             pop_from_player_list(index, self.ap, self.pp, manager=manager, pickno=pickno, price=price)
@@ -1792,9 +1806,9 @@ def main():
     
     ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc', 'ram'], default='phys',
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc', 'ram'], default='bro',
                         help='which ruleset to use of the leagues I am in')
-    parser.add_argument('--n-teams', type=int, default=12, help='number of teams in the league')
+    parser.add_argument('--n-teams', type=int, default=14, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of starting QBs per team')
     parser.add_argument('--n-rb', type=int, default=2, help='number of starting RBs per team')
     parser.add_argument('--n-wr', type=int, default=2, help='number of starting WRs per team')
