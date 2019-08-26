@@ -448,6 +448,20 @@ def print_top_position(df, pos, ntop=24, sort_key='value', sort_asc=False, drop_
         with pd.option_context('display.max_rows', None):
             print(df[df.index.get_level_values('pos') == pos.upper()].drop(drop_stats, inplace=False, axis=1).head(ntop))
 
+def prompt_for_unique(players):
+    """
+    prompts the user to specify a selection.
+    players should be indexed on (player, team, position)
+    """
+    indices = {str(num): index for num, (index, _) in enumerate(players.iterrows())}
+    for num, index in indices.items():
+        print(f'{num}: {index}')
+    number = input('Select the intended player by index: ')
+    if number not in indices:
+        logging.error(f'{number} not found in the above list')
+        return
+    return players.loc[[indices[number]]]
+
 def push_to_player_list(index, ap, pp):
     """
     index: index of player to be removed from available
@@ -566,14 +580,11 @@ def simulate_seasons(df, n, **kwargs):
     scales = df['scale'].to_numpy()
 
     # the "n" in the binomial drawing
-    max_games = df['g'].to_numpy()
+    max_games = df['g'].to_numpy(dtype=int)
     # the "p" in the binomial drawing
-    # frac_games = df.index.get_level_values('pos').apply(lambda pos: pos_games_available[pos] / 16).to_numpy()
     frac_games = np.vectorize(lambda pos: pos_games_available[pos] / 16)(df.index.get_level_values('pos'))
 
     logging.info('Simulating %s seasons...', n)
-    # sim_games = df[['player', 'team', 'pos', 'g']].copy()
-    # sim_ppg = df[['player', 'team', 'pos', 'g']].copy()
     sim_games = df[[]].copy()
     sim_ppg = df[[]].copy()
     # TODO: instead of looping, can we use the size parameter in scipy?
@@ -1184,26 +1195,26 @@ class MainPrompt(Cmd):
         find potential handcuffs for player with index(ces) I
         """
         index = None
-        try:
-            index = int(args)
-        except ValueError as e:
-            all_players = pd.concat([self.ap, self.pp], sort=False)
-            criterion = all_players.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args))
-            filtered = all_players[criterion]
-            if len(filtered) <= 0:
-                print('Could not find available player with name {}.'.format(args))
+        all_players = pd.concat([self.ap, self.pp], sort=False)
+        criterion = all_players.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args))
+        filtered = all_players[criterion]
+        if filtered.empty:
+            print('Could not find available player with name {}.'.format(args))
+            return
+        if len(filtered) > 1:
+            print('Found multiple players:')
+            print(filtered.drop(self.hide_stats, axis=1))
+            filtered = prompt_for_unique(filtered)
+            if filtered is None:
                 return
-            if len(filtered) > 1:
-                print('Found multiple players:')
-                print(filtered.drop(self.hide_stats, axis=1))
-                return
-            assert(len(filtered) == 1), 'Should only have one player filtered at this point.'
-            index = filtered.index[0]
+        assert(len(filtered) == 1), 'Should only have one player filtered at this point.'
+        index = filtered.index[0]
         find_handcuff(index, self.ap, self.pp)
     def complete_handcuff(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        # avail_names = pd.concat([self.ap, self.pp])['player']
-        avail_names = pd.concat([self.ap['player'], self.pp['player']], sort=False).map(simplify_name)
+        # avail_names = pd.concat([self.ap.index.get_level_values('player'), self.pp.index.get_level_values('player')], sort=False).map(simplify_name)
+        avail_names = [simplify_name(name) for name in self.ap.index.get_level_values('player')]
+        avail_names.extend([simplify_name(name) for name in self.pp.index.get_level_values('player')])
         if text:
             return [name for name in avail_names
                     if name.startswith(simplify_name(text))]
@@ -1243,13 +1254,7 @@ class MainPrompt(Cmd):
     def do_info(self, args):
         """print full data and news about player"""
         # TODO: fix this for updated indexing
-        criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
-        try:
-            index = int(args)
-            criterion = self.ap.index == index
-        except ValueError:
-            # if not an index, it should be a name
-            pass
+        criterion = self.ap.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args))
         filtered = self.ap[criterion]
         if len(filtered) <= 0:
             print('Could not find available player with name {}.'.format(args))
@@ -1257,17 +1262,21 @@ class MainPrompt(Cmd):
         if len(filtered) > 1:
             print('Found multiple players:')
             print(filtered.drop(self.hide_stats, axis=1))
-            return
+            filtered = prompt_for_unique(filtered)
+            if filtered is None:
+                return
         assert(len(filtered) == 1)
+        player, team, pos = filtered.index[0]
         pl = filtered.iloc[0]
         print()
+        print(f'{player} ({pos}) - {team}:')
         for data in pl.items():
             out = '{}:      \t{:.4f}' if type(data[1]) is np.float64 else '{}:      \t{}'
             print(out.format(*data))
         if pl['n'] == '*' and self.newsdf is not None:
             # then there is a news story that we need the details of
             newsnames = self.newsdf.player.map(simplify_name)
-            pix = (newsnames.isin(get_close_matches(simplify_name(pl.player),
+            pix = (newsnames.isin(get_close_matches(simplify_name(player),
                                                     newsnames.values)))
             if newsnames[pix].shape[0] != 1:
                 logging.warning('did not unambiguously identify news item:')
@@ -1280,8 +1289,8 @@ class MainPrompt(Cmd):
 
     def complete_info(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        names = pd.concat((self.ap.index.get_level_values('player'),
-                           self.pp.index.get_level_values('player'))).map(simplify_name)
+        names = [simplify_name(name) for name in self.ap.index.get_level_values('player')]
+        names.extend([simplify_name(name) for name in self.pp.index.get_level_values('player')])
         return [name for name in names
                 if name.startswith(text.lower())] if text else names
 
@@ -1444,7 +1453,6 @@ class MainPrompt(Cmd):
         args = ' '.join(argl) # remaining args after possibly popping off price
 
         if index is None:
-            # criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
             criterion = self.ap.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args)) \
                 if not self.ap.empty else None
             filtered = self.ap[criterion] if not self.ap.empty else self.ap
@@ -1454,7 +1462,9 @@ class MainPrompt(Cmd):
             if len(filtered) > 1:
                 print('Found multiple players:')
                 print(filtered.drop(self.hide_stats, axis=1))
-                return
+                filtered = prompt_for_unqiue(filtered)
+                if filtered is None:
+                    return
             assert(len(filtered) == 1)
             index = filtered.index[0]
         try:
@@ -2241,10 +2251,11 @@ def main():
         # a system exit, Ctrl-C, or Ctrl-D can be treated as a clean exit.
         #  will not create an emergency backup.
         print('Goodbye!')
-    except:
+    except Exception as err:
+        logging.error(err)
         backup_fname = 'draft_backup'
-        print('Error: {}'.format(sys.exc_info()))
-        print('Backup save with label \"{}\".'.format(backup_fname))
+        logging.error(sys.exc_info())
+        logging.error(f'Backup save with label \"{backup_fname}\".')
         save_player_list(backup_fname, prompt.ap, prompt.pp)
         raise
         
