@@ -4,7 +4,7 @@ from __future__ import print_function
 # from builtins import input
 # from builtins import range
 import sys
-import os.path
+from os import path
 import argparse
 import random
 import logging
@@ -17,6 +17,7 @@ import scipy.stats as st
 from scipy.optimize import fsolve
 import seaborn as sns
 import matplotlib.pyplot as plt
+import pickle
 from progressbar import progressbar
 
 from tools import *
@@ -330,11 +331,11 @@ def get_player_values(ppg_df, games_df, n_roster_per_league, value_key='exp_proj
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
     print('Loading with label {}.'.format(outname))
-    if os.path.isfile(outname+'.csv'):
+    if path.isfile(outname+'.csv'):
         ap = pd.read_csv(outname+'.csv', index_col=['player', 'team', 'pos'])
     else:
         logging.error('Could not find file %s.csv!', outname)
-    if os.path.isfile(outname+'_picked.csv'):
+    if path.isfile(outname+'_picked.csv'):
         pp = pd.read_csv(outname+'_picked.csv', index_col=['player', 'team', 'pos'])
     else:
         logging.error('Could not find file %s_picked.csv!', outname)
@@ -530,7 +531,7 @@ def decorate_skew_norm_params(df, value_key='exp_proj', ci=0.8, **kwargs):
     ci: confidence interval. For 5 experts we'll assume (poorly) that they're evenly distributed in the CDF.
     """
     cache_name = kwargs.get('cache', 'skew_normal_cache.csv')
-    if os.path.isfile(cache_name):
+    if path.isfile(cache_name):
         logging.info('Loading skew parameters from cache')
         skew_param_df = pd.read_csv(cache_name, index_col=['player', 'team', 'pos'])
         # if we don't specify the columns, the index is merged as well
@@ -565,7 +566,7 @@ def simulate_seasons(df, n, **kwargs):
     index_cols = ['player', 'team', 'pos']
     ppg_cache = kwargs.get('cache', 'simulation_cache_ppg.csv')
     games_cache = kwargs.get('cache', 'simulation_cache_games.csv')
-    if os.path.isfile(ppg_cache) and os.path.isfile(games_cache):
+    if path.isfile(ppg_cache) and path.isfile(games_cache):
         games_df = pd.read_csv(games_cache, index_col=index_cols)
         ppg_df = pd.read_csv(ppg_cache, index_col=index_cols)
         if len(games_df.columns) == len(ppg_df.columns) >= n:
@@ -619,6 +620,10 @@ class MainPrompt(Cmd):
     """
     # overriding default member variable
     prompt = ' $$ '
+
+    # These are the fields that should be saved and loaded
+    save_fields = ['ap', 'pp', 'manager_names', 'manager_picks', 'draft_mode',
+    'i_manager_turn', 'user_manager', 'n_teams', 'n_roster_per_team']
 
     # member variables to have access to the player dataframes
     ap = pd.DataFrame()
@@ -1299,11 +1304,22 @@ class MainPrompt(Cmd):
         usage load [OUTPUT]
         loads player lists from OUTPUT.csv (default OUTPUT is draft_players)
         """
-        print('if you quit from draft mode, then that state will not be saved.')
-        print('in principle this can be extracted from the manager of the picked players,')
-        print('but that is not yet implemented.')
         outname = args if args else 'draft_backup'
-        self.ap, self.pp = load_player_list(outname)
+        # self.ap, self.pp = load_player_list(outname)
+        picklename = f'{outname}.state.p'
+        if path.isfile(picklename):
+            logging.info('Loading state from %s', picklename)
+        else:
+            logging.error('File %s does not exist.', picklename)
+            return
+        with open(picklename, 'rb') as pfile:
+            save_data = pickle.load(pfile)
+            for key in self.save_fields:
+                setattr(self, key, save_data.pop(key))
+            if save_data:
+                logging.error('There is unused data in the loaded state:')
+                print(save_data)
+        self._set_prompt()
 
     def do_ls(self, args):
         """
@@ -1458,7 +1474,7 @@ class MainPrompt(Cmd):
             if len(filtered) > 1:
                 print('Found multiple players:')
                 print(filtered.drop(self.hide_stats, axis=1))
-                filtered = prompt_for_unqiue(filtered)
+                filtered = prompt_for_unique(filtered)
                 if filtered is None:
                     return
             assert(len(filtered) == 1)
@@ -1609,8 +1625,15 @@ class MainPrompt(Cmd):
         usage: save [OUTPUT]
         saves player lists to OUTPUT.csv (default OUTPUT is draft_players)
         """
-        outname = args if args else 'draft_players'
-        save_player_list(outname, self.ap, self.pp)
+        outname = args if args else 'draft_backup'
+        # save_player_list(outname, self.ap, self.pp)
+        save_data = {
+            key: getattr(self, key) for key in self.save_fields
+        }
+        picklename = f'{outname}.state.p'
+        logging.info('Saving state as %s', picklename)
+        with open(picklename, 'wb') as pfile:
+            pickle.dump(save_data, pfile)
 
     def do_show(self, args):
         """
@@ -1881,11 +1904,11 @@ def main():
 
         filename_high = filename.replace('.csv', '_high.csv')
         filename_low = filename.replace('.csv', '_low.csv')
-        if os.path.isfile(filename_high):
+        if path.isfile(filename_high):
             posdf_high = pd.read_csv(filename_high)
             posdf_high['pos'] = pos
             posdfs_high.append(posdf_high)
-        if os.path.isfile(filename_low):
+        if path.isfile(filename_low):
             posdf_low = pd.read_csv(filename_low)
             posdf_low['pos'] = pos
             posdfs_low.append(posdf_low)
@@ -2020,7 +2043,7 @@ def main():
 
     sim_value = None
     value_cache_name = 'sim_value_cache.csv'
-    if os.path.isfile(value_cache_name):
+    if path.isfile(value_cache_name):
         value_df = pd.read_csv(value_cache_name, index_col=['player', 'team', 'pos'])
         # Is the games column still in here?
         if len(value_df.columns) >= n_sims:
@@ -2244,9 +2267,9 @@ def main():
             backup_fname = 'draft_backup'
             logging.error(sys.exc_info())
             logging.error(f'Backup save with label \"{backup_fname}\".')
-            save_player_list(backup_fname, prompt.ap, prompt.pp)
+            prompt.do_save(backup_fname)
+            # save_player_list(backup_fname, prompt.ap, prompt.pp)
             # raise err
-        
         
 if __name__ == '__main__':
     main()
