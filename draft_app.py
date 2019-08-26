@@ -1242,6 +1242,7 @@ class MainPrompt(Cmd):
 
     def do_info(self, args):
         """print full data and news about player"""
+        # TODO: fix this for updated indexing
         criterion = self.ap['player'].map(simplify_name).str.contains(simplify_name(args))
         try:
             index = int(args)
@@ -1279,7 +1280,8 @@ class MainPrompt(Cmd):
 
     def complete_info(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        names = pd.concat((self.ap.player, self.pp.player)).map(simplify_name)
+        names = pd.concat((self.ap.index.get_level_values('player'),
+                           self.pp.index.get_level_values('player'))).map(simplify_name)
         return [name for name in names
                 if name.startswith(text.lower())] if text else names
 
