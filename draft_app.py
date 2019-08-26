@@ -1174,11 +1174,7 @@ class MainPrompt(Cmd):
         """
         # search_words = [word for word in args.replace('_', ' ').split(' ') if word]
         search_str = args.replace('_', ' ')
-        try:
-            find_player(search_str, self.ap, self.pp)
-        except Exception as err:
-            logging.error('There is a bug in the find command.')
-            logging.error(err)
+        find_player(search_str, self.ap, self.pp)
     def complete_find(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
         avail_names = pd.concat([self.ap, self.pp], sort=False).index.unique(level='player')
@@ -1547,23 +1543,18 @@ class MainPrompt(Cmd):
     def do_recommend(self, args):
         """print recommendations"""
         manager = self._get_current_manager()
-        try:
-            for strat in self._known_strategies:
-                pick = self._pick_rec(manager, strat, disabled_pos=self.disabled_pos)
-                player = self.ap.loc[pick]
-                print(f' {strat.upper()} recommended:\t  {pick[0]} ({pick[2]}) - {pick[1]}')
-            if self.manager_picks:
-                # should we put auction in here?
-                vona_strats = ['value', 'adp', 'ecp']
-                # vona-vorp takes too long
-                for strat in vona_strats:
-                    pick = self._pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
-                    player = self.ap.loc[pick]
-                    print(f' VONA-{strat.upper()} recommended:\t  {pick[0]} ({pick[2]}) - {pick[1]}')
-        except Exception as err:
-            logging.error('Bug in recommendations.')
-            logging.error(err)
-                
+        for strat in self._known_strategies:
+            player, team, pos = self._pick_rec(manager, strat, disabled_pos=self.disabled_pos)
+            print(f' {strat.upper()} recommended:\t  {player} ({pos}) - {team}')
+        if self.manager_picks:
+            # should we put auction in here?
+            vona_strats = ['value', 'adp', 'ecp']
+            # vona-vorp takes too long
+            for strat in vona_strats:
+                player, team, pos = self._pick_rec(manager, strat='vona', vona_strat=strat, disabled_pos=self.disabled_pos)
+                # player = self.ap.loc[pick]
+                print(f' VONA-{strat.upper()} recommended:\t  {player} ({pos}) - {team}')
+
     def do_roster(self, args):
         """
         usage: roster [N]...
@@ -1743,34 +1734,29 @@ class MainPrompt(Cmd):
         if no index is provided, then the last player picked will be returned.
         """
         # we used to allow indices, and multiple indices, but this gets too complicated w/ draft mode.
-        if len(self.pp) > 0:
+        if not self.pp.empty:
             lasti = self.pp.index[-1]
             try:
                 push_to_player_list(lasti, self.ap, self.pp)
                 self._update_vorp()
                 if self.draft_mode:
                     self._regress_snake()
-            except IndexError as e:
-                print(e)
-                print('could not put player ({}) back in available list.'.format(lasti))
+            except IndexError as err:
+                print(err)
+                print(f'could not put player ({lasti}) back in available list.')
         else:
             print('No players have been picked.')
         self.update_draft_html()
 
-    # anticipating non-trivialities in the autocomplete here as well, we will simply disable this alias.
-    # def do_unpop(self, args):
-    #     """alias for unpick"""
-    #     self.do_unpick(args)
-
     # define this here for ease and move it later
     def _step_vona(self, ap, pp,
-                  managers_til_next, strat='adp'):
+                   managers_til_next, strat='adp'):
         if not managers_til_next:
             return (ap, pp)
         manager = managers_til_next[0]
         pickidx = self._pick_rec(manager, strat=strat, ap=ap, pp=pp, disabled_pos=None)
         newap = ap.drop(pickidx)
-        newpp = ap.loc[ap.index == pickidx].copy()
+        newpp = ap.loc[ap.index]#.copy()
         newpp['manager'] = manager
         newpp = pd.concat([pp, newpp], sort=False)
         return self._step_vona(newap, newpp, managers_til_next[1:], strat)    
@@ -2245,19 +2231,21 @@ def main():
     prompt.n_teams = n_teams
     prompt.n_roster_per_team = n_roster_per_team
     prompt.update_draft_html()
-    try:
-        prompt.cmdloop()
-    except (SystemExit, KeyboardInterrupt, EOFError):
-        # a system exit, Ctrl-C, or Ctrl-D can be treated as a clean exit.
-        #  will not create an emergency backup.
-        print('Goodbye!')
-    except Exception as err:
-        logging.error(err)
-        backup_fname = 'draft_backup'
-        logging.error(sys.exc_info())
-        logging.error(f'Backup save with label \"{backup_fname}\".')
-        save_player_list(backup_fname, prompt.ap, prompt.pp)
-        raise
+    while True:
+        try:
+            prompt.cmdloop()
+        except (SystemExit, KeyboardInterrupt, EOFError):
+            # a system exit, Ctrl-C, or Ctrl-D can be treated as a clean exit.
+            #  will not create an emergency backup.
+            print('Goodbye!')
+            break
+        except Exception as err:
+            logging.error(err)
+            backup_fname = 'draft_backup'
+            logging.error(sys.exc_info())
+            logging.error(f'Backup save with label \"{backup_fname}\".')
+            save_player_list(backup_fname, prompt.ap, prompt.pp)
+            # raise err
         
         
 if __name__ == '__main__':
