@@ -875,7 +875,8 @@ class MainPrompt(Cmd):
         # should make this separate function
         ntop = 32
         df = self.ap[~self.ap.index.get_level_values('pos').isin(self.hide_pos)] \
-                 .drop(self.hide_stats, inplace=False, axis=1).head(ntop)
+                 .drop(self.hide_stats, inplace=False, axis=1) \
+                 .sort_values('value', ascending=False).head(ntop)
         # some columns look better with custom formatting
         format_dict = {
             'exp_proj':'{:.1f}',
@@ -2101,9 +2102,10 @@ def main():
     # label backup tier. this undervalues WR and RB
     total_bench_positions = n_roster_per_league['BENCH']
     total_start_positions = len(availdf[availdf.tier.notnull()])
+    crap_positions = ['K', 'DST']
     # there will be some extra spots since the integer division is not exact. fill these with more flex spots.
     n_more_backups = total_start_positions + total_bench_positions - availdf.tier.count() # count excludes nans
-    add_bu_ix = availdf.loc[availdf.tier.isnull() & (~availdf.index.get_level_values('pos').isin(['K', 'DST']))] \
+    add_bu_ix = availdf.loc[availdf.tier.isnull() & (~availdf.index.get_level_values('pos').isin(crap_positions))] \
                        .sort_values('value', ascending=False).head(n_more_backups).index
     availdf.loc[add_bu_ix, 'tier'] = 'BU'
     ## now label remaining players as waiver wire material
@@ -2193,9 +2195,13 @@ def main():
     # print(league_cap)
     avail_cap = league_cap - minbid * sum((val for pos, val in n_roster_per_league.items()))
 
+
+
     auctionable = availdf['tier'] != 'FA'
     availdf.loc[:, 'auction'] = availdf['value'].clip(lower=0)
     availdf.loc[~auctionable, 'auction'] = 0
+    # manually de-value kickers and defense because of their matchup-dependence
+    availdf.loc[availdf.index.get_level_values('pos').isin(crap_positions), 'auction'] = 0
     total_auction_pts = availdf['auction'].sum() # the unscaled amount of value
     availdf.loc[:, 'auction'] *= avail_cap / total_auction_pts
 
