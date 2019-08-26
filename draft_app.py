@@ -960,11 +960,7 @@ class MainPrompt(Cmd):
                     ls_index = worst_starters.index[0]
                 # if len(best_waivers) > 0:
                 #     fw_index = best_waivers.index[0]
-                # ls_mask = pos_draftable.index == ls_index
-                # draftable_mask = backup_mask | ls_mask
-                draftable_mask = backup_mask.copy()
-                draftable_mask.loc[ls_index] = True
-                pos_baseline = pos_draftable[draftable_mask]
+                pos_baseline = pos_draftable.loc[[ls_index]]
                 n_pos_baseline = len(pos_baseline.index)
                 if n_pos_baseline == 0:
                     # this can happen, e.g. with kickers who have no "backup" tier players
@@ -974,9 +970,7 @@ class MainPrompt(Cmd):
                 if index >= len(pos_baseline):
                     print('warning: check index here later')
                     index = len(pos_baseline-1)
-                # vorp_baseline = pos_baseline['vols'].sort_values( ascending=False ).iloc[index]
                 vorp_baseline = pos_baseline['value'].sort_values(ascending=False).iloc[index]
-            # ap.loc[ap.pos == pos, 'vorp'] = ap['vols'] - vorp_baseline
             ap.loc[ap.index.get_level_values('pos') == pos, 'vorp'] = ap['value'] - vorp_baseline
 
     def do_test(self, _):
@@ -2030,6 +2024,7 @@ def main():
     # re-index on player, team, pos
     index_cols = ['player', 'team', 'pos']
     availdf.set_index(index_cols, inplace=True)
+    availdf.sort_index(inplace=True)
 
     ci = args.ci
     # this function adds skew-normal parameters for each player based on the high/low
@@ -2191,14 +2186,16 @@ def main():
     # add_bu_ix = availdf.loc[availdf.tier.isnull()].head(n_more_backups).index
     # availdf.loc[add_bu_ix, 'tier'] = 'BU'
 
+    # TODO: this auction calculation should be done per-simulation, so we can get an accurate variance.
     cap = args.auction_cap # auction cap per manager
     minbid = 1
     league_cap = n_teams * cap
     # print(league_cap)
     avail_cap = league_cap - minbid * sum((val for pos, val in n_roster_per_league.items()))
 
+    auctionable = availdf['tier'] != 'FA'
     availdf.loc[:, 'auction'] = availdf['value'].clip(lower=0)
-    availdf.loc[availdf.tier == 'FA', 'auction'] = 0
+    availdf.loc[~auctionable, 'auction'] = 0
     total_auction_pts = availdf['auction'].sum() # the unscaled amount of value
     availdf.loc[:, 'auction'] *= avail_cap / total_auction_pts
 
@@ -2207,28 +2204,18 @@ def main():
         print(availdf['auction'].sum())
         logging.error('auction totals do not match free cap!')
 
-    # these two should be equal and they're not
-    print(len(availdf.loc[(availdf.auction > 0), 'auction']))
-    print(league_cap - avail_cap)
+    availdf.loc[auctionable, 'auction'] += minbid
 
-    availdf.loc[(availdf.auction > 0), 'auction'] += minbid
-    # availdf.loc[~(availdf.tier != 'FA'), 'auction'] += minbid
-
-    # if not abs(availdf['auction'].sum() - league_cap) < 0.5:
     if not np.isclose(availdf['auction'].sum(), league_cap):
         print(avail_cap)
         print(availdf['auction'].sum())
         print(league_cap)
         logging.error('auction totals do not match league cap!')
     
-    ## finally sort by our stat of choice for display
-    # sort_stat = ['auction', 'vbsd']
-    sort_stat = ['auction', 'value']
-    availdf = availdf.sort_values(sort_stat, ascending=False)
-
-    # make an empty dataframe with these reduces columns to store the picked players
-    # this might be better as another level of index in the dataframe, or simply as an additional variable in the dataframe.
-    # In the latter case we'd need to explicitly exclude it from print statements.
+    # Make an empty dataframe with these reduces columns to store the picked
+    # players. This might be better as another level of index in the dataframe,
+    # or simply as an additional variable in the dataframe. In the latter case
+    # we'd need to explicitly exclude it from print statements.
     pickdf = pd.DataFrame(
         columns=availdf.columns,
         index=pd.MultiIndex(
@@ -2248,7 +2235,6 @@ def main():
     prompt.ap = availdf
     prompt.pp = pickdf
     prompt.newsdf = newsdf
-    # prompt.simulations = simulations
     prompt.sim_games = sim_games
     prompt.sim_ppg = sim_ppg
     prompt.n_teams = n_teams
