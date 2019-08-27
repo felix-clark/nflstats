@@ -1836,7 +1836,7 @@ def main():
     parser.add_argument('--n-flex', type=int, default=1, help='number of FLEX spots per team')
     parser.add_argument('--n-dst', type=int, default=1, help='number of D/ST spots per team')
     parser.add_argument('--n-k', type=int, default=1, help='number of starting Ks per team')
-    parser.add_argument('--n-bench', type=int, default=5, help='number of bench spots per team')
+    parser.add_argument('--n-bench', type=int, default=6, help='number of bench spots per team')
     parser.add_argument('--ci', type=float, default=0.8, help='confidence interval to assume for high/low')
     parser.add_argument('--simulations', type=int, default=50, help='number of simulations to run')
     parser.add_argument('--auction-cap', type=int, default=200, help='auction budget per manager')
