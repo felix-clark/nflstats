@@ -9,7 +9,7 @@ import argparse
 import random
 import logging
 from itertools import chain, takewhile
-from difflib import get_close_matches
+from difflib import get_close_matches, SequenceMatcher
 from cmd import Cmd
 import numpy as np
 import pandas as pd
@@ -220,24 +220,23 @@ def find_player(search_str, ap, pp):
     # clean periods, since they aren't consistent between sources
     search_str = search_str.replace('.', '')
     # check if any of the search words are in the full name
-    checkfunc = lambda name: all([sw in name.lower().replace('.', '') for sw in search_str.lower().split(' ')])
+    # TODO: incorporate the close matches in here as well
+    checkfunc = lambda name: all([sw in name.lower().replace('.', '') for sw in search_str.lower().split(' ')]) or \
+                SequenceMatcher(lambda c: c in '._ -',
+                                search_str.lower(),
+                                name.lower()
+                ).ratio() > 0.6
     picked_players = pp.index.get_level_values('player')
-    filt_mask = picked_players.map(checkfunc) | \
-        picked_players.str.lower().isin(
-            get_close_matches(search_str.lower(), picked_players.str.lower(), cutoff=0.8) ) \
-            if not pp.empty else None
+    filt_mask = picked_players.map(checkfunc) if not pp.empty else None
     filtered_pp = pp[filt_mask] if not pp.empty else pp
-    if not filtered_pp.empty > 0:
+    if not filtered_pp.empty:
         print('\n  Picked players:')
         print(filtered_pp)
+
     available_players = ap.index.get_level_values('player')
     checked_avail = available_players.map(checkfunc)
-    # print(checked_avail)
-    close_matches_avail = get_close_matches(search_str.lower(), available_players.str.lower(), cutoff=0.8)
-    # print(close_matches_avail)
-    close_matches_index = available_players.str.lower().isin(close_matches_avail) # this is a np array
-    # print(close_matches_index)
-    filt_mask = checked_avail | close_matches_index if not ap.empty else None
+
+    filt_mask = checked_avail if not ap.empty else None
     filtered_ap = ap[filt_mask] if not ap.empty else ap
     if filtered_ap.empty:
         print('\n  Could not find any available players.')
@@ -325,8 +324,75 @@ def get_player_values(ppg_df, games_df, n_roster_per_league, value_key='exp_proj
         # the bye week should now be accounted for in the simulated games
         # vols.iloc[i_player] = gs*(player[value_key]/(gs+1) - worst_starter_pg)
         values.loc[player] = gs*(ppg_df.loc[player, value_key] - worst_starter_pg)
-
     return values
+
+def get_auction_values(value_data, value_key,
+                       n_teams, n_roster_per_league,
+                       cap=200, min_bid=1):
+    """
+    value_data: dataframe with columns of values, indexed by (player, team, position)
+    value_key: column key to use as value
+    """
+    # these could be keywork arguments
+    main_positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DST']
+    flex_positions = ['RB', 'WR', 'TE']
+    # manually devalue these due to their heavy dependence on weekly matchup
+    crap_positions = ['K', 'DST']
+
+    league_cap = n_teams * cap
+    avail_cap = league_cap - min_bid * sum(n_roster_per_league.values())
+
+    auction_values = value_data[[value_key]].copy()
+    auction_values.loc[:, 'auctionable'] = False
+    auction_values.loc[:, 'auction'] = 0
+
+    # label positional (non-flex) starters as auctionable
+    for pos in main_positions:
+        # sort the players in each position so we can grab the top indices
+        pos_start = auction_values.loc[
+            auction_values.index.get_level_values('pos') == pos, value_key].nlargest(n_roster_per_league[pos])
+        auction_values.loc[pos_start.index, 'auctionable'] = True
+    flex_start = auction_values.loc[(auction_values.index.get_level_values('pos').isin(flex_positions)) & (~auction_values['auctionable']), value_key].nlargest(n_roster_per_league['FLEX'])
+
+    auction_values.loc[flex_start.index, 'auctionable'] = True
+
+    # keep track of how many players are starter tier for each position
+    n_starter_pos = {pos:len(auction_values.loc[auction_values['auctionable'] & (auction_values.index.get_level_values('pos') == pos)].index) for pos in main_positions}
+
+    # label next best set for the bench
+    bench_idx = auction_values.loc[
+        (~auction_values['auctionable']) &
+        (~auction_values.index.get_level_values('pos').isin(crap_positions)),
+        value_key].nlargest(n_roster_per_league['BENCH']).index
+    auction_values.loc[bench_idx, 'auctionable'] = True
+
+    # use a baseline at the lowest bench spot
+    for pos in main_positions:
+        pos_idx = auction_values.index.get_level_values('pos') == pos
+        # pos_view = auction_values.loc[pos_idx]
+        pos_baseline = auction_values.loc[pos_idx & auction_values['auctionable'], value_key].min()
+        if pos_baseline < 0:
+            auction_values.loc[pos_idx, value_key] -= pos_baseline
+        # apply an envelope assuming you get half value from bubble players
+        auction_values.loc[pos_idx, value_key] /= 1. + (auction_values.loc[pos_idx, value_key].rank(ascending=False) / n_starter_pos[pos])**2
+
+    assert(auction_values.loc[auction_values['auctionable'], value_key] >= 0).all(), 'values should be greater than zero now'
+
+    auction_values.loc[auction_values['auctionable'], 'auction'] = auction_values[value_key].clip(lower=0)
+    # manually de-value kickers and defense because of their matchup-dependence
+    auction_values.loc[auction_values.index.get_level_values('pos').isin(crap_positions), 'auction'] = 0
+    auction_values.loc[:, 'auction'] *= avail_cap / auction_values['auction'].sum()
+
+    auction_values.loc[auction_values['auctionable'], 'auction'] += min_bid
+
+    if not np.isclose(auction_values['auction'].sum(), league_cap):
+        print(avail_cap)
+        print(auction_values['auction'].sum())
+        print(league_cap)
+        logging.error('auction totals do not match league cap!')
+
+    return auction_values['auction']
+
         
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
@@ -917,16 +983,13 @@ class MainPrompt(Cmd):
         a replacement for a 1-st round pick comes from the top of the bench,
         while a replacement for a bottom bench player comes from the waivers.
         """
-        # return
-        ## should maybe cancel this.. it takes time to compute and we have lots of thresholds now
+        ## should maybe cancel this.. it takes time to compute and we have lots
+        ## of thresholds now. It may be called more often than is necessary.
         if ap is None:
             ap = self.ap
         if pp is None:
             pp = self.pp
-        # seems to be called more often than is optimal
-        # print 'updating VORP' # for checking that this gets called sufficiently
-        # positions = [pos for pos in self.n_roster_per_team.keys()
-        #              if pos not in ['FLEX', 'BENCH'] and pos not in self.flex_pos]
+
         positions = [pos for pos in list(self.n_roster_per_team.keys())
                      if pos not in ['FLEX', 'BENCH']]
         
@@ -1138,10 +1201,9 @@ class MainPrompt(Cmd):
 
             # assign tiers based on expected value
             if len(indices) > 3:
-                # do a clustering
+                # cluster into k tiers
                 k = int(np.ceil(np.sqrt(1 + 2*len(indices))))
                 manager_vals = simdf.mean(axis=0)
-                # totvals = np.array(list(manager_vals.values()))
                 totvals = manager_vals.to_numpy()
                 partitions = get_k_partition_boundaries(totvals, k-1)[::-1]
                 tier = 0
@@ -1155,7 +1217,6 @@ class MainPrompt(Cmd):
                     tiermans = [y for y in takewhile(lambda x: x[1] > part_bound, sorted_manager_vals)]
                     for manager,manval in tiermans:
                         print(f'  {manager}: \t{int(manval)}', file=outfile)
-                        # print('  {}'.format(self._get_manager_name(manager)), file=outfile)
                     print('\n', file=outfile)
                     sorted_manager_vals = sorted_manager_vals[len(tiermans):]
                     partitions = partitions[1:]
@@ -2052,8 +2113,6 @@ def main():
         sim_value[:] = 0
         # The index is now set to player,team,pos
         for col in progressbar(sim_ppg.columns):
-        # for col in progressbar(sim_ppg.columns.drop(['player', 'team', 'pos'])):
-        # for col in progressbar(simulations.columns.drop(['player', 'team', 'pos', 'g'])):
             if 'Unnamed' in col:
                 # there's some extraneous data that is carried along; drop these columns
                 logging.warning(f'There is a strange column in the simulations: {col}')
@@ -2061,25 +2120,48 @@ def main():
             sim_value.loc[:, col] = get_player_values(sim_ppg, sim_games, n_roster_per_league, value_key=col)
         sim_value.to_csv(value_cache_name)
 
-    # index simulations by player, team, pos for easy lookup
-    # can we do this earlier?
-    # sim_ppg.set_index(['player', 'team', 'pos'], inplace=True)
-    # sim_games.set_index(['player', 'team', 'pos'], inplace=True)
-
-    # Due to a rare bug in the baseline calculation, the VOLS may have nans. They should be ignored by the quantile calculation.
-
-    # append with the expected VOLS from the simulations
-    # availdf.loc[:, 'vols_mean'] = sim_vols.drop(['player', 'team', 'pos', 'g'], axis=1).mean(axis=1)
-    # use quantiles instead of mean
-
-    # define confidence intervals
+    # define confidence intervals for value
     values_cis = 0.5*np.array([1, 1+ci, 1-ci])
     values_quantiles = sim_value.quantile(values_cis, axis=1)
-    medians = values_quantiles.loc[values_cis[0]]
+    medians, highs, lows = (values_quantiles.loc[ci] for ci in values_cis)
     availdf['value'] = medians
-    # availdf.loc[:, 'vols'] = medians
-    availdf.loc[:, 'err_high'] = values_quantiles.loc[values_cis[1]] - medians
-    availdf.loc[:, 'err_low'] = medians - values_quantiles.loc[values_cis[2]]
+    availdf.loc[:, 'err_high'] = highs - medians
+    availdf.loc[:, 'err_low'] = medians - lows
+
+    # sort by index so the next operation has O(1) lookup
+    sim_value.sort_index(inplace=True)
+
+    # Do the exact same thing with auction values
+    sim_auction = None
+    auction_cache_name = 'sim_auction_cache.csv'
+    if path.isfile(auction_cache_name):
+        auction_df = pd.read_csv(auction_cache_name, index_col=['player', 'team', 'pos'])
+        # Is the games column still in here?
+        if len(auction_df.columns) >= n_sims:
+            logging.info('Loading simulated auction from cache')
+            sim_auction = auction_df
+    if sim_auction is None:
+        logging.info('Calculating auction from simulations')
+        # initialize the dataframe
+        sim_auction = sim_value.copy()
+        sim_auction[:] = 0
+        for col in progressbar(sim_auction.columns):
+            if 'Unnamed' in col:
+                # there's some extraneous data that is carried along; drop these columns
+                logging.warning(f'There is a strange column in the simulation values: {col}')
+                continue
+            sim_auction.loc[:, col] = get_auction_values(sim_value, col, n_teams, n_roster_per_league, cap=args.auction_cap, min_bid=1)
+            # sim_value.loc[:, col] = get_player_values(sim_ppg, sim_games, n_roster_per_league, value_key=col)
+        sim_auction.to_csv(auction_cache_name)
+
+    # define confidence intervals for value
+    # values_cis = 0.5*np.array([1, 1+ci, 1-ci])
+    auction_quantiles = sim_auction.quantile(values_cis, axis=1)
+    medians, highs, lows = (auction_quantiles.loc[ci] for ci in values_cis)
+    availdf['auction'] = medians
+    # availdf.loc[:, 'auction_high'] = highs
+    availdf['auction_high'] = highs
+    availdf['auction_low'] = lows
 
     # Everything added for the variance should happen before this point
 
@@ -2111,113 +2193,15 @@ def main():
     ## now label remaining players as waiver wire material
     availdf.loc[availdf.tier.isnull(), 'tier'] = 'FA'
 
-    # print(availdf[availdf.tier == 'BU'])
-
-    # ## find a baseline based on supply/demand by positions
-    # # http://www.rotoworld.com/articles/nfl/41100/71/draft-analysis
-    # ## we will just use average injury by position, instead of accounting for dropoff by rank
-    # # not dependent on bench size
-    
-    # total_bench_positions = n_roster_per_league['BENCH']
-    # total_start_positions = len(availdf[availdf.tier.notnull()])
-    # # print('total start/bench/total positions: {} / {} / {}'.format(total_start_positions, total_bench_positions,
-    # #                                                                total_start_positions + total_bench_positions))
-    # prob_play = {pos:(bye_factor * pos_injury_factor[pos] if pos not in ['K', 'DST'] else 1.0) \
-    #              for pos in main_positions}
-    # # this is the benchmark for each position to use for the VBSD baseline
-    # rank_benchmark = {pos:int(np.ceil(
-    #     len(availdf[(availdf.tier.notnull()) & (availdf.pos == pos)])/prob_play[pos]
-    # )) for pos in main_positions}
-    # sum_rank_benchmark = sum((val for _,val in rank_benchmark.items()))
-    
     for pos in main_positions:
         posdf = availdf[(availdf.index.get_level_values('pos') == pos)].sort_values('value', ascending=False)
         for idx in range(posdf.shape[0]):
             label = posdf.index[idx]
             availdf.loc[label, 'rank'] = '{}{}'.format(pos, idx+1)
 
-    # for pos in main_positions:
-    #     posdf = availdf[(availdf.pos == pos)].sort_values('vols', ascending=False)
-    #     pos_required = len(posdf[posdf.tier.notnull()]) # number of man-games needed in this position # need this to include flex
-    #     pos_prob_play = prob_play[pos]
-    #     pos_rank_benchmark = rank_benchmark[pos]
-    #     logging.debug('benchmark considered for {}: {}'.format(pos, pos_rank_benchmark))
-    #     pos_benchmark = posdf.head(pos_rank_benchmark)['vols'].min()
-    #     # projections account for bye weeks but not for positional injuries
-    #     availdf.loc[availdf.pos == pos, 'vbsd'] = (availdf['vols'] - pos_benchmark) * pos_injury_factor[pos]
-        
-    #     # now we've given the backups a class, the worst projection for each position is the worst bench value.
-    #     # we will define the value minus this to be the VOLB (value over last backup)
-    #     # this a static calculation, and the dynamically-computed VORP might do better.
-    #     # use VOLS and not absolute projection to account for suspensions
-    #     # the bench proportion should be selected
-    #     bench_rank_benchmark = pos_required + (pos_rank_benchmark - pos_required) * total_bench_positions // (sum_rank_benchmark - total_start_positions)
-    #     # nposbench = bench_rank_benchmark - pos_required
-
-    #     worst_draftable_value = posdf.head(bench_rank_benchmark)['vols'].min()
-    #     # print(worst_draftable_value)
-    #     availdf.loc[availdf.pos == pos, 'volb'] = availdf['vols'] - worst_draftable_value
-
-        # # this factor should represent the fraction of games a player at that position and rank should play, outside of injuries which are already accounted for in the vbsd.
-        # # we'll say players at the baseline have about a 50% chance of starting. it's a pretty arbitrary envelope.
-        # # it is good to be flat at the top and gradually go to zero,
-        # # so with the constraint of 50% at the edge this may not be terrible
-        # # we should really figure out this envelope function w/ simulations, but they need to be more reliable.
-        # # auction_multiplier = lambda x: max(1/(1 + (x/pos_rank_benchmark)**2), 0.0)
-        # # auction_multiplier = lambda x: max(1 - 0.5*(x/pos_required)**2, 0.0)
-        # auction_multiplier = lambda x: max(1/(1 + (x/pos_required)**2), 0.0)
-        # # K and DST are random and have lots of variance, so manually constrain at the minimum bid.
-        # if pos in ['K', 'DST']: auction_multiplier = lambda x: 0
-            
-        # # grab this again because now it has vbsd
-        # posdf = availdf[(availdf.pos == pos)].sort_values('vols', ascending=False)
-        # for idx in range(posdf.shape[0]):
-        #     label = posdf.index[idx]
-        #     # vols = posdf.iloc[idx]['vols']*pos_prob_play
-        #     vbsd = posdf.iloc[idx]['vbsd'] # this was already multiplied by the injury factor
-        #     volb = posdf.iloc[idx]['volb'] * pos_injury_factor[pos]
-        #     availdf.loc[label, 'rank'] = '{}{}'.format(pos, idx+1)
-        # # rank by vols and not raw projections to account for suspended players
-        #     # volb combined with the envelop above gives reasonable results.
-        #     availdf.loc[label, 'auction'] = auction_multiplier(idx)*max(0,np.mean([volb]))
-        #     # availdf.loc[label,'auction'] = auction_multiplier(idx)*max(0,np.mean([vbsd]))
-            
-    # availdf.loc[(availdf.tier.isnull()) & (availdf['volb'] >= 0.), 'tier'] = 'BU'
-    # # there will be some extra spots since the integer division is not exact. fill these with more flex spots.
-    # n_more_backups = total_start_positions + total_bench_positions - availdf.tier.count() # count excludes nans
-    # add_bu_ix = availdf.loc[availdf.tier.isnull()].head(n_more_backups).index
-    # availdf.loc[add_bu_ix, 'tier'] = 'BU'
-
     # TODO: this auction calculation should be done per-simulation, so we can get an accurate variance.
-    cap = args.auction_cap # auction cap per manager
-    minbid = 1
-    league_cap = n_teams * cap
-    # print(league_cap)
-    avail_cap = league_cap - minbid * sum((val for pos, val in n_roster_per_league.items()))
+    # availdf.loc[:, 'auction_base'] = get_auction_values(availdf, 'value', n_teams, n_roster_per_league, cap=args.auction_cap, min_bid=1)
 
-
-
-    auctionable = availdf['tier'] != 'FA'
-    availdf.loc[:, 'auction'] = availdf['value'].clip(lower=0)
-    availdf.loc[~auctionable, 'auction'] = 0
-    # manually de-value kickers and defense because of their matchup-dependence
-    availdf.loc[availdf.index.get_level_values('pos').isin(crap_positions), 'auction'] = 0
-    total_auction_pts = availdf['auction'].sum() # the unscaled amount of value
-    availdf.loc[:, 'auction'] *= avail_cap / total_auction_pts
-
-    if not np.isclose(availdf['auction'].sum(), avail_cap):
-        print(avail_cap)
-        print(availdf['auction'].sum())
-        logging.error('auction totals do not match free cap!')
-
-    availdf.loc[auctionable, 'auction'] += minbid
-
-    if not np.isclose(availdf['auction'].sum(), league_cap):
-        print(avail_cap)
-        print(availdf['auction'].sum())
-        print(league_cap)
-        logging.error('auction totals do not match league cap!')
-    
     # Make an empty dataframe with these reduces columns to store the picked
     # players. This might be better as another level of index in the dataframe,
     # or simply as an additional variable in the dataframe. In the latter case
