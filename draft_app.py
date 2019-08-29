@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import division
-from __future__ import print_function
-# from builtins import input
-# from builtins import range
 import sys
 from os import path
 import argparse
@@ -393,6 +389,24 @@ def get_auction_values(value_data, value_key,
 
     return auction_values['auction']
 
+def get_player_index(data, name, hide_stats=None):
+    """
+    returns the index (player, team, pos) of a player given their name and prompts if there are redundancies
+    """
+    hide_stats = hide_stats or []
+    criterion = data.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(name))
+    filtered = data[criterion]
+    if filtered.empty:
+        logging.error('Could not find available player with name %s.', name)
+        return
+    if len(filtered) > 1:
+        logging.info('Found multiple players:')
+        print(filtered.drop(hide_stats, axis=1))
+        filtered = prompt_for_unique(filtered)
+        if filtered is None:
+            return
+    assert(len(filtered) == 1), 'Should only have one player filtered at this point.'
+    return filtered.index[0]
         
 def load_player_list(outname):
     """loads the available and picked player data from the label \"outname\""""
@@ -1253,19 +1267,7 @@ class MainPrompt(Cmd):
         """
         index = None
         all_players = pd.concat([self.ap, self.pp], sort=False)
-        criterion = all_players.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args))
-        filtered = all_players[criterion]
-        if filtered.empty:
-            print('Could not find available player with name {}.'.format(args))
-            return
-        if len(filtered) > 1:
-            print('Found multiple players:')
-            print(filtered.drop(self.hide_stats, axis=1))
-            filtered = prompt_for_unique(filtered)
-            if filtered is None:
-                return
-        assert(len(filtered) == 1), 'Should only have one player filtered at this point.'
-        index = filtered.index[0]
+        index = get_player_index(all_players, args)
         find_handcuff(index, self.ap, self.pp)
     def complete_handcuff(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
@@ -1311,19 +1313,7 @@ class MainPrompt(Cmd):
     def do_info(self, args):
         """print full data and news about player"""
         # TODO: fix this for updated indexing
-        criterion = self.ap.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args))
-        filtered = self.ap[criterion]
-        if len(filtered) <= 0:
-            print('Could not find available player with name {}.'.format(args))
-            return
-        if len(filtered) > 1:
-            print('Found multiple players:')
-            print(filtered.drop(self.hide_stats, axis=1))
-            filtered = prompt_for_unique(filtered)
-            if filtered is None:
-                return
-        assert(len(filtered) == 1)
-        player, team, pos = filtered.index[0]
+        player, team, pos = get_player_index(self.ap, args)
         pl = filtered.iloc[0]
         print()
         print(f'{player} ({pos}) - {team}:')
@@ -1417,6 +1407,47 @@ class MainPrompt(Cmd):
             except ValueError:
                 print('`lspos` requires an integer second argument.')
         print_top_position(self.ap, pos, ntop, self._sort_key, self._sort_asc, self.hide_stats)
+
+    def do_move(self, args):
+        """
+        Move a player to another team.
+        usage: move <player> <manager name>
+        """
+        line_split = args.split(' ')
+        if len(line_split) != 2:
+            logging.error('usage: move <player> <manager name>')
+            logging.info('moves the picked player to the given manager\'s team.')
+            return
+        player_name, manager_name = line_split
+        target_manager = get_close_matches(manager_name, self.manager_names.values(), n=1)
+        if not target_manager:
+            logging.error('No manager matches %s', manager_name)
+            return
+        target_manager = target_manager[0]
+        valid_managers = self.manager_names.values()
+        if target_manager not in valid_managers:
+            logging.error(f'Manager must be one of {valid_managers}')
+            return
+        player_index = get_player_index(self.pp, player_name)
+        manager_index = list(self.manager_names)[list(self.manager_names.values()).index(manager_name)]
+        self.pp.loc[player_index, 'manager'] = manager_index
+
+    def complete_move(self, text, line, begidk, endidx):
+        """
+        implements completion on picked players and manager names.
+        """
+        # begidx and endidx are supposed to be useful when the completion
+        # depends on the position, but they don't appear to be defined.
+        line_words = line.split(' ')[1:]
+        completions = []
+        if len(line_words) == 1:
+            picked_names = self.pp.index.get_level_values('player').map(simplify_name)
+            completions = [name for name in picked_names
+                           if name.startswith(text)]
+        elif len(line_words) == 2:
+            completions = [name for name in self.manager_names.values()
+                           if simplify_name(name).startswith(text.lower())]
+        return completions
 
     def do_name(self, args):
         """
@@ -1521,20 +1552,7 @@ class MainPrompt(Cmd):
         args = ' '.join(argl) # remaining args after possibly popping off price
 
         if index is None:
-            criterion = self.ap.index.get_level_values('player').map(simplify_name).str.contains(simplify_name(args)) \
-                if not self.ap.empty else None
-            filtered = self.ap[criterion] if not self.ap.empty else self.ap
-            if len(filtered) <= 0:
-                logging.error('Could not find available player with name {}.'.format(args))
-                return
-            if len(filtered) > 1:
-                print('Found multiple players:')
-                print(filtered.drop(self.hide_stats, axis=1))
-                filtered = prompt_for_unique(filtered)
-                if filtered is None:
-                    return
-            assert(len(filtered) == 1)
-            index = filtered.index[0]
+            index = get_player_index(self.ap, args)
         try:
             pickno = self.i_manager_turn + 1 if self.draft_mode else None
             pop_from_player_list(index, self.ap, self.pp, manager=manager, pickno=pickno, price=price)
