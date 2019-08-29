@@ -1366,6 +1366,7 @@ class MainPrompt(Cmd):
                 logging.error('There is unused data in the loaded state:')
                 print(save_data)
         self._set_prompt()
+    ## TODO: add completion for loads based on files matching '*.state.p'
 
     def do_ls(self, args):
         """
@@ -1408,7 +1409,7 @@ class MainPrompt(Cmd):
                 print('`lspos` requires an integer second argument.')
         print_top_position(self.ap, pos, ntop, self._sort_key, self._sort_asc, self.hide_stats)
 
-    def do_move(self, args):
+    def do_mv(self, args):
         """
         Move a player to another team.
         usage: move <player> <manager name>
@@ -1432,7 +1433,7 @@ class MainPrompt(Cmd):
         manager_index = list(self.manager_names)[list(self.manager_names.values()).index(manager_name)]
         self.pp.loc[player_index, 'manager'] = manager_index
 
-    def complete_move(self, text, line, begidk, endidx):
+    def complete_mv(self, text, line, begidk, endidx):
         """
         implements completion on picked players and manager names.
         """
@@ -1550,7 +1551,7 @@ class MainPrompt(Cmd):
             print('Must be in draft mode to set an automatic strategy.')
 
         args = ' '.join(argl) # remaining args after possibly popping off price
-
+        # TODO: assign a player to a manager in auction
         if index is None:
             index = get_player_index(self.ap, args)
         try:
@@ -1566,13 +1567,13 @@ class MainPrompt(Cmd):
 
     def complete_pick(self, text, line, begidk, endidx):
         """implements auto-complete for player names"""
-        # avail_names = self.ap['player']
         avail_names = self.ap.index.get_level_values('player')
         # TODO: make it look a bit prettier by allowing spaces instead of underscores.
         # see: https://stackoverflow.com/questions/4001708/change-how-python-cmd-module-handles-autocompletion
         # clean up the list a bit, removing ' characters and replacing spaces with underscores
         mod_avail_names = [simplify_name(name)
                            for name in avail_names]
+        # TODO: allow another argument for manager names and complete based on available
         if text:
             return [name for name in mod_avail_names
                     if name.startswith(text.lower())]
