@@ -1312,9 +1312,20 @@ class MainPrompt(Cmd):
 
     def do_info(self, args):
         """print full data and news about player"""
-        # TODO: fix this for updated indexing
-        player, team, pos = get_player_index(self.ap, args)
-        pl = filtered.iloc[0]
+        # This only checks
+        player_index = get_player_index(self.ap, args)
+        pl = None
+        if player_index is not None:
+            pl = self.ap.loc[player_index]
+        else:
+            logging.info('No players found in available pool. Checking picked.')
+            player_index = get_player_index(self.pp, args)
+            if player_index is not None:
+                pl = self.pp.loc[player_index]
+        if pl is None:
+            logging.info('No players found in either pool.')
+            return
+        player, team, pos = player_index
         print()
         print(f'{player} ({pos}) - {team}:')
         for data in pl.items():
