@@ -52,26 +52,27 @@ def get_fantasy_df_pfr(year):
     # drop some fantasy-related data: we can compute these ourselves based on our rulesets
     # also drop some redundant data to save space (i.e. yards per rush attempt)
     df = tables[0].drop(columns=['Y/A', 'Y/R', 'FantPt', 'PPR', 'DKPt', 'FDPt', 'VBD', 'PosRank', 'OvRank'])
-    rename_dict = {'Player':'name',
-                   # The player name field used to be 'Unnamed: 1'
-                   'Tm':'team',
-                   'FantPos':'pos',
-                   'Age':'age',
-                   'G':'games_played',
-                   'GS':'games_started',
-                   'Cmp':'passing_cmp',
-                   'Att':'passing_att',
-                   'Yds':'passing_yds',
-                   'TD':'passing_tds',
-                   'Int':'passing_int',
-                   '2PM':'twoptm', # general rushing / receiving
-                   '2PP':'passing_twoptm',
-                   'Att.1':'rushing_att',
-                   'Yds.1':'rushing_yds',
-                   'TD.1':'rushing_tds',
-                   'Rec':'receiving_rec',
-                   'Yds.2':'receiving_yds',
-                   'TD.2':'receiving_tds'
+    rename_dict = {
+        'Player':'name',
+        # The player name field used to be 'Unnamed: 1'
+        'Tm':'team',
+        'FantPos':'pos',
+        'Age':'age',
+        'G':'games_played',
+        'GS':'games_started',
+        'Cmp':'passing_cmp',
+        'Att':'passing_att',
+        'Yds':'passing_yds',
+        'TD':'passing_tds',
+        'Int':'passing_int',
+        '2PM':'twoptm', # general rushing / receiving
+        '2PP':'passing_twoptm',
+        'Att.1':'rushing_att',
+        'Yds.1':'rushing_yds',
+        'TD.1':'rushing_tds',
+        'Rec':'receiving_rec',
+        'Yds.2':'receiving_yds',
+        'TD.2':'receiving_tds'
     }
     if 'Tgt' in df:
         # targets were not recorded before 1992
@@ -109,17 +110,18 @@ def get_fantasy_df_pfr(year):
 def main():
     # changes the default logger
     logging.getLogger().setLevel(logging.DEBUG)
-    
-    if not os.path.isdir('yearly_stats'):
+
+    nflstats_dir = os.getenv('NFLSTATS_DIR') or '.'
+    if not os.path.isdir(f'{nflstats_dir}/yearly_stats'):
         logging.info('creating directory yearly_stats')
-        os.mkdir('yearly_stats')
+        os.mkdir(f'{nflstats_dir}/yearly_stats')
 
     # 1978 marks the beginning of the 16-game regular season
     first_year = int(argv[1]) if len(argv) > 1 else 1978
     logging.info('scanning back to {}'.format(first_year))
         
     for year in range(2018,first_year-1,-1):
-        fantCsvName = 'yearly_stats/fantasy_{}.csv'.format(year)
+        fantCsvName = f'{nflstats_dir}/yearly_stats/fantasy_{year}.csv'
         if not os.path.exists(fantCsvName):
             logging.info('scraping for {} season'.format(year))
             df = get_fantasy_df_pfr(year)
