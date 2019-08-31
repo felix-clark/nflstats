@@ -2,5 +2,8 @@
 *.pyc
 *.png
 *.csv
+*.txt
+*.p
 draft_board.html
+*.egg-info/
 nflscrapR-data/
