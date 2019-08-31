@@ -12,7 +12,7 @@ def main():
     if not os.path.isdir('data/draft'):
         os.mkdir('data/draft')
     
-    years = 1992,2018+1 # 1992 is first year that targets were recorded
+    years = 1992,2019+1 # 1992 is first year that targets were recorded
     for year in range(*years):
         logging.info('scraping for year {}'.format(year))
         url = 'https://www.pro-football-reference.com/years/{year}/draft.htm'.format(year=year)

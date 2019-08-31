@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import division
 import logging
 import os.path
 import numpy as np
