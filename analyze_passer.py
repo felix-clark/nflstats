@@ -16,7 +16,7 @@ def playerFilename( pname ):
     return pname.lower().replace(' ', '_')
 
 # this will create a data file with summary data for all positions
-def generatePlayerDataFile( player_name='tom brady', years=range(2009, 2017) ):
+def generatePlayerDataFile( player_name='tom brady', years=range(2009, 2019) ):
 
     poss_players = [p for p in nflgame.find( player_name ) if p.position == 'QB']
     if not poss_players:
@@ -78,7 +78,9 @@ sns.set()
 # can edit 'vars' to only show some stats
 plot_vars = ['week', 'fantasy_points',
              # 'pass_attempts',
-             'completions', 'pass_yards', 'pass_td', 'interceptions', 'passer_rating']
+             'completions', 'pass_yards', 'pass_td', 'interceptions',
+             'passer_rating'
+]
 g = sns.pairplot(data=df, hue='year', vars=plot_vars)
 plt.show()
 g.savefig( playerFilename( player_name ) + '.png')
