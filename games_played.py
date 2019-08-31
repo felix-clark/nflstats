@@ -82,7 +82,8 @@ if __name__ == '__main__':
     log.info('rookie: alpha = {}, beta = {}, LL per dof = {}'.format(ark, brk, llpdf))
     log.info('covariance:\n' + str(cov))
     _,(ainc,binc),cov,llpdf = dist_fit.to_beta_binomial( maxgames, data_gp )
-    log.info('all: alpha = {}, beta = {}, LL per dof = {}'.format(ainc, binc, llpdf))
+    log.info(f'all: alpha = {ainc}, beta = {binc}, LL per dof = {llpdf}')
+    log.info(f'mean: {ainc/(ainc+binc)}')
     log.info('covariance:\n' + str(cov))
     
     sns.set()

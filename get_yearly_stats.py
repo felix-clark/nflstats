@@ -52,7 +52,8 @@ def get_fantasy_df_pfr(year):
     # drop some fantasy-related data: we can compute these ourselves based on our rulesets
     # also drop some redundant data to save space (i.e. yards per rush attempt)
     df = tables[0].drop(columns=['Y/A', 'Y/R', 'FantPt', 'PPR', 'DKPt', 'FDPt', 'VBD', 'PosRank', 'OvRank'])
-    rename_dict = {'Unnamed: 1':'name',
+    rename_dict = {'Player':'name',
+                   # The player name field used to be 'Unnamed: 1'
                    'Tm':'team',
                    'FantPos':'pos',
                    'Age':'age',
@@ -97,14 +98,15 @@ def get_fantasy_df_pfr(year):
         df['receiving_tgt'].loc[df['receiving_tgt'].isna()] = 0
     # drop the "rank" column
     df = df.drop(columns='Rk')
+    # Drop rows that are column labels
+    df = df.loc[df['name'] != 'Player']
     # re-index to rank based on our list
     df.reset_index(drop=True, inplace=True)
     # df['year'] = year # we can do this when we combine
     return df
 
 
-
-if __name__ == '__main__':
+def main():
     # changes the default logger
     logging.getLogger().setLevel(logging.DEBUG)
     
@@ -116,7 +118,7 @@ if __name__ == '__main__':
     first_year = int(argv[1]) if len(argv) > 1 else 1978
     logging.info('scanning back to {}'.format(first_year))
         
-    for year in range(2017,first_year-1,-1):
+    for year in range(2018,first_year-1,-1):
         fantCsvName = 'yearly_stats/fantasy_{}.csv'.format(year)
         if not os.path.exists(fantCsvName):
             logging.info('scraping for {} season'.format(year))
@@ -133,3 +135,6 @@ if __name__ == '__main__':
     # we can also get more detailed stats
     #     qbs = get_passing_df_pfr(year)
     #     qbs.to_csv('yearly_stats/passing_{}.csv'.format(year))
+
+if __name__ == '__main__':
+    main()
