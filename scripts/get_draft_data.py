@@ -5,24 +5,26 @@ import pandas as pd
 import logging
 import os
 
+NFLSTATS_DIR = os.getenv('NFLSTATS_DIR') or '.'
+
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
-    if not os.path.isdir('data'):
-        os.mkdir('data')
-    if not os.path.isdir('data/draft'):
-        os.mkdir('data/draft')
+    if not os.path.isdir(f'{NFLSTATS_DIR}/data'):
+        os.mkdir(f'{NFLSTATS_DIR}/data')
+    if not os.path.isdir(f'{NFLSTATS_DIR}/data/draft'):
+        os.mkdir(f'{NFLSTATS_DIR}/data/draft')
     
     years = 1992,2019+1 # 1992 is first year that targets were recorded
     for year in range(*years):
-        logging.info('scraping for year {}'.format(year))
-        url = 'https://www.pro-football-reference.com/years/{year}/draft.htm'.format(year=year)
+        logging.info('scraping for year %s', year)
+        url = f'https://www.pro-football-reference.com/years/{year}/draft.htm'
         page = urlopen(url)
         soup = BeautifulSoup(page, 'lxml')
         # select() instead of find() returns a list
         table_rows = soup.select('#drafts tr')
         pd = get_players(table_rows, ignore_cols=['career_av', 'draft_av', 'college_id', 'college_link'])
         pd['year'] = year
-        fout = 'data/draft/class_{year}.csv'.format(year=year)
+        fout = f'{NFLSTATS_DIR}/data/draft/class_{year}.csv'
         pd.to_csv(fout, index=False)
 
 def get_players(table_rows, ignore_cols=None):

@@ -7,7 +7,8 @@ import pandas as pd
 # import nflgame
 
 # from get_player_stats import get_player_stats, get_fantasy_player_dict
-from get_player_stats import *
+from nflstats.get_player_stats import *
+import nflstats.get_player_stats
 
 # list of the positions we care about in fantasy
 off_pos = ['QB', 'RB', 'WR', 'TE', 'K']
@@ -29,7 +30,8 @@ def main():
             pfr_id = argv[1]
             get_player_stats(pfr_id)
     else:
-        logging.info('usage: {} <position or id>'.format(argv[0].split('/')[-1]))
+        thisfile = os.path.basename(argv[0])
+        logging.info(f'usage: {thisfile} <position or id>')
 
     # the rest of this code relied on nflgame, which we don't really need now that we've got weekly scraping
         

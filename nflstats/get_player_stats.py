@@ -8,30 +8,32 @@ import os
 from retrying import retry
 from math import sqrt
 
+# get location of repo
+NFLSTATS_DIR = os.getenv('NFLSTATS_DIR') or '.'
 
 def _make_dirs():
-    if not os.path.isdir('data'):
+    if not os.path.isdir(f'{NFLSTATS_DIR}/data'):
         logging.info('creating data/')
-        os.mkdir('data')
-    if not os.path.isdir('data/players'):
+        os.mkdir(f'{NFLSTATS_DIR}/data')
+    if not os.path.isdir(f'{NFLSTATS_DIR}/data/players'):
         logging.info('creating data/players/')
-        os.mkdir('data/players')
+        os.mkdir(f'{NFLSTATS_DIR}/data/players')
 
 def get_player_stats(pfrid):
     """
     get the dataframe of the player's weekly stats
     pfrid: pro-football-reference id (e.g. GurlTo01)
     """
-    f = 'data/players/{id}.csv'.format(id=pfrid)
+    f = f'{nflstats_dir}/data/players/{pfrid}.csv'
     df = None
     if os.path.isfile(f):
         try:
             df = pd.read_csv(f)
         except Exception as e:
-            logging.error('could not read {}: {}'.format(f, e))
+            logging.error('could not read %s: %s', f, e)
             os.remove(f)
     if df is None:
-        logging.info('making cache for {}'.format(pfrid))
+        logging.info('making cache for %s', pfrid)
         df = _make_cache(pfrid)
         
     return df
@@ -45,7 +47,7 @@ def _make_cache(pfrid):
 
     # get the years
     for year in range(lastyear, firstyear-1, -1):
-        draftdf = pd.read_csv('data/draft/class_{}.csv'.format(year))
+        draftdf = pd.read_csv(f'{NFLSTATS_DIR}/data/draft/class_{year}.csv')
         pl = draftdf[draftdf['pfr_id'] == pfrid]
         if len(pl) > 0:
             assert(len(pl) == 1)
@@ -61,7 +63,7 @@ def _make_cache(pfrid):
             years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max'])+1)
     
     if years is None:
-        logging.error('Could not find years for {}'.format(pfrid))
+        logging.error(f'Could not find years for {pfrid}')
         exit(1)
         
     # don't save some useless or redundant data
@@ -76,7 +78,7 @@ def _make_cache(pfrid):
     def _scrape(pfrid, years):
         df = pd.DataFrame()
         for year in years:
-            url = 'https://www.pro-football-reference.com/players/{}/{}/gamelog/{year}/'.format(pfrid[0], pfrid, year=year)
+            url = f'https://www.pro-football-reference.com/players/{pfrid[0]}/{pfrid}/gamelog/{year}/'
             html = urlopen(url)
             soup = BeautifulSoup(html, 'lxml')
             table_rows = soup.select('#stats tr')
@@ -88,7 +90,7 @@ def _make_cache(pfrid):
 
     df = _scrape(pfrid, years)
         
-    f = 'data/players/{id}.csv'.format(id=pfrid)
+    f = f'{NFLSTATS_DIR}/data/players/{pfrid}.csv'
     df.to_csv(f, index=False)
     del df
     df = pd.read_csv(f)
@@ -159,7 +161,7 @@ def _undrafted_players():
 # assuming all the draft data is there, make a file that lists names, ids, positions, and years active
 def get_fantasy_player_dict(startyear=1992):
     lastyear = 2018
-    fname = 'data/players/index.csv'
+    fname = f'{NFLSTATS_DIR}/data/players/index.csv'
     if os.path.isfile(fname):
         return pd.read_csv(fname)
     logging.info('generating index file of relevant players')
@@ -171,7 +173,7 @@ def get_fantasy_player_dict(startyear=1992):
     # keepcols = ['player', 'pfr_id', 'pos', 'year', 'year_max']
     keepcols = df.columns
     for year in range(startyear, lastyear+1):
-        draftdf = pd.read_csv('data/draft/class_{}.csv'.format(year))
+        draftdf = pd.read_csv(f'{NFLSTATS_DIR}/data/draft/class_{year}.csv')
         draftdf = draftdf[draftdf['pos'].isin(positions)]
         years_in_league = draftdf['year_max']+1 - draftdf['year']
         # filter out players who have been around but usually just as backups
@@ -190,6 +192,6 @@ def get_fantasy_player_dict(startyear=1992):
     
 def get_pos_players(pos, startyear=1992):
     # logging.info('in get_pos_players')
-    plls = pd.read_csv('data/players/index.csv')
+    plls = pd.read_csv(f'{NFLSTATS_DIR}/data/players/index.csv')
     return plls[plls.pos == pos]
 
