@@ -18,6 +18,7 @@ tk = "*"
 pycairo = "*"
 pygobject = "*"
 retrying = "*"
+nflstats = {editable = true,path = "."}
 
 [requires]
 python_version = "3.7"

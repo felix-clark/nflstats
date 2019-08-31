@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "d91c9da39e4da24aa36db075c1fcabf1009753570f4f3b3193b8d1fdc1c237c9"
+            "sha256": "0640c455b21205e5fb79d182fa2e8329a15e90e6daadf5021b2b74e82552d213"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -147,6 +147,10 @@
                 "sha256:ec6bd0a6a58df3628ff269978f4a4b924a0d371ad8ce1f8e2b635b99e482877a"
             ],
             "version": "==3.1.1"
+        },
+        "nflstats": {
+            "editable": true,
+            "path": "."
         },
         "numpy": {
             "hashes": [
