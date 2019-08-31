@@ -24,7 +24,7 @@ def get_player_stats(pfrid):
     get the dataframe of the player's weekly stats
     pfrid: pro-football-reference id (e.g. GurlTo01)
     """
-    f = f'{nflstats_dir}/data/players/{pfrid}.csv'
+    f = f'{NFLSTATS_DIR}/data/players/{pfrid}.csv'
     df = None
     if os.path.isfile(f):
         try:
