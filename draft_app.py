@@ -370,7 +370,8 @@ def get_auction_values(value_data, value_key,
         if pos_baseline < 0:
             auction_values.loc[pos_idx, value_key] -= pos_baseline
         # apply an envelope assuming you get half value from bubble players
-        auction_values.loc[pos_idx, value_key] /= 1. + (auction_values.loc[pos_idx, value_key].rank(ascending=False) / n_starter_pos[pos])**2
+        # Instead, we use more variance in the games available.
+        # auction_values.loc[pos_idx, value_key] /= 1. + (auction_values.loc[pos_idx, value_key].rank(ascending=False) / n_starter_pos[pos])**2
 
     assert(auction_values.loc[auction_values['auctionable'], value_key] >= 0).all(), 'values should be greater than zero now'
 
@@ -664,6 +665,11 @@ def simulate_seasons(df, n, **kwargs):
     max_games = df['g'].to_numpy(dtype=int)
     # the "p" in the binomial drawing
     frac_games = np.vectorize(lambda pos: pos_games_available[pos] / 16)(df.index.get_level_values('pos'))
+    # compute the alpha and beta parameters for the beta-binomial distribution
+    # Assume that alpha and beta are on the order of 1, which is close to the value observed for most positions (1-2)
+    alphas = frac_games * 1.5
+    # we need an epsilon so that beta > 0
+    betas = (1-frac_games) * 1.5 + 1e-8
 
     logging.info('Simulating %s seasons...', n)
     sim_games = df[[]].copy()
@@ -671,7 +677,9 @@ def simulate_seasons(df, n, **kwargs):
     # TODO: instead of looping, can we use the size parameter in scipy?
     # This would generate a 2D array, which we'd have to put into columns
     for i_sim in range(n):
-        games = st.binom.rvs(max_games, frac_games)
+        # the fraction is drawn from a beta distribution
+        ps = st.beta.rvs(alphas, betas)
+        games = st.binom.rvs(max_games, ps)
         points = st.skewnorm.rvs(skews, locs, scales)
         sim_games[str(i_sim)] = games
         # the imported projections assume that players will not miss time, so
@@ -1917,19 +1925,19 @@ def main():
     
     ## use argument parser
     parser = argparse.ArgumentParser(description='Script to aid in real-time fantasy draft')
-    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc', 'ram'], default='ram',
+    parser.add_argument('--ruleset', type=str, choices=['phys', 'dude', 'bro', 'nycfc', 'ram'], default='dude',
                         help='which ruleset to use of the leagues I am in')
-    parser.add_argument('--n-teams', type=int, default=14, help='number of teams in the league')
+    parser.add_argument('--n-teams', type=int, default=8, help='number of teams in the league')
     parser.add_argument('--n-qb', type=int, default=1, help='number of starting QBs per team')
     parser.add_argument('--n-rb', type=int, default=2, help='number of starting RBs per team')
-    parser.add_argument('--n-wr', type=int, default=2, help='number of starting WRs per team')
+    parser.add_argument('--n-wr', type=int, default=3, help='number of starting WRs per team')
     parser.add_argument('--n-te', type=int, default=1, help='number of starting TEs per team')
-    parser.add_argument('--n-flex', type=int, default=1, help='number of FLEX spots per team')
+    parser.add_argument('--n-flex', type=int, default=2, help='number of FLEX spots per team')
     parser.add_argument('--n-dst', type=int, default=1, help='number of D/ST spots per team')
     parser.add_argument('--n-k', type=int, default=1, help='number of starting Ks per team')
-    parser.add_argument('--n-bench', type=int, default=6, help='number of bench spots per team')
+    parser.add_argument('--n-bench', type=int, default=4, help='number of bench spots per team')
     parser.add_argument('--ci', type=float, default=0.8, help='confidence interval to assume for high/low')
-    parser.add_argument('--simulations', type=int, default=50, help='number of simulations to run')
+    parser.add_argument('--simulations', type=int, default=1000, help='number of simulations to run')
     parser.add_argument('--auction-cap', type=int, default=200, help='auction budget per manager')
 
     args = parser.parse_args()
