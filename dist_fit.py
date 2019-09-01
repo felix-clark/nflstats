@@ -1,8 +1,7 @@
 import logging
 import numpy as np
 from numpy import sqrt, log, exp, pi
-from scipy.special import gammaln, betaln, beta, comb, digamma, gamma
-from scipy.misc import factorial
+from scipy.special import gammaln, betaln, beta, comb, digamma, gamma, factorial
 import scipy.optimize as opt
 import scipy.stats as st
 import matplotlib.pyplot as plt
@@ -299,7 +298,7 @@ def to_beta_binomial( ks, ns ):
     ns may be variable
     """
     if np.shape(ns) == ():
-        ns = np.full(shape=data.shape, fill_value=ns, dtype=float)
+        ns = np.full(shape=ks.shape, fill_value=ns, dtype=float)
     for x,n in zip(ks,ns):
         if x < 0 or x > n:
             logging.warning('data out of domain for beta-binomial')

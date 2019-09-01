@@ -13,18 +13,24 @@ from sys import argv
 from scipy.stats import *
 # from scipy.stats import beta
 
+def get_good_qbs(data):
+    """
+    return a set of fantasy-relevant QBs (approximate)
+    """
+    return data.loc[data['games_started'].astype(int) > 1]
+
 # get a dataframe of the relevant positional players
 def get_pos_df(pos, years, datadir='./yearly_stats/', keepnames=None):
     ls_dfs = []
     for year in years:
-        csvName = '{}/fantasy_{}.csv'.format(datadir,year)
-        df = pd.read_csv(csvName)
+        csvName = f'{datadir}/fantasy_{year}.csv'
+        df = pd.read_csv(csvName, index_col=0)
         df['year'] = year
         valids = df.loc[df['pos'] == pos.upper()]
         if keepnames is not None:
             valids = valids[valids['name'].isin(keepnames)]
         if pos.lower() == 'qb':
-            valids = valids.loc[valids['passing_att'].astype(int) >= 4]
+            valids = get_good_qbs(valids)
         if pos.lower() == 'rb':
             valids = valids.loc[valids['rushing_att'].astype(int) >= 4]
         if pos.lower() in ['wr', 'te']:
@@ -32,7 +38,7 @@ def get_pos_df(pos, years, datadir='./yearly_stats/', keepnames=None):
         if valids.size == 0:
             logging.warning('no {} in {}'.format(pos, year))
         ls_dfs.append(valids)
-    allpos = pd.concat(ls_dfs, ignore_index=True, verify_integrity=True)
+    allpos = pd.concat(ls_dfs, ignore_index=True, verify_integrity=True, sort=False)
     return allpos
 
 def get_pos_list(pos, years, datadir='./yearly_stats/'):
@@ -57,7 +63,7 @@ if __name__ == '__main__':
     posnames = get_pos_list(pos, years)
     years = range(1983, 2018)
     posdf = get_pos_df(pos, years, keepnames=posnames)
-    posdf = posdf.drop(columns=['pos', 'Unnamed: 0'])
+    posdf = posdf.drop(columns=['pos'])
 
     maxgames = 16
     # we only care about games played for this script
@@ -78,23 +84,32 @@ if __name__ == '__main__':
     data_gp = posdf[gp_stat]
     
     
-    _,(ark,brk),cov,llpdf = dist_fit.to_beta_binomial( maxgames, data_gp_rook )
-    log.info('rookie: alpha = {}, beta = {}, LL per dof = {}'.format(ark, brk, llpdf))
-    log.info('covariance:\n' + str(cov))
-    _,(ainc,binc),cov,llpdf = dist_fit.to_beta_binomial( maxgames, data_gp )
+    _,(ark,brk),cov,llpdf = dist_fit.to_beta_binomial( data_gp_rook, maxgames )
+    log.info('rookie: alpha = %s, beta = %s, LL per dof = %s', ark, brk, llpdf)
+    log.info('covariance:\n%s', cov)
+    _,(ainc,binc),cov,llpdf = dist_fit.to_beta_binomial( data_gp, maxgames )
     log.info(f'all: alpha = {ainc}, beta = {binc}, LL per dof = {llpdf}')
     log.info(f'mean: {ainc/(ainc+binc)}')
-    log.info('covariance:\n' + str(cov))
+    log.info('covariance:\n%s', cov)
     
     sns.set()
     xfvals = np.linspace(-0.5, maxgames+0.5, 128)
+    plt_gp = sns.distplot(data_gp_rook, bins=range(0,maxgames+2),
+                          kde=False, norm_hist=True,
+                          hist_kws={'log':False, 'align':'left'})
+    plt.plot(xfvals, dist_fit.beta_binomial(xfvals, maxgames, ark, brk), '--', lw=2, color='blue')
+    # plt.title('rookies')
+    plt_gp.figure.savefig('{}_{}_rookie.png'.format(gp_stat, pos))
+    plt_gp.figure.show()
+
     plt_gp = sns.distplot(data_gp, bins=range(0,maxgames+2),
                           kde=False, norm_hist=True,
                           hist_kws={'log':False, 'align':'left'})
-    plt.plot(xfvals, dist_fit.beta_binomial(xfvals, maxgames, ark, brk), '--', lw=2, color='violet')
-    plt.title('rookies')
+    plt.plot(xfvals, dist_fit.beta_binomial(xfvals, maxgames, ainc, binc), '--', lw=2, color='red')
+    plt.title('rookies and all')
     plt_gp.figure.savefig('{}_{}.png'.format(gp_stat, pos))
     plt_gp.figure.show()
+
     # The bayesian update rule is:
     # alpha -> alpha + (games_played)
     # beta -> beta + (n - games_played)
@@ -125,11 +140,11 @@ if __name__ == '__main__':
     mse_bb_sum = 0.
     mse_delta_sum = 0.
     mse_const_sum = 0.
-    mse_mean_sum = 0.
+    # mse_mean_sum = 0.
     kld_bb_sum = 0.
     kld_const_sum = 0.
     mae_bb_sum = 0.
-    mae_delta_sum = 0.
+    # mae_delta_sum = 0.
     # mae_const_sum = 0. # this one is slow
     
     for pname in posnames:
@@ -138,25 +153,26 @@ if __name__ == '__main__':
         beta0p = 1.0*beta0
         # for QBs there may be no hope, but for WRs a bayes model w/ a slower learn rate seems to do well
         lrp = 0.25
-        gp_mses_bb = bay.bbinom.mse(pdata, maxgames, alpha0p, beta0p, lr=lrp)
-        gp_mses_delta = bay.degen_const.mse(pdata, gp_avg_all)
-        gp_mses_const = bay.gauss_const.mse(pdata, gp_avg_all, gp_var_all)
-        gp_mses_mean = bay.mse_model_mean(pdata, gp_avg_all) # need to figure out how to specify this model precisely 
-        gp_maes_bb = bay.bbinom.mae(pdata, maxgames, alpha0p, beta0p, lr=lrp)
-        gp_maes_delta = bay.degen_const.mae(pdata, gp_avg_all)
-        # gp_maes_const = bay.gauss_const.mae(pdata, gp_avg_all, gp_var_all) # currently very slow
-        gp_kld_const = bay.gauss_const.kld(pdata, gp_avg_all, gp_var_all)
-        gp_kld_bb = bay.bbinom.kld(pdata, maxgames, alpha0p, beta0p, lr=lrp)
+        bbinom_model = bay.beta_binomial_model(maxgames, alpha0p, beta0p, lr=lrp, mem=1.0)
+        const_model = bay.const_gauss_model(gp_avg_all)
+        gauss_model = bay.const_gauss_model(gp_avg_all, gp_var_all)
+        # gp_mses_bb = bay.beta_binomial_model.mse(pdata, maxgames, alpha0p, beta0p, lr=lrp)
+        gp_mses_bb = bbinom_model.mse(pdata)
+        gp_mses_delta = const_model.mse(pdata)
+        gp_mses_const = gauss_model.mse(pdata)
+        gp_maes_bb = bbinom_model.mae(pdata)
+        # gp_maes_delta = const_model.mae(pdata) # this is quite slow with the current naive implementation
+        gp_kld_const = gauss_model.kld(pdata)
+        gp_kld_bb = bbinom_model.kld(pdata)
 
         # log.info('{} {} {}'.format(pdata.size, gp_mses_bb.size, gp_mses_const.size))
         mse_total_n += pdata.size
         mse_bb_sum += gp_mses_bb.sum()
         mse_const_sum += gp_mses_const.sum()
         mse_delta_sum += gp_mses_delta.sum()
-        mse_mean_sum += gp_mses_mean.sum()
         mae_bb_sum += gp_maes_bb.sum()
         # mae_const_sum += gp_maes_const.sum()
-        mae_delta_sum += gp_maes_delta.sum()
+        # mae_delta_sum += gp_maes_delta.sum()
         kld_bb_sum += gp_kld_bb.sum()
         kld_const_sum += gp_kld_const.sum()
         # delta KLD is infinite, and we need to specify variance in the "mean" model, or define it as a moving delta
@@ -164,13 +180,13 @@ if __name__ == '__main__':
     # right now bayes does worse than just using the average
     log.info('RMSE for const gauss model: {}'.format(np.sqrt(mse_const_sum/mse_total_n)))
     log.info('RMSE for const delta model: {}'.format(np.sqrt(mse_delta_sum/mse_total_n)))
-    log.info('RMSE for mean model: {}'.format(np.sqrt(mse_mean_sum/mse_total_n)))
+    # log.info('RMSE for mean model: {}'.format(np.sqrt(mse_mean_sum/mse_total_n)))
     log.info('RMSE for bayes model: {}'.format(np.sqrt(mse_bb_sum/mse_total_n)))
     # log.info('MAE for const model: {}'.format(np.sqrt(mae_const_sum/mse_total_n)))
-    log.info('MAE for const delta model: {}'.format(np.sqrt(mae_delta_sum/mse_total_n)))
+    # log.info('MAE for const delta model: {}'.format(np.sqrt(mae_delta_sum/mse_total_n)))
     log.info('MAE for bayes model: {}'.format(np.sqrt(mae_bb_sum/mse_total_n)))
     log.info('Kullback-Leibler divergence for const gauss: {}'.format(kld_const_sum/mse_total_n))
     log.info('Kullback-Leibler divergence for bayes: {}'.format(kld_bb_sum/mse_total_n))
     log.info('total player-seasons: {}'.format(mse_total_n))
     
-    # plt.show(block=True)
+    plt.show(block=True)

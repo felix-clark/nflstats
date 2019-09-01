@@ -124,7 +124,7 @@ class beta_binomial_model(bayes_model):
         mses = []
         alphas,betas = self._get_abs(data, weights)
         # domain of summation for EV computation:
-        support = np.arange(0,n+1)
+        support = np.arange(0,self.n+1)
         for d,a,b in zip(data,alphas,betas):
             # beta-binomial isn't in scipy - there is an open ticket; the CDF is difficult to implement
             # it's not so bad to compute manually since the domain is finite
@@ -138,8 +138,8 @@ class beta_binomial_model(bayes_model):
         assert((data >= 0).all() and (data <= self.n).all())
         maes = []
         alphas,betas = self._get_abs(data, weights)
-        support = np.arange(0,n+1)
-        for d,a,b in zip(data,alphas,beta):
+        support = np.arange(0,self.n+1)
+        for d,a,b in zip(data,alphas,betas):
             probs = dist_fit.beta_binomial( support, self.n, a, b )
             maes.append( sum(probs*np.abs(support-d)) )
         return np.array(maes)
@@ -155,12 +155,12 @@ class beta_binomial_model(bayes_model):
         return result
         
     def _get_abs(self, data, weights=None):
-        assert(len(data.shape) == 1)
+        assert(len(data.shape) == 1), 'data must be 1-dimensional'
         ws = np.full(data.shape, self.lr)
         if weights is not None: ws *= weights
         alphas = [self.alpha0]
         betas = [self.beta0]
-        for d,w in zip(data[:-1],weights):
+        for d,w in zip(data[:-1], ws):
             alphas.append(self.mem*alphas[-1] + w*d)
             betas.append(self.mem*betas[-1] + w*(self.n-d))
         return np.array(alphas),np.array(betas)
