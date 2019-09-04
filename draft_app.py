@@ -660,6 +660,7 @@ def simulate_seasons(df, n, **kwargs):
     skews = df['skew'].to_numpy()
     locs = df['loc'].to_numpy()
     scales = df['scale'].to_numpy()
+    assert (scales >= 0).all(), 'scales must be >= 0'
 
     # the "n" in the binomial drawing
     max_games = df['g'].to_numpy(dtype=int)
@@ -1936,7 +1937,7 @@ def main():
     parser.add_argument('--n-dst', type=int, default=1, help='number of D/ST spots per team')
     parser.add_argument('--n-k', type=int, default=1, help='number of starting Ks per team')
     parser.add_argument('--n-bench', type=int, default=4, help='number of bench spots per team')
-    parser.add_argument('--ci', type=float, default=0.8, help='confidence interval to assume for high/low')
+    parser.add_argument('--ci', type=float, default=0.75, help='confidence interval to assume for high/low')
     parser.add_argument('--simulations', type=int, default=1000, help='number of simulations to run')
     parser.add_argument('--auction-cap', type=int, default=200, help='auction budget per manager')
 
