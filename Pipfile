@@ -4,8 +4,13 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+python-language-server = {extras = ["all"],version = "*"}
+pyls-mypy = "*"
+pyls-isort = "*"
+pyls-black = "*"
 
 [packages]
+nflstats = {path = ".",editable = true}
 numpy = "*"
 scipy = "*"
 seaborn = "*"
@@ -18,7 +23,9 @@ tk = "*"
 pycairo = "*"
 pygobject = "*"
 retrying = "*"
-nflstats = {editable = true,path = "."}
 
 [requires]
-python_version = "3.7"
+python_version = "3.8"
+
+[pipenv]
+allow_prereleases = true
