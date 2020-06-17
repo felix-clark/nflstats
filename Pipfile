@@ -23,6 +23,7 @@ tk = "*"
 pycairo = "*"
 pygobject = "*"
 retrying = "*"
+pyarrow = "*"
 
 [requires]
 python_version = "3.8"
