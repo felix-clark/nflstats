@@ -24,6 +24,7 @@ pycairo = "*"
 pygobject = "*"
 retrying = "*"
 pyarrow = "*"
+pyreadr = "*"
 
 [requires]
 python_version = "3.8"
