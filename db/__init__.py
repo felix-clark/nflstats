@@ -58,7 +58,6 @@ def _year_plays(
     """
     Get the plays from a given year subject to a set of filters
     """
-    # TODO: parquet instead of CSV?
     play_file: str = "/".join(
         # [NFLFASTR_DATA_DIR, "data", f"play_by_play_{year}.csv.gz"]
         [NFLFASTR_DATA_DIR, "data", f"play_by_play_{year}.parquet"]
