@@ -53,20 +53,25 @@ def schedule(year: int) -> pd.DataFrame:
 
 
 def _year_plays(
-    year: int, queries: Iterable[Tuple[str, Union[Any, Callable[[Any], bool]]]]
+    year: int,
+    # queries: Iterable[Tuple[str, Union[Any, Callable[[Any], bool]]]]
+    queries: Iterable[Tuple[str, Union[Any, Callable[[pd.Series], pd.Series]]]],
+    columns: Optional[Iterable[str]] = None,
 ) -> pd.DataFrame:
     """
     Get the plays from a given year subject to a set of filters
+    TODO: option to restrict columns loaded
     """
     play_file: str = "/".join(
         # [NFLFASTR_DATA_DIR, "data", f"play_by_play_{year}.csv.gz"]
         [NFLFASTR_DATA_DIR, "data", f"play_by_play_{year}.parquet"]
     )
     # data: pd.DataFrame = pd.read_csv(play_file)
-    data: pd.DataFrame = pd.read_parquet(play_file)
+    data: pd.DataFrame = pd.read_parquet(play_file, columns=columns)
     for key, key_filter in queries:
         if callable(key_filter):
-            data = data.loc[data[key].apply(key_filter)]
+            # data = data.loc[data[key].apply(key_filter)]
+            data = data.loc[key_filter(data[key])]
         else:
             data = data.loc[data[key] == key_filter]
     return data
@@ -74,7 +79,8 @@ def _year_plays(
 
 def plays(
     years: Union[int, Iterable[int]],
-    queries: Iterable[Tuple[str, Union[Any, Callable[[Any], bool]]]],
+    queries: Iterable[Tuple[str, Union[Any, Callable[[pd.Series], pd.Series]]]],
+    columns: Optional[Iterable[str]] = None,
 ) -> pd.DataFrame:
     """
     Get play-by-play. The data can be filtered with (key, value) pairs where `value` is
@@ -83,7 +89,7 @@ def plays(
     """
     data: pd.DataFrame = pd.DataFrame()
     if isinstance(years, Iterable):
-        data = pd.concat([_year_plays(year, queries) for year in years])
+        data = pd.concat([_year_plays(year, queries, columns) for year in years])
     else:
-        data = _year_plays(years, queries)
+        data = _year_plays(years, queries, columns)
     return data.reset_index(drop=True)
