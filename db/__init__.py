@@ -68,6 +68,7 @@ def _year_plays(
     )
     # data: pd.DataFrame = pd.read_csv(play_file)
     data: pd.DataFrame = pd.read_parquet(play_file, columns=columns)
+    data = data.astype({"play_id": "int32"})
     for key, key_filter in queries:
         if callable(key_filter):
             # data = data.loc[data[key].apply(key_filter)]

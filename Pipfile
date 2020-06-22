@@ -25,6 +25,7 @@ pygobject = "*"
 retrying = "*"
 pyarrow = "*"
 pyreadr = "*"
+scikit-learn = "*"
 
 [requires]
 python_version = "3.8"
