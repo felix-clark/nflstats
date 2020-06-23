@@ -2,9 +2,10 @@
 
 from typing import Iterable, Optional
 
+import numpy as np
 import pandas as pd
 from db import plays
-import numpy as np
+from nptyping import NDArray
 from sklearn.ensemble import RandomForestClassifier
 
 
@@ -13,34 +14,66 @@ def rfc(data: pd.DataFrame):
     Test bed for Random Forest classification
     """
     clf = RandomForestClassifier(
+        # The more trees, the fewer infinite logistic loss terms
         n_estimators=100,
-        # consider changing to "entropy"
-        criterion="gini",
+        # n_estimators=20,  # temporarily turn this down for speed
+        # consider changing to "entropy"; this reduces the logistic loss
+        # criterion="gini",
+        criterion="entropy",
         max_features="auto",
-        n_jobs=2,
+        n_jobs=4,
         verbose=2,
         # regularization to prevent overfitting.
-        ccp_alpha=0.0,
+        # This slows down the calculation significantly
+        # and increases the gini impurity, although it prevents infinities in the
+        # entropy loss function.
+        # A smaller value results in smaller loss usually, but increases the chance of infinite loss.
+        # ccp_alpha=0.0,
+        ccp_alpha=5e-4,
     )
-    data['training'] = np.random.uniform(0, 1, len(data)) < 0.8
-    data_train = data.loc[data['training']].drop(columns='training')
-    data_test = data.loc[~data['training']].drop(columns='training')
+    data["training"] = np.random.uniform(0, 1, len(data)) < 0.8
+    data_train = data.loc[data["training"]].drop(columns="training")
+    data_test = data.loc[~data["training"]].drop(columns="training")
     print(data_train)
     print(data_test)
     # TODO: split into test and training
-    y_data_train = data_train["play_type"]
-    X_data_train = data_train.drop(columns=["play_type", "desc"]).to_numpy()
-    fitted = clf.fit(X_data_train, y_data_train)
+    y_data_train: pd.Series = data_train["play_type"]
+    x_data_train: pd.DataFrame = data_train.drop(
+        columns=["play_type", "desc"]
+    ).to_numpy()
+    fitted = clf.fit(x_data_train, y_data_train)
     print(fitted)
 
-    y_data_test = data_test["play_type"]
-    X_data_test = data_test.drop(columns=["play_type", "desc"]).to_numpy()
-    score = clf.score(X_data_test, y_data_test)
-    print(f'score = {score}')
+    y_data_test: pd.Series = data_test["play_type"]
+    x_data_test: pd.DataFrame = data_test.drop(columns=["play_type", "desc"]).to_numpy()
+    # This is the mean accuracy of the most-likely prediction, not the probability or
+    # info-loss score, so it's harsher than ideal.
+    score: float = clf.score(x_data_test, y_data_test)
+    print(f"score = {score}")
+    print(f"feature importance: {clf.feature_importances_}")
     play_types = clf.classes_
-    pred_test_prob = clf.predict_proba(X_data_test)
+    pred_test_prob: NDArray[float] = clf.predict_proba(x_data_test)
+    pred_test_log_prob: NDArray[float] = clf.predict_log_proba(x_data_test)
     print(play_types)
     print(pred_test_prob)
+    # params = clf.get_params()
+    # print(params)
+
+    y_test_indices, y_factor_order = pd.factorize(y_data_test, sort=True)
+    assert (y_factor_order == clf.classes_).all(), "Inconsistent factoring order"
+    loss: float = 0.0
+    for log_prob, i_y in zip(pred_test_log_prob, y_test_indices):
+    # for prob, i_y in zip(pred_test_prob, y_test_indices):
+        loss_term = -log_prob[i_y]
+        if loss_term == np.inf:
+            print(log_prob, i_y)
+
+        # try gini impurity to avoid INF for out-of-sample events
+        # loss_term: float = 1. - prob[i_y]**2
+        loss += loss_term
+    loss /= len(y_test_indices)
+    print(f"loss = {loss}")
+
     return fitted
 
 
@@ -113,7 +146,7 @@ def main():
 
     # touchbacks and missed FGs that are received can have a NaN down. Just drop these
     # by the down for simplicity; a more complete disection would be good in the future.
-    play_data = play_data.loc[~play_data['down'].isnull()]
+    play_data = play_data.loc[~play_data["down"].isnull()]
 
     null_vals_df = play_data[play_data.isnull().any(axis=1)]
     # There are some weird plays, perhaps from missed field goals where the ball is received

@@ -26,6 +26,7 @@ retrying = "*"
 pyarrow = "*"
 pyreadr = "*"
 scikit-learn = "*"
+nptyping = "*"
 
 [requires]
 python_version = "3.8"
