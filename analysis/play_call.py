@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, List, Iterable, Optional
 
 import numpy as np
 import pandas as pd
@@ -9,7 +9,7 @@ from nptyping import NDArray
 from sklearn.ensemble import RandomForestClassifier
 
 
-def rfc_play_type(data: pd.DataFrame):
+def rfc_play_type(data: pd.DataFrame) -> RandomForestClassifier:
     """
     Test bed for Random Forest classification
     """
@@ -17,17 +17,20 @@ def rfc_play_type(data: pd.DataFrame):
         # The more trees, the fewer infinite logistic loss terms
         n_estimators=100,
         # n_estimators=20,  # temporarily turn this down for speed
+        # n_estimators=200,  # temporarily turn this down for speed
         # consider changing to "entropy"; this reduces the logistic loss
         # criterion="gini",
         criterion="entropy",
         max_features="auto",
         n_jobs=4,
-        verbose=2,
+        # verbose=2,
+        verbose=1,
         # regularization to prevent overfitting.
         # This slows down the calculation significantly
         # and increases the gini impurity, although it prevents infinities in the
         # entropy loss function.
-        # A smaller value results in smaller loss usually, but increases the chance of infinite loss.
+        # A smaller value results in smaller loss usually, but increases the chance of
+        # infinite loss.
         # ccp_alpha=0.0,
         ccp_alpha=5e-4,
     )
@@ -85,7 +88,7 @@ def rfc_play_type(data: pd.DataFrame):
     print(f"loss = {loss}")
     print(f"gini = {gini_loss}")
 
-    for idx, test_play in x_data_test.sample(20).iterrows():
+    for idx, test_play in x_data_test.sample(5).iterrows():
         print()
         print(data.loc[idx]["desc"])
         print(test_play)
@@ -107,7 +110,7 @@ def _get_data(columns: Optional[Iterable[str]] = None) -> pd.DataFrame:
     except Exception:
         print("Could not find cache")
     play_data = plays(
-        [2018, 2019], [("play_type", lambda s: ~s.isnull())], columns=columns
+        range(2018, 2019+1), [("play_type", lambda s: ~s.isnull())], columns=columns
     )
     # discard kickoffs; these plays are mandatory. Kickoffs and onside kicks should be
     # handled with a separate model.
@@ -121,6 +124,19 @@ def _get_data(columns: Optional[Iterable[str]] = None) -> pd.DataFrame:
 
 
 def main():
+    training_variables: List[str] = [
+        "quarter_seconds_remaining",  # drop?
+        "half_seconds_remaining",
+        "game_seconds_remaining",
+        # 'qtr', # redundant? Could use this along with quarter_seconds_remaining and drop the other two
+        "down",
+        # The yards to 1st down
+        "ydstogo",
+        # This appears to indicate the yards to the endzone
+        "yardline_100",
+        # equal to posteam_score - defteam_score
+        "score_differential",
+    ]
     columns = [
         # These two form a multi-index
         "game_id",
@@ -129,32 +145,14 @@ def main():
         "desc",
         # the indicator variable we want to predict
         "play_type",
-        # 'posteam', # could give a team-dependent description
-        # 'posteam_type', # whether possession team is home or away. This is None for the SB
-        # TODO: This appears to depend on the quarter so isn't a good way of determining
-        # yards to goal. It would need to be combined with 'side_of_field', and others
-        # to determine yards to goal.
-        # 'yrdln', + 'posteam'/'posteam_type' could also probably do it.
-        # 'yardline_100',
-        "quarter_seconds_remaining",  # drop?
-        "half_seconds_remaining",
-        "game_seconds_remaining",
-        # 'qtr', # redundant?
-        "down",
-        # This is only a flag of whether the down is "& GOAL"
-        "goal_to_go",
-        "ydstogo",
-        # equal to posteam_score - defteam_score
-        "score_differential",
         # These need to be discarded
         "extra_point_attempt",
         "two_point_attempt",
-    ]
+    ] + training_variables
     # To keep all fields, use this instead:
     # columns = None
 
     play_data: pd.DataFrame = _get_data(columns)
-    print(play_data)
     # These are (mostly?) timeouts and penalties
     print(play_data["play_type"].unique())
 
@@ -174,10 +172,10 @@ def main():
         print(row["desc"])
         print(row)
 
-    #################
     # Random Forest #
     #################
-    rfc_results = rfc_play_type(play_data)
+    # rfc_results = rfc_play_type(play_data)
+    rfc_play = rfc_play_type(play_data)
 
 
 # Analysis TODO:
