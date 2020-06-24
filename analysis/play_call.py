@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Iterable, Optional
+from typing import Any, Dict, Iterable, Optional
 
 import numpy as np
 import pandas as pd
@@ -9,7 +9,7 @@ from nptyping import NDArray
 from sklearn.ensemble import RandomForestClassifier
 
 
-def rfc(data: pd.DataFrame):
+def rfc_play_type(data: pd.DataFrame):
     """
     Test bed for Random Forest classification
     """
@@ -34,22 +34,23 @@ def rfc(data: pd.DataFrame):
     data["training"] = np.random.uniform(0, 1, len(data)) < 0.8
     data_train = data.loc[data["training"]].drop(columns="training")
     data_test = data.loc[~data["training"]].drop(columns="training")
-    print(data_train)
-    print(data_test)
-    # TODO: split into test and training
+    # print(data_train)
+    # print(data_test)
     y_data_train: pd.Series = data_train["play_type"]
     x_data_train: pd.DataFrame = data_train.drop(
         columns=["play_type", "desc"]
-    ).to_numpy()
+        # ).to_numpy()
+    )
     fitted = clf.fit(x_data_train, y_data_train)
     print(fitted)
 
     y_data_test: pd.Series = data_test["play_type"]
-    x_data_test: pd.DataFrame = data_test.drop(columns=["play_type", "desc"]).to_numpy()
+    x_data_test: pd.DataFrame = data_test.drop(columns=["play_type", "desc"])
     # This is the mean accuracy of the most-likely prediction, not the probability or
     # info-loss score, so it's harsher than ideal.
     score: float = clf.score(x_data_test, y_data_test)
     print(f"score = {score}")
+    print(x_data_train.columns)
     print(f"feature importance: {clf.feature_importances_}")
     play_types = clf.classes_
     pred_test_prob: NDArray[float] = clf.predict_proba(x_data_test)
@@ -59,20 +60,37 @@ def rfc(data: pd.DataFrame):
     # params = clf.get_params()
     # print(params)
 
+    predictions_data: Dict[str, Any] = {"most_likely": clf.predict(x_data_test)}
+    for play_type, play_probs in zip(play_types, pred_test_prob.T):
+        predictions_data[play_type] = play_probs
+    predictions: pd.DataFrame = pd.DataFrame(
+        data=predictions_data, index=x_data_test.index
+    )
+
     y_test_indices, y_factor_order = pd.factorize(y_data_test, sort=True)
     assert (y_factor_order == clf.classes_).all(), "Inconsistent factoring order"
     loss: float = 0.0
-    for log_prob, i_y in zip(pred_test_log_prob, y_test_indices):
-    # for prob, i_y in zip(pred_test_prob, y_test_indices):
+    gini_loss: float = 0.0
+    for log_prob, prob, i_y in zip(pred_test_log_prob, pred_test_prob, y_test_indices):
         loss_term = -log_prob[i_y]
         if loss_term == np.inf:
             print(log_prob, i_y)
 
-        # try gini impurity to avoid INF for out-of-sample events
-        # loss_term: float = 1. - prob[i_y]**2
         loss += loss_term
+        # try gini impurity to avoid INF for out-of-sample events
+        gini_loss_term: float = 1.0 - prob[i_y]  # **2
+        gini_loss += gini_loss_term
     loss /= len(y_test_indices)
+    gini_loss /= len(y_test_indices)
     print(f"loss = {loss}")
+    print(f"gini = {gini_loss}")
+
+    for idx, test_play in x_data_test.sample(20).iterrows():
+        print()
+        print(data.loc[idx]["desc"])
+        print(test_play)
+        print(y_data_test.loc[idx])
+        print(predictions.loc[idx])
 
     return fitted
 
@@ -140,9 +158,11 @@ def main():
     # These are (mostly?) timeouts and penalties
     print(play_data["play_type"].unique())
 
+    # Remove extra-point attempts; these should be handled with a separate classifier.
+    # Will need to determine kick vs. run/pass and look for fakes.
     play_data = play_data.loc[
         (play_data["extra_point_attempt"] == 0) & (play_data["two_point_attempt"] == 0)
-    ]
+    ].drop(columns=["extra_point_attempt", "two_point_attempt"])
 
     # touchbacks and missed FGs that are received can have a NaN down. Just drop these
     # by the down for simplicity; a more complete disection would be good in the future.
@@ -157,7 +177,7 @@ def main():
     #################
     # Random Forest #
     #################
-    rfc_results = rfc(play_data)
+    rfc_results = rfc_play_type(play_data)
 
 
 # Analysis TODO:
