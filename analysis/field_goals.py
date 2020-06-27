@@ -62,8 +62,11 @@ def basic_regression(data: pd.DataFrame) -> LogisticRegression:
     print(sm_model_fit.summary())
     print(sm_model_fit.params)
     print(sm_model_fit.normalized_cov_params)
-    print(sm_model_fit.conf_int())  # defaults to 95% confidence interval
-    print(dir(sm_model_fit))
+    # defaults to 95% confidence interval (0.05 argument)
+    print(sm_model_fit.conf_int(.1))
+    # standard error approximation (95% ~ 2*sigma, double-sided)
+    print(0.25*(sm_model_fit.conf_int()[1] - sm_model_fit.conf_int()[0]))
+    # print(dir(sm_model_fit))
 
     print(f"coefficients = {fit.coef_}")
     print(f"intercept = {fit.intercept_}")
@@ -100,6 +103,11 @@ def player_regression(data: pd.DataFrame) -> LogisticRegression:
         penalty="none", fit_intercept=False, n_jobs=4, max_iter=500,
     )
     fit = reg.fit(x_data_train, y_data_train)
+
+    # don't add_constant() for this x-data
+    model = sm.GLM(y_data_train, x_data_train, family=sm.families.Binomial())
+    sm_fit = model.fit()
+    print(sm_fit.summary2())
 
     # print(f"coefficients = {fit.coef_}")
     print(f"intercept = {fit.intercept_}")
