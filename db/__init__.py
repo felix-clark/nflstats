@@ -1,3 +1,6 @@
+"""
+Functions to acquire data
+"""
 # For now define the data acquisition code in here. Split it up later.
 
 import os

@@ -4,9 +4,11 @@ from typing import Any, Dict, List, Iterable, Optional
 
 import numpy as np
 import pandas as pd
-from db import plays
 from nptyping import NDArray
 from sklearn.ensemble import RandomForestClassifier
+
+from utility import split_test_train
+from db import plays
 
 
 def rfc_play_type(data: pd.DataFrame) -> RandomForestClassifier:
@@ -34,11 +36,7 @@ def rfc_play_type(data: pd.DataFrame) -> RandomForestClassifier:
         # ccp_alpha=0.0,
         ccp_alpha=5e-4,
     )
-    data["training"] = np.random.uniform(0, 1, len(data)) < 0.8
-    data_train = data.loc[data["training"]].drop(columns="training")
-    data_test = data.loc[~data["training"]].drop(columns="training")
-    # print(data_train)
-    # print(data_test)
+    data_test, data_train = split_test_train(data)
     y_data_train: pd.Series = data_train["play_type"]
     x_data_train: pd.DataFrame = data_train.drop(
         columns=["play_type", "desc"]

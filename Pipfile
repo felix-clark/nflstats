@@ -27,6 +27,7 @@ pyarrow = "*"
 pyreadr = "*"
 scikit-learn = "*"
 nptyping = "*"
+statsmodels = "*"
 
 [requires]
 python_version = "3.8"
