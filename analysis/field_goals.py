@@ -12,7 +12,7 @@ from db import plays
 from nptyping import NDArray
 from statsmodels.gam.api import BSplines
 from statsmodels.genmod.generalized_linear_model import GLMResults
-from utility import split_test_train
+from utility import split_test_train, drop_noinfo
 
 # TODO:
 # Control for roof type (outdoors, dome, etc.), possibly weather. Some data is missing.
@@ -179,7 +179,6 @@ def player_regression_range(data: pd.DataFrame) -> pd.DataFrame:
         )
         kicker_fit = kicker_model.fit()
         params = kicker_fit.params
-        print(params)
         # 95% CI by default: use 1 sigma
         conf_int = kicker_fit.conf_int(0.3173)
         kicker_results.append(
@@ -216,6 +215,8 @@ def player_regression_range_season(data: pd.DataFrame) -> pd.DataFrame:
         years = kicker_attempts["season"].unique()
         for year in years:
             year_attempts = kicker_attempts[kicker_attempts['season'] == year]
+            if len(year_attempts) < 10:
+                continue
             offsets = sf.logit(year_attempts["fg_make_prob"])
             kicker_model = sm.GLM(
                 year_attempts["fg_make"],
@@ -223,19 +224,25 @@ def player_regression_range_season(data: pd.DataFrame) -> pd.DataFrame:
                 family=sm.families.Binomial(),
                 offset=offsets,
             )
-            kicker_fit = kicker_model.fit()
+            # kicker_fit = kicker_model.fit()
+            try:
+                kicker_fit = kicker_model.fit_constrained("const = -46.1033022 * kick_distance")
+            except Exception as err:
+                print(err)
+                continue
             params = kicker_fit.params
+            # print(params)
             # 95% CI by default: use 1 sigma
             conf_int = kicker_fit.conf_int(0.3173)
             kicker_results.append(
                 {
                     "id": kicker_id,
                     "name": get_player_name(year_attempts, kicker_id),
-                    "year": year,
-                    "const": kicker_fit.params["const"],
+                    "season": year,
+                    "accuracy": kicker_fit.params["const"],
                     "kick_distance": params["kick_distance"],
-                    "const_err_low": params["const"] - conf_int.loc["const", 0],
-                    "const_err_up": conf_int.loc["const", 1] - params["const"],
+                    "accuracy_err_low": params["const"] - conf_int.loc["const", 0],
+                    "accuracy_err_up": conf_int.loc["const", 1] - params["const"],
                     "kick_distance_err_low": params["kick_distance"]
                     - conf_int.loc["kick_distance", 0],
                     "kick_distance_err_up": conf_int.loc["kick_distance", 1]
@@ -362,17 +369,6 @@ def player_regression_season(data: pd.DataFrame) -> Tuple[GLMResults, pd.DataFra
     return fit, kicker_data
 
 
-def _drop_null(data: pd.DataFrame) -> pd.DataFrame:
-    """
-    Drop columns with exclusively null data
-    """
-    # This removes null and single-valued data
-    noninfo_cols = [col for col in data.keys() if len(data[col].unique()) == 1]
-    for col in noninfo_cols:
-        print(col, data[col].unique())
-    return data.drop(columns=noninfo_cols)
-
-
 def _get_data(columns: Optional[Iterable[str]] = None) -> pd.DataFrame:
     """
     get and cache test data
@@ -397,7 +393,7 @@ def _get_data(columns: Optional[Iterable[str]] = None) -> pd.DataFrame:
         columns=columns,
     )
     play_data.set_index(["game_id", "play_id"], inplace=True)
-    play_data = _drop_null(play_data)
+    play_data = drop_noinfo(play_data)
     play_data.to_parquet(cache_name)
     return play_data
 
@@ -454,6 +450,9 @@ def plot_kicker_career(kicker_data: pd.DataFrame) -> None:
     xvals = kicker_data["kick_distance"].to_numpy()
     yvals = kicker_data["const"].to_numpy()
     print(len(xvals))
+    lin_model = sm.OLS(yvals, xvals)
+    lin_fit = lin_model.fit()
+    print(lin_fit.params)
     xerrs_low = kicker_data["kick_distance_err_low"].to_numpy()
     xerrs_up = kicker_data["kick_distance_err_up"].to_numpy()
     yerrs_low = kicker_data["const_err_low"].to_numpy()
@@ -479,7 +478,7 @@ def plot_kicker_seasons(kicker_data: pd.DataFrame) -> None:
         if (
             kicker_season_data["accuracy_err_low"]
             + kicker_season_data["accuracy_err_up"]
-            > 10
+            > 50
         ).any():
             continue
         kicker_name = kicker_season_data["name"].unique()[0]
@@ -559,8 +558,9 @@ def main():
     print(kicker_season_data)
 
     # some seasons have perfect separation so this doesn't work out-of-the-box
-    # kicker_season_range_data = player_regression_range_season(fg_attempts)
-    # print(kicker_season_range_data)
+    # A constraint is implemented to anti-correlate const and kick_distance as observed
+    kicker_season_range_data = player_regression_range_season(fg_attempts)
+    print(kicker_season_range_data)
 
     # print(fg_attempts["kicker_player_name"].unique())
     # jt_id: str = "32013030-2d30-3032-3935-39371b9a6ac1"
@@ -575,6 +575,10 @@ def main():
     fig = plt.figure()
     plot_kicker_seasons(kicker_season_data)
     fig.savefig("kicker_seasons.png")
+
+    fig = plt.figure()
+    plot_kicker_seasons(kicker_season_range_data)
+    fig.savefig("kicker_seasons_constrained.png")
 
 
 def get_player_name(source: pd.DataFrame, player_id: str) -> str:
