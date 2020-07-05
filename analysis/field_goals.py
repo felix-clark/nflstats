@@ -117,7 +117,6 @@ def basic_regression(data: pd.DataFrame) -> GLMResults:
         # {"made": True, "missed": False, "blocked": False}
         {"made": 1, "missed": 0, "blocked": 0}
     )
-    data["kick_distance_sq"] = data["kick_distance"] ** 2
     train_params = ["kick_distance"]
     # train_params = ["kick_distance", 'kick_distance_sq']
     # data_test, data_train = split_test_train(data)
