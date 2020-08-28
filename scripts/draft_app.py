@@ -17,8 +17,7 @@ import scipy.stats as st
 import seaborn as sns
 from get_fantasy_points import get_points
 from progressbar import progressbar
-from ruleset import (bro_league, dude_league, nycfc_league, phys_league,
-                     ram_league)
+from ruleset import bro_league, dude_league, nycfc_league, phys_league, ram_league
 from scipy.optimize import fsolve
 from tools import get_k_partition_boundaries, get_team_abbrev, rm_name_suffix
 
@@ -1568,7 +1567,7 @@ class MainPrompt(Cmd):
                     for manager, manval in tiermans:
                         print(f"  {manager}: \t{int(manval)}", file=outfile)
                     print("\n", file=outfile)
-                    sorted_manager_vals = sorted_manager_vals[len(tiermans):]
+                    sorted_manager_vals = sorted_manager_vals[len(tiermans) :]
                     partitions = partitions[1:]
         if outfile is not None:
             print(f"evaltuation saved to {outfile.name}.")
@@ -2450,7 +2449,7 @@ def main():
 
     main_positions = ["QB", "RB", "WR", "TE", "K", "DST"]
 
-    year = 2019
+    year = 2020
     posdfs = []
     # also collect "floor" and "ceiling" data if it exists
     posdfs_high = []
