@@ -777,6 +777,9 @@ def decorate_skew_norm_params(df, value_key="exp_proj", ci=0.8, **kwargs):
     from the median, high, and low projections.
     ci: confidence interval. For 5 experts we'll assume (poorly) that they're evenly
     distributed in the CDF.
+    # NOTE: (possibly recent change) Fantasy Pros gives high/low projections for every
+    # stat. These should be randomized individually. In fact the simulations are quite
+    # wrong until this is fixed.
     """
     cache_name = kwargs.get("cache", "skew_normal_cache.csv")
     if path.isfile(cache_name):
@@ -2354,11 +2357,11 @@ def main():
         "--ruleset",
         type=str,
         choices=["phys", "dude", "bro", "nycfc", "ram"],
-        default="dude",
+        default="bro",
         help="which ruleset to use of the leagues I am in",
     )
     parser.add_argument(
-        "--n-teams", type=int, default=8, help="number of teams in the league"
+        "--n-teams", type=int, default=14, help="number of teams in the league"
     )
     parser.add_argument(
         "--n-qb", type=int, default=1, help="number of starting QBs per team"
@@ -2367,13 +2370,13 @@ def main():
         "--n-rb", type=int, default=2, help="number of starting RBs per team"
     )
     parser.add_argument(
-        "--n-wr", type=int, default=3, help="number of starting WRs per team"
+        "--n-wr", type=int, default=2, help="number of starting WRs per team"
     )
     parser.add_argument(
         "--n-te", type=int, default=1, help="number of starting TEs per team"
     )
     parser.add_argument(
-        "--n-flex", type=int, default=2, help="number of FLEX spots per team"
+        "--n-flex", type=int, default=1, help="number of FLEX spots per team"
     )
     parser.add_argument(
         "--n-dst", type=int, default=1, help="number of D/ST spots per team"
@@ -2382,7 +2385,7 @@ def main():
         "--n-k", type=int, default=1, help="number of starting Ks per team"
     )
     parser.add_argument(
-        "--n-bench", type=int, default=4, help="number of bench spots per team"
+        "--n-bench", type=int, default=6, help="number of bench spots per team"
     )
     parser.add_argument(
         "--ci",
