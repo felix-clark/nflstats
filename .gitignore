@@ -2,9 +2,12 @@
 **/.mypy_cache/
 *.pyc
 *.png
-*.csv
 *.txt
 *.p
 draft_board.html
 *.egg-info/
 nflscrapR-data/
+weekly_stats/
+yearly_stats/
+adp_historical/
+data/
