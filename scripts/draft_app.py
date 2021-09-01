@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import logging
+import os
 import pickle
 import random
 import sys
@@ -23,9 +24,9 @@ from tools import get_k_partition_boundaries, get_team_abbrev, rm_name_suffix
 
 # slap these bye/injury factors up here for now
 # 13 games in regular FF season, but we're going to playoffs. we'll pretend they're
-# independent. 17 weeks in season, 16 games played by each team, any reasonable league
-# plays the first 16 so 15/16
-bye_factor = (16 - 1) / 16
+# independent. 18 weeks in season, 17 games played by each team, any reasonable league
+# plays the first 17 so 16/17
+bye_factor = (17 - 1) / 17
 # this is the approximate fraction of the time that a player in
 #  each position spends on the field uninjured.
 # from sportinjurypredictor.net, based on average games missed assuming a 17 game season
@@ -43,13 +44,13 @@ pos_injury_factor = {
 # This was extracted from one year (2015) only.
 # Kickers are not included.
 pos_games_available = {
-    "QB": 14.9,
-    "RB": 13.3,
-    "WR": 14.0,
-    "TE": 14.2,
-    "DST": 16.0,
+    "QB": 14.9 * 17/16,
+    "RB": 13.3 * 17/16,
+    "WR": 14.0 * 17/16,
+    "TE": 14.2 * 17/16,
+    "DST": 16.0 * 17/16,
     # This kicker factor is made up.
-    "K": 15.0,
+    "K": 15.0 * 17/16,
 }
 # TODO: use
 # https://www.footballoutsiders.com/stat-analysis/2015/nfl-injuries-part-i-overall-view
@@ -76,12 +77,12 @@ def single_team_sim(
     # extend the list of possible games with several at the baseline level
     # this is hacky and inelegant and should be changed
     for pos in games_pos:
-        games_pos[pos].extend([replacement_baseline[pos]] * 16 * n_roster_per_team[pos])
+        games_pos[pos].extend([replacement_baseline[pos]] * 17 * n_roster_per_team[pos])
         games_pos[pos].sort()
     total_points = 0
     # games_count = 0
     for pos in main_positions:
-        n_games_needed = 16 * n_roster_per_team[pos]
+        n_games_needed = 17 * n_roster_per_team[pos]
         for _ in range(n_games_needed):
             total_points += (
                 games_pos[pos].pop() if games_pos[pos] else replacement_baseline[pos]
@@ -89,7 +90,7 @@ def single_team_sim(
             # games_count += 1
     flex_games = sorted(chain(*[games_pos[pos] for pos in flex_pos]))
     if "FLEX" in n_roster_per_team:
-        n_games_needed = 16 * n_roster_per_team["FLEX"]
+        n_games_needed = 17 * n_roster_per_team["FLEX"]
         for _ in range(n_games_needed):
             total_points += (
                 flex_games.pop()
@@ -334,9 +335,9 @@ def get_player_values(
     gamesdf.sort_values("ppg", inplace=True, ascending=False)
 
     ppg_baseline = {}
-    # assume a 16-game season
-    games_needed = {pos: (16 * n_roster_per_league[pos]) for pos in main_positions}
-    games_needed["FLEX"] = 16 * n_roster_per_league["FLEX"]
+    # assume a 17-game season
+    games_needed = {pos: (17 * n_roster_per_league[pos]) for pos in main_positions}
+    games_needed["FLEX"] = 17 * n_roster_per_league["FLEX"]
 
     for index, row in gamesdf.iterrows():
         _, _, pos = index
@@ -837,7 +838,7 @@ def simulate_seasons(df, n, **kwargs):
     # the "n" in the binomial drawing
     max_games = df["g"].to_numpy(dtype=int)
     # the "p" in the binomial drawing
-    frac_games = np.vectorize(lambda pos: pos_games_available[pos] / 16)(
+    frac_games = np.vectorize(lambda pos: pos_games_available[pos] / 17)(
         df.index.get_level_values("pos")
     )
     # compute the alpha and beta parameters for the beta-binomial distribution
@@ -1482,7 +1483,7 @@ class MainPrompt(Cmd):
             .sort_values(ascending=False)
             .head(self.n_teams)
             .mean()
-            / 16
+            / 17
             for pos in main_positions
         }
         if "manager" not in self.pp:
@@ -2394,7 +2395,7 @@ def main():
         help="confidence interval to assume for high/low",
     )
     parser.add_argument(
-        "--simulations", type=int, default=1000, help="number of simulations to run"
+        "--simulations", type=int, default=2000, help="number of simulations to run"
     )
     parser.add_argument(
         "--auction-cap", type=int, default=200, help="auction budget per manager"
@@ -2452,7 +2453,7 @@ def main():
 
     main_positions = ["QB", "RB", "WR", "TE", "K", "DST"]
 
-    year = 2020
+    year = 2021
     posdfs = []
     # also collect "floor" and "ceiling" data if it exists
     posdfs_high = []
@@ -2532,25 +2533,26 @@ def main():
 
     # get ECP/ADP
     dpfname = "preseason_rankings/ecp_adp_fp_pre{}.csv".format(year)
-    dpdf = pd.read_csv(dpfname)
-    # add team acronym on ECP/ADP data too, so that we can use "team" as an additional merge key
-    # dpdf.drop(columns=['rank', 'WSID'],inplace=True)
-    dpdf = dpdf[~dpdf.pos.str.contains("TOL")]
-    dpdf.loc[dpdf.team.isnull(), "team"] = dpdf.loc[dpdf.team.isnull(), "player"].map(
-        lambda n: get_team_abbrev(n, teamlist)
-    )
-
-    # only merge with the columns we are interested in for now.
-    # combine on both name and team because there are sometimes multiple players w/ same name
-    availdf = availdf.merge(
-        dpdf[["player", "team", "ecp", "adp"]], how="left", on=["player", "team"]
-    )
+    if os.path.exists(dpfname):
+        dpdf = pd.read_csv(dpfname)
+        # add team acronym on ECP/ADP data too, so that we can use "team" as an additional merge key
+        # dpdf.drop(columns=['rank', 'WSID'],inplace=True)
+        dpdf = dpdf[~dpdf.pos.str.contains("TOL")]
+        dpdf.loc[dpdf.team.isnull(), "team"] = dpdf.loc[dpdf.team.isnull(), "player"].map(
+            lambda n: get_team_abbrev(n, teamlist)
+        )
+        # only merge with the columns we are interested in for now.
+        # combine on both name and team because there are sometimes multiple players w/ same name
+        availdf = availdf.merge(
+            dpdf[["player", "team", "ecp", "adp"]], how="left", on=["player", "team"]
+        )
+    else:
+        logging.warning("Could not find ADP/ECP file")
     availdf.loc[:, "n"] = ""
     availdf.loc[:, "rank"] = ""
     availdf.loc[:, "g"] = ""
-    # re-order the columns
-    availdf = availdf[
-        [
+
+    col_order = [
             "player",
             "n",
             "team",
@@ -2563,7 +2565,8 @@ def main():
             "exp_proj_high",
             "exp_proj_low",
         ]
-    ]
+    # re-order the columns
+    availdf = availdf[[c for c in col_order if c in availdf]]
 
     ## flag players with news items
     newsdf = pd.read_csv("data/news.csv")
