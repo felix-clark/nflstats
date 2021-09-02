@@ -109,7 +109,7 @@ def total_team_sims(
     position_baseline: assumed number of points that can be gotten for free
     returns a series of team scores taking into account positions
     """
-    simulated_seasons = pd.Series()
+    simulated_seasons = pd.Series(dtype=float)
     for sim_num in sim_ppg.columns:
         simulated_seasons.loc[sim_num] = single_team_sim(
             sim_ppg[sim_num],
@@ -170,10 +170,10 @@ def evaluate_roster(
     drop_cols = ["adp", "ecp", "tier"]
 
     print("  starting lineup:", file=outfile)
-    startdf = rosdf[rosdf.index.isin(i_st)].drop(drop_cols, axis=1)
+    startdf = rosdf[rosdf.index.isin(i_st)].drop(drop_cols, axis=1, errors="ignore")
     print(startdf, file=outfile)
 
-    benchdf = rosdf[~rosdf.index.isin(i_st)].drop(drop_cols, axis=1)
+    benchdf = rosdf[~rosdf.index.isin(i_st)].drop(drop_cols, axis=1, errors="ignore")
     if not benchdf.empty:
         print("  bench:", file=outfile)
         print(benchdf, file=outfile)
