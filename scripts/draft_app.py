@@ -400,7 +400,7 @@ def get_auction_values(
     value_data: dataframe with columns of values, indexed by (player, team, position)
     value_key: column key to use as value
     """
-    # these could be keywork arguments
+    # these could be keyword arguments
     main_positions = ["QB", "RB", "WR", "TE", "K", "DST"]
     flex_positions = ["RB", "WR", "TE"]
     # manually devalue these due to their heavy dependence on weekly matchup
@@ -2607,7 +2607,7 @@ def main():
                 )
         availdf.loc[pix, "n"] = "*"  # flag this column
 
-    availdf.loc[:, "g"] = 15  # default is 15 games; we'll check for suspensions.
+    availdf.loc[:, "g"] = 16  # default is 16 games; we'll check for suspensions.
     sussdf = pd.read_csv("data/suspensions.csv")
     rmsuff = availdf.player.map(rm_name_suffix).map(simplify_name).copy()
     for _, psus in sussdf.iterrows():
