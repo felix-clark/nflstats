@@ -25,11 +25,12 @@ from ruleset import (bro_league, dude_league, nycfc_league, phys_league,
                      ram_league)
 from tools import get_k_partition_boundaries, get_team_abbrev, rm_name_suffix
 
+games_in_season = 17
 # slap these bye/injury factors up here for now
 # 13 games in regular FF season, but we're going to playoffs. we'll pretend they're
 # independent. 18 weeks in season, 17 games played by each team, any reasonable league
 # plays the first 17 so 16/17
-bye_factor = (17 - 1) / 17
+bye_factor = (games_in_season - 1) / games_in_season
 # this is the approximate fraction of the time that a player in
 #  each position spends on the field uninjured.
 # from sportinjurypredictor.net, based on average games missed assuming a 17 game season
@@ -47,13 +48,13 @@ pos_injury_factor = {
 # This was extracted from one year (2015) only.
 # Kickers are not included.
 pos_games_available = {
-    "QB": 14.9 * 17 / 16,
-    "RB": 13.3 * 17 / 16,
-    "WR": 14.0 * 17 / 16,
-    "TE": 14.2 * 17 / 16,
-    "DST": 16.0 * 17 / 16,
+    "QB": 14.9 / bye_factor,
+    "RB": 13.3 / bye_factor,
+    "WR": 14.0 / bye_factor,
+    "TE": 14.2 / bye_factor,
+    "DST": 16.0 / bye_factor,
     # This kicker factor is made up.
-    "K": 15.0 * 17 / 16,
+    "K": 15.0 / bye_factor,
 }
 # TODO: use
 # https://www.footballoutsiders.com/stat-analysis/2015/nfl-injuries-part-i-overall-view
@@ -80,12 +81,12 @@ def single_team_sim(
     # extend the list of possible games with several at the baseline level
     # this is hacky and inelegant and should be changed
     for pos in games_pos:
-        games_pos[pos].extend([replacement_baseline[pos]] * 17 * n_roster_per_team[pos])
+        games_pos[pos].extend([replacement_baseline[pos]] * games_in_season * n_roster_per_team[pos])
         games_pos[pos].sort()
     total_points = 0
     # games_count = 0
     for pos in main_positions:
-        n_games_needed = 17 * n_roster_per_team[pos]
+        n_games_needed = games_in_season * n_roster_per_team[pos]
         for _ in range(n_games_needed):
             total_points += (
                 games_pos[pos].pop() if games_pos[pos] else replacement_baseline[pos]
@@ -93,7 +94,7 @@ def single_team_sim(
             # games_count += 1
     flex_games = sorted(chain(*[games_pos[pos] for pos in flex_pos]))
     if "FLEX" in n_roster_per_team:
-        n_games_needed = 17 * n_roster_per_team["FLEX"]
+        n_games_needed = games_in_season * n_roster_per_team["FLEX"]
         for _ in range(n_games_needed):
             total_points += (
                 flex_games.pop()
@@ -154,11 +155,11 @@ def evaluate_roster(
             "exp_proj", ascending=False
         )
         i_stpos = rospos.index[:n_starters]
-        val = (
-            bye_factor
-            * pos_injury_factor[pos]
-            * rospos[rospos.index.isin(i_stpos)]["exp_proj"].sum()
-        )
+        # val = (
+        #     bye_factor
+        #     * pos_injury_factor[pos]
+        #     * rospos[rospos.index.isin(i_stpos)]["exp_proj"].sum()
+        # )
         # starterval = starterval + val
         i_st.extend(i_stpos)
 
@@ -338,9 +339,8 @@ def get_player_values(
     gamesdf.sort_values("ppg", inplace=True, ascending=False)
 
     ppg_baseline = {}
-    # assume a 17-game season
-    games_needed = {pos: (17 * n_roster_per_league[pos]) for pos in main_positions}
-    games_needed["FLEX"] = 17 * n_roster_per_league["FLEX"]
+    games_needed = {pos: (games_in_season * n_roster_per_league[pos]) for pos in main_positions}
+    games_needed["FLEX"] = games_in_season * n_roster_per_league["FLEX"]
 
     for index, row in gamesdf.iterrows():
         _, _, pos = index
@@ -384,8 +384,9 @@ def get_player_values(
                 # This should be fixed now.
                 logging.error("Flex not in ppg_baseline. Why does this happen???")
                 logging.error("Filling with NaNs to skip this point.")
-                vols.iloc[:] = np.nan
-                return vols
+                # vols.iloc[:] = np.nan
+                # return vols
+                assert False, "This error is supposed to be fixed"
             worst_starter_pg = min(worst_starter_pg, ppg_baseline["FLEX"])
         # gs = player['g']
         gs = games_df.loc[player, value_key]
@@ -841,7 +842,7 @@ def simulate_seasons(df, n, **kwargs):
     # the "n" in the binomial drawing
     max_games = df["g"].to_numpy(dtype=int)
     # the "p" in the binomial drawing
-    frac_games = np.vectorize(lambda pos: pos_games_available[pos] / 17)(
+    frac_games = np.vectorize(lambda pos: pos_games_available[pos] / games_in_season)(
         df.index.get_level_values("pos")
     )
     # compute the alpha and beta parameters for the beta-binomial distribution
@@ -1486,7 +1487,7 @@ class MainPrompt(Cmd):
             .sort_values(ascending=False)
             .head(self.n_teams)
             .mean()
-            / 17
+            / games_in_season
             for pos in main_positions
         }
         if "manager" not in self.pp:
@@ -2572,79 +2573,89 @@ def main():
     availdf = availdf[[c for c in col_order if c in availdf]]
 
     ## flag players with news items
-    newsdf = pd.read_csv("data/news.csv")
-    newsdf = newsdf[newsdf.pos.isin(main_positions)]
-    for _, pnews in newsdf.iterrows():
-        pnamenews, pteamnews, posnews = pnews[["player", "team", "pos"]]
-        # pnamenews, pteamnews, posnews = index
-        # we should be able to just find the intersection of the indices, but the team names are inconsistent.
-        # pix = (availdf.index.get_level_values('pos') == posnews)
-        # pix &= (availdf.index.get_level_values('player') == pnamenews)
-        pix = availdf.pos == posnews
-        pix &= availdf.player == pnamenews
-        # pix &= (availdf.team == pteamnews) # the team abbreviations are not always uniform #TODO: make it well-defined
-        if availdf[pix].shape[0] > 1:
-            logging.warning(
-                "multiple matches found for news item about {}!".format(pnamenews)
-            )
-            print(availdf[pix])
-        if availdf[pix].shape[0] == 0:
+    newsfile = "data/news.csv"
+    if os.path.isfile(newsfile):
+        newsdf = pd.read_csv(newsfile)
+        newsdf = newsdf[newsdf.pos.isin(main_positions)]
+        for _, pnews in newsdf.iterrows():
+            pnamenews, pteamnews, posnews = pnews[["player", "team", "pos"]]
+            # pnamenews, pteamnews, posnews = index
+            # we should be able to just find the intersection of the indices, but the team names are inconsistent.
+            # pix = (availdf.index.get_level_values('pos') == posnews)
+            # pix &= (availdf.index.get_level_values('player') == pnamenews)
             pix = availdf.pos == posnews
-            cutoff = 0.75  # default is 0.6, but this seems too loose
-            rmsuff = availdf.player.map(rm_name_suffix)
-            pix &= rmsuff.isin(
-                get_close_matches(
-                    rm_name_suffix(pnamenews), rmsuff.values, cutoff=cutoff
-                )
-            )
+            pix &= availdf.player == pnamenews
+            # pix &= (availdf.team == pteamnews) # the team abbreviations are not always uniform #TODO: make it well-defined
             if availdf[pix].shape[0] > 1:
                 logging.warning(
                     "multiple matches found for news item about {}!".format(pnamenews)
                 )
                 print(availdf[pix])
             if availdf[pix].shape[0] == 0:
-                logging.warning(
-                    "there is news about {} ({}) {}, but this player could not be found!".format(
-                        pnamenews, pteamnews, posnews
+                pix = availdf.pos == posnews
+                cutoff = 0.75  # default is 0.6, but this seems too loose
+                rmsuff = availdf.player.map(rm_name_suffix)
+                pix &= rmsuff.isin(
+                    get_close_matches(
+                        rm_name_suffix(pnamenews), rmsuff.values, cutoff=cutoff
                     )
                 )
-        availdf.loc[pix, "n"] = "*"  # flag this column
+                if availdf[pix].shape[0] > 1:
+                    logging.warning(
+                        "multiple matches found for news item about {}!".format(pnamenews)
+                    )
+                    print(availdf[pix])
+                if availdf[pix].shape[0] == 0:
+                    logging.warning(
+                        "there is news about {} ({}) {}, but this player could not be found!".format(
+                            pnamenews, pteamnews, posnews
+                        )
+                    )
+            availdf.loc[pix, "n"] = "*"  # flag this column
+    else:
+        newsdf = None
+        logging.warning("News file does not exist")
 
-    availdf.loc[:, "g"] = 16  # default is 16 games; we'll check for suspensions.
-    sussdf = pd.read_csv("data/suspensions.csv")
-    rmsuff = availdf.player.map(rm_name_suffix).map(simplify_name).copy()
-    for _, psus in sussdf.iterrows():
-        pnamesus, pteamsus, possus, gsus = psus[
-            ["player", "team", "pos", "games_suspended"]
-        ]
-        pnamesimp = simplify_name(rm_name_suffix(pnamesus))
-        pix = (rmsuff == pnamesimp) & (availdf.pos == possus)
-        # pix = (availdf.player == pnamesus) & (availdf.pos == possus)
-        # pix &= (availdf.team == pteamsus) # the team abbreviations are not always uniform #TODO: make it well-defined
-        if len(availdf[pix]) > 1:
-            logging.warning("multiple matches found for suspension!")
-            print(availdf[pix])
-        if len(availdf[pix]) == 0:
-            pix = availdf.pos == posnews
-            cutoff = 0.75  # default is 0.6, but this seems too loose
-            pix &= rmsuff.isin(
-                get_close_matches(pnamesimp, rmsuff.values, cutoff=cutoff)[:1]
-            )
-            if availdf[pix].shape[0] > 1:
-                logging.warning(
-                    "multiple matches found for suspension of {}!".format(pnamenews)
-                )
+    # default is 17 games; we'll check for suspensions.
+    availdf.loc[:, "g"] = games_in_season
+    susfile = "data/suspensions.csv"
+    if os.path.exists(susfile):
+        sussdf = pd.read_csv(susfile)
+        rmsuff = availdf.player.map(rm_name_suffix).map(simplify_name).copy()
+        for _, psus in sussdf.iterrows():
+            pnamesus, pteamsus, possus, gsus = psus[
+                ["player", "team", "pos", "games_suspended"]
+            ]
+            pnamesimp = simplify_name(rm_name_suffix(pnamesus))
+            pix = (rmsuff == pnamesimp) & (availdf.pos == possus)
+            # pix = (availdf.player == pnamesus) & (availdf.pos == possus)
+            # pix &= (availdf.team == pteamsus) # the team abbreviations are not always uniform #TODO: make it well-defined
+            if len(availdf[pix]) > 1:
+                logging.warning("multiple matches found for suspension!")
                 print(availdf[pix])
-            if availdf[pix].shape[0] == 0:
-                logging.error(
-                    "Could not find {} ({}) {}, suspended for {} games!".format(
-                        pnamesus, pteamsus, possus, gsus
-                    )
+            if len(availdf[pix]) == 0:
+                pix = availdf.pos == posnews
+                cutoff = 0.75  # default is 0.6, but this seems too loose
+                pix &= rmsuff.isin(
+                    get_close_matches(pnamesimp, rmsuff.values, cutoff=cutoff)[:1]
                 )
-        if np.isnan(gsus):
-            logging.warning("unknown suspension time for {}".format(pnamesus))
-        else:
-            availdf.loc[pix, "g"] = availdf[pix]["g"] - gsus
+                if availdf[pix].shape[0] > 1:
+                    logging.warning(
+                        "multiple matches found for suspension of {}!".format(pnamenews)
+                    )
+                    print(availdf[pix])
+                if availdf[pix].shape[0] == 0:
+                    logging.error(
+                        "Could not find {} ({}) {}, suspended for {} games!".format(
+                            pnamesus, pteamsus, possus, gsus
+                        )
+                    )
+            if np.isnan(gsus):
+                logging.warning("unknown suspension time for {}".format(pnamesus))
+            else:
+                availdf.loc[pix, "g"] = availdf[pix]["g"] - gsus
+    else:
+        logging.warning("No suspensions file")
 
     # re-index on player, team, pos
     index_cols = ["player", "team", "pos"]
