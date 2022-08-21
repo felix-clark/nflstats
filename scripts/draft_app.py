@@ -6,6 +6,7 @@ import pickle
 import random
 import sys
 from cmd import Cmd
+from datetime import datetime
 from difflib import SequenceMatcher, get_close_matches
 from itertools import chain, takewhile
 from os import path
@@ -16,10 +17,12 @@ import numpy as np
 import pandas as pd
 import scipy.stats as st
 import seaborn as sns
-from get_fantasy_points import get_points
 from progressbar import progressbar
-from ruleset import bro_league, dude_league, nycfc_league, phys_league, ram_league
 from scipy.optimize import fsolve
+
+from get_fantasy_points import get_points
+from ruleset import (bro_league, dude_league, nycfc_league, phys_league,
+                     ram_league)
 from tools import get_k_partition_boundaries, get_team_abbrev, rm_name_suffix
 
 # slap these bye/injury factors up here for now
@@ -44,13 +47,13 @@ pos_injury_factor = {
 # This was extracted from one year (2015) only.
 # Kickers are not included.
 pos_games_available = {
-    "QB": 14.9 * 17/16,
-    "RB": 13.3 * 17/16,
-    "WR": 14.0 * 17/16,
-    "TE": 14.2 * 17/16,
-    "DST": 16.0 * 17/16,
+    "QB": 14.9 * 17 / 16,
+    "RB": 13.3 * 17 / 16,
+    "WR": 14.0 * 17 / 16,
+    "TE": 14.2 * 17 / 16,
+    "DST": 16.0 * 17 / 16,
     # This kicker factor is made up.
-    "K": 15.0 * 17/16,
+    "K": 15.0 * 17 / 16,
 }
 # TODO: use
 # https://www.footballoutsiders.com/stat-analysis/2015/nfl-injuries-part-i-overall-view
@@ -2453,7 +2456,7 @@ def main():
 
     main_positions = ["QB", "RB", "WR", "TE", "K", "DST"]
 
-    year = 2021
+    year = datetime.now().year
     posdfs = []
     # also collect "floor" and "ceiling" data if it exists
     posdfs_high = []
