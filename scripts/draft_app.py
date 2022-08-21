@@ -2557,22 +2557,22 @@ def main():
     availdf.loc[:, "g"] = ""
 
     col_order = [
-            "player",
-            "n",
-            "team",
-            "pos",
-            "rank",
-            "g",
-            "adp",
-            "ecp",
-            "exp_proj",
-            "exp_proj_high",
-            "exp_proj_low",
-        ]
+        "player",
+        "n",
+        "team",
+        "pos",
+        "rank",
+        "g",
+        "adp",
+        "ecp",
+        "exp_proj",
+        "exp_proj_high",
+        "exp_proj_low",
+    ]
     # re-order the columns
     availdf = availdf[[c for c in col_order if c in availdf]]
 
-    ## flag players with news items
+    # flag players with news items
     newsfile = "data/news.csv"
     if os.path.isfile(newsfile):
         newsdf = pd.read_csv(newsfile)
