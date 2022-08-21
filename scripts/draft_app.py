@@ -1270,12 +1270,12 @@ class MainPrompt(Cmd):
             low=1,
         )
         # sty = sty.apply(_highlight).apply(_textcol)
-        sty = sty.highlight_min(subset=hl_cols_fall)
+        if hl_cols_fall.any():
+            sty = sty.highlight_min(subset=hl_cols_fall)
         sty = sty.highlight_max(subset=hl_cols_rise)
         # open and write the styled html
-        f = open("draft_board.html", "w")
-        f.write(sty.render())
-        f.close()
+        with open("draft_board.html", "w") as f:
+            sty.to_html(f)
 
     def _update_vorp(self, ap=None, pp=None):
         """
