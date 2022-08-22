@@ -738,16 +738,18 @@ def simplify_name(name):
     return name.strip().lower().replace(" ", "_").replace("'", "").replace(".", "")
 
 
-def _get_skew_norm_params(median, high, low, ci=0.8):
+def _get_skew_norm_params(mean, high, low, ci=0.8):
     """
-    returns the skew-normal parameters for the given median, ceiling, and floor for a single sample.
+    returns the skew-normal parameters for the given mean, ceiling, and floor for a single sample.
     ci: the confidence interval to assume for the values between floor and ceiling.
     """
-    vals = np.array([median, high, low])
-    cdf_levels = 0.5 * np.array([1, 1 + ci, 1 - ci])
+    # Force a little bit of spread in case there isn't enough in the predictions.
+    high = high + 1.
+    low = low - 1.
     # guess for skew, loc, scale
     # calculate the sample skew but clip it close to 1
-    sample_skew = np.clip(st.skew(vals, bias=False), -0.995, 0.995)
+    # NOTE: This sample skew is not very accurate because the mean is not like the others.
+    sample_skew = np.clip(st.skew(np.array([mean, mean, mean, high, low]), bias=False), -0.9, 0.9)
     # this method of moments is on the wiki page
     # it still doesn't give great estimates of the final, so perhaps it's not worth the calculation
     init_skew = np.sign(sample_skew) * np.sqrt(
@@ -756,12 +758,23 @@ def _get_skew_norm_params(median, high, low, ci=0.8):
         * np.abs(sample_skew) ** (2 / 3)
         / (np.abs(sample_skew) ** (2 / 3) + ((2 - np.pi / 2) ** (2 / 3)))
     )
-    initial_guess = [init_skew, median, 0.5 * (high - low)]
+    initial_guess = [init_skew, mean, 0.5 * (high - low)]
+
+    func_target = np.array([mean, 0.5 + 0.5 * ci, 0.5 - 0.5 * ci])
 
     # TODO: try max-likelihood instead?
     def func(args):
+        args = tuple(args)
+        skew, loc, scale = args
         # assume the CDF is quicker to calculate than the ppf
-        return st.skewnorm.cdf(vals, *tuple(args)) - cdf_levels
+        delta = skew / np.sqrt(1 + skew**2)
+        implied_mean = loc + scale * delta * np.sqrt(2 / np.pi)
+        res = np.array([
+            implied_mean,
+            st.skewnorm.cdf(high, *args),
+            st.skewnorm.cdf(low, *args),
+        ])
+        return res - func_target
 
     # we should be able to compute the matrix jacobian from the ppf, but it takes some
     # manual computation.
@@ -770,7 +783,6 @@ def _get_skew_norm_params(median, high, low, ci=0.8):
     #     pass
     # TODO: This doesn't always converge without warning. This may happen when there is little skew
     result = fsolve(func, x0=initial_guess,)
-    # print(init_skew, result[0])
     # print(median, result[1])
     # print(0.5*(high-low), result[2])
     return result
@@ -801,8 +813,8 @@ def decorate_skew_norm_params(df, value_key="exp_proj", ci=0.8, **kwargs):
     assert (high_vals >= ev_vals).all(), "High projections not all higher than nominal"
     assert (low_vals <= ev_vals).all(), "Low projections not all lower than nominal"
     logging.info("Finding skew-normal description of players...")
-    for i_player, med, high, low in zip(df.index, ev_vals, high_vals, low_vals):
-        skew, loc, scale = _get_skew_norm_params(med, high, low, ci)
+    for i_player, mean, high, low in zip(df.index, ev_vals, high_vals, low_vals):
+        skew, loc, scale = _get_skew_norm_params(mean, high, low, ci)
         df.loc[i_player, "skew"] = skew
         df.loc[i_player, "loc"] = loc
         df.loc[i_player, "scale"] = scale
