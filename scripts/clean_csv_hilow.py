@@ -45,6 +45,7 @@ def replace_title_line(line):
     line = line.replace('"Rank"', 'rank')
     line = line.replace('"Bye"', 'bye')
     line = line.replace('"Pos"', 'pos')
+    line = line.replace('"POS"', 'pos')
     line = line.replace('"Best","Worst","Avg","Std Dev","ADP","vs. ADP"',
                         'best,worst,ecp,ecp_std_dev,adp,ecp_vs_adp')
     line = line.replace('"Overall"', 'player')
