@@ -1,5 +1,7 @@
 # some helper functions
+import logging
 import numpy as np
+
 
 def corr_spearman(x, y, weights=None):
     """
@@ -25,8 +27,8 @@ def corr_spearman(x, y, weights=None):
     # # for testing:
     # xrank[:] = np.nan
     # yrank[:] = np.nan
-    
-    i=0
+
+    i = 0
     while i < len(xsort):
         val = xsort[i]
         j = i+1
@@ -38,9 +40,9 @@ def corr_spearman(x, y, weights=None):
             xrank[ix] = rk
         i = j
 
-    i=0
+    i = 0
     while i < len(ysort):
-        val=ysort[i]
+        val = ysort[i]
         j = i+1
         while j < len(ysort) and ysort[j] == ysort[i]:
             j += 1
@@ -60,7 +62,7 @@ def corr_spearman(x, y, weights=None):
     xvarrk = np.average((xrank-xmrk)**2, weights=weights)
     yvarrk = np.average((yrank-ymrk)**2, weights=weights)
     xycorrrk = np.average((xrank-xmrk)*(yrank-ymrk), weights=weights)
-    
+
     result = xycorrrk / np.sqrt(xvarrk*yvarrk)
     return result
 
@@ -73,7 +75,8 @@ def get_k_partition_boundaries(data, k):
     # gaps is an array of size N-1 listing
     gaps = np.array(sortdata[1:]) - np.array(sortdata[:-1])
     # part_idsx are the indices of the k largest gaps
-    part_idxs = np.argpartition(gaps, k)[-k:] # [::-1] # don't think we really need to re-order these
+    # [::-1] # don't think we really need to re-order these
+    part_idxs = np.argpartition(gaps, k)[-k:]
     # define the boundaries as the means
     part_boundaries = [0.5*(sortdata[i] + sortdata[i+1]) for i in part_idxs]
     return np.sort(part_boundaries)
@@ -98,9 +101,10 @@ def get_team_abbrev(full_team_name, team_abbrevs):
     if len(up_name) > 5:
         if up_name[-5] == '(' and up_name[-1] == ')':
             return up_name[-4:-1]
-    
+
     logging.error('could not find abbreviation for {}'.format(full_team_name))
-    
+
+
 def rm_name_suffix(name):
     spln = name.split(' ')
     last = spln[-1].strip('.')

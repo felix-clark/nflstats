@@ -28,6 +28,7 @@ pyreadr = "*"
 scikit-learn = "*"
 nptyping = "*"
 statsmodels = "*"
+html5lib = "*"
 
 [requires]
 python_version = "3.8"
