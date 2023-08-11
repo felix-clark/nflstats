@@ -81,7 +81,9 @@ def single_team_sim(
     # extend the list of possible games with several at the baseline level
     # this is hacky and inelegant and should be changed
     for pos in games_pos:
-        games_pos[pos].extend([replacement_baseline[pos]] * games_in_season * n_roster_per_team[pos])
+        games_pos[pos].extend(
+            [replacement_baseline[pos]] * games_in_season * n_roster_per_team[pos]
+        )
         games_pos[pos].sort()
     total_points = 0
     # games_count = 0
@@ -1587,7 +1589,7 @@ class MainPrompt(Cmd):
                     for manager, manval in tiermans:
                         print(f"  {manager}: \t{int(manval)}", file=outfile)
                     print("\n", file=outfile)
-                    sorted_manager_vals = sorted_manager_vals[len(tiermans) :]
+                    sorted_manager_vals = sorted_manager_vals[len(tiermans):]
                     partitions = partitions[1:]
         if outfile is not None:
             print(f"evaltuation saved to {outfile.name}.")
@@ -1988,7 +1990,8 @@ class MainPrompt(Cmd):
         """implements auto-complete for player names"""
         avail_names = self.ap.index.get_level_values("player")
         # TODO: make it look a bit prettier by allowing spaces instead of underscores.
-        # see: https://stackoverflow.com/questions/4001708/change-how-python-cmd-module-handles-autocompletion
+        # see:
+        # https://stackoverflow.com/questions/4001708/change-how-python-cmd-module-handles-autocompletion
         # clean up the list a bit, removing ' characters and replacing spaces with underscores
         mod_avail_names = [simplify_name(name) for name in avail_names]
         # TODO: allow another argument for manager names and complete based on available
@@ -2026,7 +2029,6 @@ class MainPrompt(Cmd):
             x="posrank",
             y=yquant,
             hue="pos",
-            aspect=2.0  # make the plot wider by factor of 2
             # this style looks decent, but I prefer lines connecting these points
             # because they're sorted
             # , kind='strip'
@@ -2416,6 +2418,7 @@ def main():
     parser.add_argument(
         "--auction-cap", type=int, default=200, help="auction budget per manager"
     )
+    parser.add_argument("--year", type=int, default=datetime.now().year, help="year of season")
 
     args = parser.parse_args()
     n_teams = args.n_teams
@@ -2469,7 +2472,7 @@ def main():
 
     main_positions = ["QB", "RB", "WR", "TE", "K", "DST"]
 
-    year = datetime.now().year
+    year = args.year
     posdfs = []
     # also collect "floor" and "ceiling" data if it exists
     posdfs_high = []
@@ -2479,7 +2482,8 @@ def main():
             pos.lower(), year
         )
         posdf = pd.read_csv(filename)
-        ## TODO (low priority): try using a multi-indexed dataframe instead of decorating every entry with the position?
+        # TODO (low priority): try using a multi-indexed dataframe instead of
+        # decorating every entry with the position?
         posdf["pos"] = pos
         posdfs.append(posdf)
 
@@ -2516,7 +2520,8 @@ def main():
         )
 
         # if they have no stats listed (NaN) we can treat that as a zero
-        # this should be called before ADP is added, since it has some missing values that we want to keep as NaN for clarity
+        # this should be called before ADP is added, since it has some missing
+        # values that we want to keep as NaN for clarity
         df.fillna(0, inplace=True)
 
     for df in alldfs:
@@ -2592,12 +2597,14 @@ def main():
         for _, pnews in newsdf.iterrows():
             pnamenews, pteamnews, posnews = pnews[["player", "team", "pos"]]
             # pnamenews, pteamnews, posnews = index
-            # we should be able to just find the intersection of the indices, but the team names are inconsistent.
+            # we should be able to just find the intersection of the indices,
+            # but the team names are inconsistent.
             # pix = (availdf.index.get_level_values('pos') == posnews)
             # pix &= (availdf.index.get_level_values('player') == pnamenews)
             pix = availdf.pos == posnews
             pix &= availdf.player == pnamenews
-            # pix &= (availdf.team == pteamnews) # the team abbreviations are not always uniform #TODO: make it well-defined
+            # the team abbreviations are not always uniform #TODO: make it well-defined
+            # pix &= (availdf.team == pteamnews)
             if availdf[pix].shape[0] > 1:
                 logging.warning(
                     "multiple matches found for news item about {}!".format(pnamenews)
@@ -2619,9 +2626,8 @@ def main():
                     print(availdf[pix])
                 if availdf[pix].shape[0] == 0:
                     logging.warning(
-                        "there is news about {} ({}) {}, but this player could not be found!".format(
-                            pnamenews, pteamnews, posnews
-                        )
+                        "there is news about %s (%s) %s, but this player could not be found!",
+                        pnamenews, pteamnews, posnews
                     )
             availdf.loc[pix, "n"] = "*"  # flag this column
     else:
@@ -2641,7 +2647,8 @@ def main():
             pnamesimp = simplify_name(rm_name_suffix(pnamesus))
             pix = (rmsuff == pnamesimp) & (availdf.pos == possus)
             # pix = (availdf.player == pnamesus) & (availdf.pos == possus)
-            # pix &= (availdf.team == pteamsus) # the team abbreviations are not always uniform #TODO: make it well-defined
+            # the team abbreviations are not always uniform #TODO: make it well-defined
+            # pix &= (availdf.team == pteamsus)
             if len(availdf[pix]) > 1:
                 logging.warning("multiple matches found for suspension!")
                 print(availdf[pix])
@@ -2752,7 +2759,8 @@ def main():
                 cap=args.auction_cap,
                 min_bid=1,
             )
-            # sim_value.loc[:, col] = get_player_values(sim_ppg, sim_games, n_roster_per_league, value_key=col)
+            # sim_value.loc[:, col] =
+            #   get_player_values(sim_ppg, sim_games, n_roster_per_league, value_key=col)
         sim_auction.to_csv(auction_cache_name)
 
     # define confidence intervals for value
@@ -2792,7 +2800,8 @@ def main():
     total_bench_positions = n_roster_per_league["BENCH"]
     total_start_positions = len(availdf[availdf.tier.notnull()])
     crap_positions = ["K", "DST"]
-    # there will be some extra spots since the integer division is not exact. fill these with more flex spots.
+    # there will be some extra spots since the integer division is not exact.
+    # fill these with more flex spots.
     n_more_backups = (
         total_start_positions + total_bench_positions - availdf.tier.count()
     )  # count excludes nans
@@ -2806,7 +2815,7 @@ def main():
         .index
     )
     availdf.loc[add_bu_ix, "tier"] = "BU"
-    ## now label remaining players as waiver wire material
+    # now label remaining players as waiver wire material
     availdf.loc[availdf.tier.isnull(), "tier"] = "FA"
 
     for pos in main_positions:
@@ -2817,8 +2826,10 @@ def main():
             label = posdf.index[idx]
             availdf.loc[label, "rank"] = "{}{}".format(pos, idx + 1)
 
-    # TODO: this auction calculation should be done per-simulation, so we can get an accurate variance.
-    # availdf.loc[:, 'auction_base'] = get_auction_values(availdf, 'value', n_teams, n_roster_per_league, cap=args.auction_cap, min_bid=1)
+    # TODO: this auction calculation should be done per-simulation, so we can
+    # get an accurate variance.
+    # availdf.loc[:, 'auction_base'] = get_auction_values(
+    # availdf, 'value', n_teams, n_roster_per_league, cap=args.auction_cap, min_bid=1)
 
     # Make an empty dataframe with these reduces columns to store the picked
     # players. This might be better as another level of index in the dataframe,
