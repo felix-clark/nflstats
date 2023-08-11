@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 import logging
 import os.path
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
+from sys import argv
+# import numpy as np
+# import matplotlib.pyplot as plt
+# import pandas as pd
 # import nflgame
 
 # from get_player_stats import get_player_stats, get_fantasy_player_dict
 from nflstats.get_player_stats import *
-import nflstats.get_player_stats
+# import nflstats.get_player_stats
 
 # list of the positions we care about in fantasy
 off_pos = ['QB', 'RB', 'WR', 'TE', 'K']
+
 
 def main():
     logging.getLogger().setLevel(logging.DEBUG)
@@ -146,6 +148,7 @@ def main():
 #                 logging.error('still can\'t resolve descrepancy')
 #                 print(checkdf)
 #     return dict_id_pos[pid]
+
 
 if __name__ == '__main__':
     main()
