@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 from urllib.request import urlopen
 from bs4 import BeautifulSoup
-from sys import argv
 import pandas as pd
 import logging
 import os
 from retrying import retry
-from math import sqrt
 
 # get location of repo
 NFLSTATS_DIR = os.getenv('NFLSTATS_DIR') or '.'
+
 
 def _make_dirs():
     if not os.path.isdir(f'{NFLSTATS_DIR}/data'):
@@ -18,6 +17,7 @@ def _make_dirs():
     if not os.path.isdir(f'{NFLSTATS_DIR}/data/players'):
         logging.info('creating data/players/')
         os.mkdir(f'{NFLSTATS_DIR}/data/players')
+
 
 def get_player_stats(pfrid):
     """
@@ -35,14 +35,14 @@ def get_player_stats(pfrid):
     if df is None:
         logging.info('making cache for %s', pfrid)
         df = _make_cache(pfrid)
-        
+
     return df
 
 
 def _make_cache(pfrid):
     _make_dirs()
 
-    years = None # need to find player career years
+    years = None  # need to find player career years
     firstyear, lastyear = 1992, 2018
 
     # get the years
@@ -50,7 +50,7 @@ def _make_cache(pfrid):
         draftdf = pd.read_csv(f'{NFLSTATS_DIR}/data/draft/class_{year}.csv')
         pl = draftdf[draftdf['pfr_id'] == pfrid]
         if len(pl) > 0:
-            assert(len(pl) == 1)
+            assert (len(pl) == 1)
             years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max'])+1)
             break
 
@@ -59,20 +59,19 @@ def _make_cache(pfrid):
         undrafted = _undrafted_players()
         pl = undrafted[undrafted['pfr_id'] == pfrid]
         if len(pl) > 0:
-            assert(len(pl) == 1)
+            assert (len(pl) == 1)
             years = range(int(pl.iloc[0]['year']), int(pl.iloc[0]['year_max'])+1)
-    
+
     if years is None:
         logging.error(f'Could not find years for {pfrid}')
         exit(1)
-        
+
     # don't save some useless or redundant data
     ignore_cols = ['game_date', 'age',
                    'pass_cmp_perc',
                    'all_td',
                    'scoring',
                    ]
-    
 
     @retry(wait_exponential_multiplier=1000, wait_exponential_max=8000)
     def _scrape(pfrid, years):
@@ -89,12 +88,13 @@ def _make_cache(pfrid):
         return df
 
     df = _scrape(pfrid, years)
-        
+
     f = f'{NFLSTATS_DIR}/data/players/{pfrid}.csv'
     df.to_csv(f, index=False)
     del df
     df = pd.read_csv(f)
     return df
+
 
 def _get_stats(table_rows, ignore_cols=None):
     """
@@ -106,10 +106,10 @@ def _get_stats(table_rows, ignore_cols=None):
 
     # set the first few columns to an organized order
     df = pd.DataFrame(columns=['year', 'game_num', 'team', 'game_location', 'opp', 'game_result'])
-    
+
     for row in table_rows:
         # skip some empty rows, like the label rows
-        if(len(row.find_all('td')) == 0):
+        if (len(row.find_all('td')) == 0):
             continue
         player_dict = {}
         for thing in row:
@@ -122,6 +122,7 @@ def _get_stats(table_rows, ignore_cols=None):
             df = df.append(player_dict, ignore_index=True)
     return df
 
+
 def _undrafted_players():
     """
     there are a few relevant players that were not drafted.
@@ -132,19 +133,19 @@ def _undrafted_players():
     players = [
         ['Kurt Warner', 'WarnKu00', 'QB', 1998, 2009],
         ['Tony Romo', 'RomoTo00', 'QB', 2004, 2016],
-        ['Antonio Gates', 'GateAn00', 'TE', 2003, 2017], # might need to update the final year?
+        ['Antonio Gates', 'GateAn00', 'TE', 2003, 2017],  # might need to update the final year?
         ['Rod Smith', 'SmitRo01', 'WR', 1995, 2006],
         ['James Harrison', 'HarrJa23', 'OLB', 2002, 2017],
         ['Priest Holmes', 'HolmPr00', 'RB', 1997, 2007],
         ['Adam Vinatieri', 'vinatada01', 'K', 1996, 2017],
-        ['Jason Peters', 'PeteJa21', 'T', 2004, 2017], # started as a tight end
+        ['Jason Peters', 'PeteJa21', 'T', 2004, 2017],  # started as a tight end
         ['Wes Welker', 'WelkWe00', 'WR', 2004, 2015],
         ['Fred Jackson', 'JackFr02', 'RB', 2007, 2015],
         ['Danny Woodhead', 'WoodDa02', 'RB', 2009, 2017],
         ['Mike Tolbert', 'TolbMi00', 'RB', 2008, 2017],
-        ['John Kuhn', 'KuhnJo00', 'RB', 2006, 2017], # fullback
+        ['John Kuhn', 'KuhnJo00', 'RB', 2006, 2017],  # fullback
         ['Allen Hurns', 'HurnAl01', 'WR', 2014, 2017],
-        ['Vontaze Burfict', 'BurfVo00', 'LB', 2012, 2017], # ILB, i think
+        ['Vontaze Burfict', 'BurfVo00', 'LB', 2012, 2017],  # ILB, i think
         ['Malcom Butler', 'ButlMa01', 'CB', 2014, 2017],
         ['Michael Bennett', 'BennMi99', 'DE', 2009, 2017],
         ['Victor Cruz', 'CruzVi00', 'WR', 2010, 2016],
@@ -154,12 +155,16 @@ def _undrafted_players():
         ['LeGarrette Blount', 'BlouLe00', 'RB', 2010, 2017],
         ['Doug Baldwin', 'BaldDo00', 'WR', 2011, 2017],
         ['Adam Thielen', 'TheiAd00', 'WR', 2014, 2017],
-        ['Josh Gordon', 'GordJo02', 'WR', 2012, 2017], # he was in the supplemental draft
+        ['Josh Gordon', 'GordJo02', 'WR', 2012, 2017],  # he was in the supplemental draft
     ]
     return pd.DataFrame(columns=columns, data=players)
 
-# assuming all the draft data is there, make a file that lists names, ids, positions, and years active
+
 def get_fantasy_player_dict(startyear=1992):
+    """
+    assuming all the draft data is there, make a file that lists names, ids,
+    positions, and years active
+    """
     lastyear = 2018
     fname = f'{NFLSTATS_DIR}/data/players/index.csv'
     if os.path.isfile(fname):
@@ -177,21 +182,22 @@ def get_fantasy_player_dict(startyear=1992):
         draftdf = draftdf[draftdf['pos'].isin(positions)]
         years_in_league = draftdf['year_max']+1 - draftdf['year']
         # filter out players who have been around but usually just as backups
-        keepix = (draftdf['years_as_primary_starter'] > 0) & (draftdf['years_as_primary_starter'] >= years_in_league // 4)
+        keepix = (draftdf['years_as_primary_starter'] > 0) & (
+            draftdf['years_as_primary_starter'] >= years_in_league // 4)
         # we could consider a more refined cutoff
         # allow some players who have gotten decent volume
         # we really want to figure this out w/ something like a max,
         # but that requires looking in other sources that may not yet be available
         keepix |= (draftdf['pass_att'] >= (256 * (1+years_in_league//3)))
         keepix |= (draftdf['rush_att'] >= (128 * (1+years_in_league//3)))
-        keepix |= (draftdf['rec']      >= (64  * (1+years_in_league//3)))
+        keepix |= (draftdf['rec'] >= (64 * (1+years_in_league//3)))
         draftdf = draftdf[keepix]
         df = df.append(draftdf[keepcols])
     df.to_csv(fname, index=False)
     return df
-    
+
+
 def get_pos_players(pos, startyear=1992):
     # logging.info('in get_pos_players')
     plls = pd.read_csv(f'{NFLSTATS_DIR}/data/players/index.csv')
     return plls[plls.pos == pos]
-
