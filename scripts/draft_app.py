@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import logging
 import os
 import pickle
@@ -18,7 +19,7 @@ import pandas as pd
 import scipy.stats as st
 import seaborn as sns
 from progressbar import progressbar
-from scipy.optimize import fsolve
+from metalogistic import MetaLogistic
 
 from get_fantasy_points import get_points
 from ruleset import (bro_league, dude_league, nycfc_league, phys_league,
@@ -433,6 +434,7 @@ def get_auction_values(
     }
 
     # label next best set for the bench
+    # NOTE: Should there be more positional dependence in here?
     bench_idx = (
         auction_values.loc[
             (~auction_values["auctionable"])
@@ -727,104 +729,16 @@ def simplify_name(name):
     return name.strip().lower().replace(" ", "_").replace("'", "").replace(".", "")
 
 
-def _get_skew_norm_params(mean, high, low, ci=0.8):
-    """
-    returns the skew-normal parameters for the given mean, ceiling, and floor for a single sample.
-    ci: the confidence interval to assume for the values between floor and ceiling.
-    """
-    # Force a little bit of spread in case there isn't enough in the predictions.
-    high = high + 1.
-    low = low - 1.
-    # guess for skew, loc, scale
-    # calculate the sample skew but clip it close to 1
-    # NOTE: This sample skew is not very accurate because the mean is not like the others.
-    sample_skew = np.clip(st.skew(np.array([mean, mean, mean, high, low]), bias=False), -0.9, 0.9)
-    # this method of moments is on the wiki page
-    # it still doesn't give great estimates of the final, so perhaps it's not worth the calculation
-    init_skew = np.sign(sample_skew) * np.sqrt(
-        np.pi
-        / 2
-        * np.abs(sample_skew) ** (2 / 3)
-        / (np.abs(sample_skew) ** (2 / 3) + ((2 - np.pi / 2) ** (2 / 3)))
-    )
-    initial_guess = [init_skew, mean, 0.5 * (high - low)]
-
-    func_target = np.array([mean, 0.5 + 0.5 * ci, 0.5 - 0.5 * ci])
-
-    # TODO: try max-likelihood instead?
-    def func(args):
-        args = tuple(args)
-        skew, loc, scale = args
-        # assume the CDF is quicker to calculate than the ppf
-        delta = skew / np.sqrt(1 + skew**2)
-        implied_mean = loc + scale * delta * np.sqrt(2 / np.pi)
-        res = np.array([
-            implied_mean,
-            st.skewnorm.cdf(high, *args),
-            st.skewnorm.cdf(low, *args),
-        ])
-        return res - func_target
-
-    # we should be able to compute the matrix jacobian from the ppf, but it takes some
-    # manual computation.
-    # This might help convergence.
-    # def grad(skew, loc, scale):
-    #     pass
-    # TODO: This doesn't always converge without warning. This may happen when there is little skew
-    result = fsolve(func, x0=initial_guess,)
-    # print(median, result[1])
-    # print(0.5*(high-low), result[2])
-    return result
-
-
-def decorate_skew_norm_params(df, value_key="exp_proj", ci=0.8, **kwargs):
-    """
-    decorates the "median" df with the skew normal parameters of each player, derived
-    from the median, high, and low projections.
-    ci: confidence interval. For 5 experts we'll assume (poorly) that they're evenly
-    distributed in the CDF.
-    # NOTE: (possibly recent change) Fantasy Pros gives high/low projections for every
-    # stat. These should be randomized individually. In fact the simulations are quite
-    # wrong until this is fixed.
-    """
-    cache_name = kwargs.get("cache", "skew_normal_cache.csv")
-    if path.isfile(cache_name):
-        logging.info("Loading skew parameters from cache")
-        skew_param_df = pd.read_csv(cache_name, index_col=["player", "team", "pos"])
-        # if we don't specify the columns, the index is merged as well
-        # df = df.merge(skew_param_df[['player', 'team', 'pos', 'skew', 'loc',
-        # 'scale']], how='left', on=['player', 'team', 'pos'])
-        df = df.join(skew_param_df)
-        return df
-    ev_vals = df[value_key].to_numpy()
-    high_vals = df[f"{value_key}_high"].to_numpy()
-    low_vals = df[f"{value_key}_low"].to_numpy()
-    assert (high_vals >= ev_vals).all(), "High projections not all higher than nominal"
-    assert (low_vals <= ev_vals).all(), "Low projections not all lower than nominal"
-    logging.info("Finding skew-normal description of players...")
-    for i_player, mean, high, low in zip(df.index, ev_vals, high_vals, low_vals):
-        skew, loc, scale = _get_skew_norm_params(mean, high, low, ci)
-        df.loc[i_player, "skew"] = skew
-        df.loc[i_player, "loc"] = loc
-        df.loc[i_player, "scale"] = scale
-        # if  abs(skew) > 10:
-        #     logging.warning('Large skew:')
-        #     logging.warning(df.loc[i_player])
-    # save the cache
-    # df[['player', 'team', 'pos', 'skew', 'loc', 'scale']].to_csv(cache_name)
-    df[["skew", "loc", "scale"]].to_csv(cache_name)
-    return df
-
-
-def simulate_seasons(df, n, **kwargs):
+def simulate_seasons(df, n, hash: str, **kwargs):
     """
     Simulate a number of seasons based on the expected, high, and low points.
     The number of games will be simulated as well as the points per game.
     Returns a tuple with a dataframe of simulated points per game and number of games.
     """
     index_cols = ["player", "team", "pos"]
-    ppg_cache = kwargs.get("cache", "simulation_cache_ppg.csv")
-    games_cache = kwargs.get("cache", "simulation_cache_games.csv")
+
+    ppg_cache = kwargs.get("cache", f"simulation_cache_ppg_{hash}.csv")
+    games_cache = kwargs.get("cache", f"simulation_cache_games_{hash}.csv")
     if path.isfile(ppg_cache) and path.isfile(games_cache):
         games_df = pd.read_csv(games_cache, index_col=index_cols)
         ppg_df = pd.read_csv(ppg_cache, index_col=index_cols)
@@ -835,10 +749,6 @@ def simulate_seasons(df, n, **kwargs):
             logging.info("Simulation cache does not have sufficient iterations.")
     # seed based on randomness
     np.random.seed()
-    skews = df["skew"].to_numpy()
-    locs = df["loc"].to_numpy()
-    scales = df["scale"].to_numpy()
-    assert (scales >= 0).all(), "scales must be >= 0"
 
     # the "n" in the binomial drawing
     max_games = df["g"].to_numpy(dtype=int)
@@ -854,19 +764,37 @@ def simulate_seasons(df, n, **kwargs):
     betas = (1 - frac_games) * 1.5 + 1e-8
 
     logging.info("Simulating %s seasons...", n)
-    sim_games = df[[]].copy()
-    sim_ppg = df[[]].copy()
+    sim_tags = [str(i_sim) for i_sim in range(n)]
+    sim_games = pd.DataFrame(index=df.index, columns=sim_tags, dtype=int)
+    sim_ppg = pd.DataFrame(index=df.index, columns=sim_tags, dtype=float)
     # TODO: instead of looping, can we use the size parameter in scipy?
     # This would generate a 2D array, which we'd have to put into columns
-    for i_sim in range(n):
+    # There are difficulties broadcasting over alpha/beta and size at the same time
+    for n_sim in sim_tags:
         # the fraction is drawn from a beta distribution
         ps = st.beta.rvs(alphas, betas)
         games = st.binom.rvs(max_games, ps)
-        points = st.skewnorm.rvs(skews, locs, scales)
-        sim_games[str(i_sim)] = games
-        # the imported projections assume that players will not miss time, so
-        # divide by the max possible games.
-        sim_ppg[str(i_sim)] = points / max_games
+        sim_games[n_sim] = games
+    x_fields = ["exp_proj_low", "exp_proj", "exp_proj_high"]
+    # TODO: Reconsider this confidence interval. It's motivated by equally
+    # distributing ~5 experts over the quantile, but this is a pretty arbitrary
+    # choice.
+    ps = [0.2, 0.5, 0.8]
+    for (idx, xlow, xmid, xhi) in df[x_fields].itertuples(name=None):
+        # Some of the data are incomplete on the edges. Add a little buffer to
+        # make the distributions nice.
+        xlow = min(xlow, xmid - 10.)
+        # xlow = min(xlow, max(xmid - 10., 0))
+        xhi = max(xhi, xmid + 10.)
+        assert xlow <= xmid <= xhi
+
+        points_dist = MetaLogistic(cdf_xs=[xlow, xmid, xhi], cdf_ps=ps)
+        points = points_dist.rvs(size=n)
+        # NOTE: This is terrible performance, do something better
+        sim_ppg.loc[idx, sim_tags] = points
+    # the imported projections assume that players will not miss time, so
+    # divide by the max possible games.
+    sim_ppg[sim_tags] /= np.expand_dims(max_games, axis=-1)
     sim_games.to_csv(games_cache)
     sim_ppg.to_csv(ppg_cache)
     return sim_ppg, sim_games
@@ -2349,6 +2277,17 @@ class MainPrompt(Cmd):
         return max_vona_pos
 
 
+def get_hash(df: pd.DataFrame, *objs, n_bits: int = 16) -> str:
+    """
+    Digest a dataframe into a single hash string
+    """
+    hash = hashlib.sha256()
+    hash.update(pd.util.hash_pandas_object(df).values)
+    for obj in objs:
+        hash.update(obj)
+    return hash.hexdigest()[-n_bits:]
+
+
 def main():
     """main function that runs upon execution"""
 
@@ -2540,7 +2479,7 @@ def main():
         del availdf_low
 
     # get ECP/ADP
-    dpfname = "preseason_rankings/ecp_adp_fp_pre{}.csv".format(year)
+    dpfname = f"preseason_rankings/ecp_adp_fp_pre{year}.csv"
     if os.path.exists(dpfname):
         dpdf = pd.read_csv(dpfname)
         # add team acronym on ECP/ADP data too, so that we can use "team" as an additional merge key
@@ -2668,20 +2607,29 @@ def main():
     availdf.set_index(index_cols, inplace=True)
     availdf.sort_index(inplace=True)
 
+    hash_vals = []
+    for v in vars(args).values():
+        hash_vals.append(str(v))
+    # NOTE: This might be redundant with the args so long as the rulesets
+    # remain constant, but it shouldn't hurt
+    for v in rules._asdict().values():
+        hash_vals.append(str(v))
+    ruleset_hash = ''.join(hash_vals).encode("utf-8")
+
+    hash = get_hash(availdf, ruleset_hash)
+
     ci = args.ci
-    # this function adds skew-normal parameters for each player based on the high/low
-    availdf = decorate_skew_norm_params(availdf, ci=ci)
 
     n_sims = args.simulations
-    sim_ppg, sim_games = simulate_seasons(availdf, n=n_sims)
+    sim_ppg, sim_games = simulate_seasons(availdf, n=n_sims, hash=hash)
 
     # we can drop the high and low fields here
     availdf.drop(
-        ["exp_proj_high", "exp_proj_low", "skew", "loc", "scale"], axis=1, inplace=True
+        ["exp_proj_high", "exp_proj_low"], axis=1, inplace=True
     )
 
     sim_value = None
-    value_cache_name = "sim_value_cache.csv"
+    value_cache_name = f"sim_value_cache_{hash}.csv"
     if path.isfile(value_cache_name):
         value_df = pd.read_csv(value_cache_name, index_col=["player", "team", "pos"])
         # Is the games column still in here?
@@ -2717,7 +2665,7 @@ def main():
 
     # Do the exact same thing with auction values
     sim_auction = None
-    auction_cache_name = "sim_auction_cache.csv"
+    auction_cache_name = f"sim_auction_cache_{hash}.csv"
     if path.isfile(auction_cache_name):
         auction_df = pd.read_csv(
             auction_cache_name, index_col=["player", "team", "pos"]
