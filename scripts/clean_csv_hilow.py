@@ -5,6 +5,7 @@ Similar to clean_csv.py, but operates on CSVs with high and low projections also
 import argparse
 import logging
 
+
 def get_line_elems(line):
     # remove '"' and whitespace from each end of every element
     # splitline = (line.strip(' \n\r"').split('","'))
@@ -12,6 +13,7 @@ def get_line_elems(line):
     # remove commas which are placed into strings representing 4+ digit numbers
     number_commas_removed = [e.replace(',', '').strip(' \n\r"') for e in splitline]
     return number_commas_removed
+
 
 def replace_title_line(line):
     """
@@ -54,6 +56,7 @@ def replace_title_line(line):
 
     return line
 
+
 def get_type(elems):
     """
     returns 'ev' for the middle, 'high' for high and 'low' for low
@@ -71,8 +74,10 @@ def get_type(elems):
         raise RuntimeError('Invalid line')
     return linetype
 
+
 def main():
-    parser = argparse.ArgumentParser(description='transform downloaded CSV files with high/low lines into three output CSVs')
+    parser = argparse.ArgumentParser(
+        description='transform downloaded CSV files with high/low lines into three output CSVs')
     parser.add_argument('input', type=str, help='name of .csv to clean')
     parser.add_argument('output', type=str, help='name of output .csv')
 
@@ -107,7 +112,7 @@ def main():
     # loop through the remaining lines
     for line in it_infile:
         if not any([c.isalnum() for c in line]):
-            continue # strip out garbage lines
+            continue  # strip out garbage lines
         elems = get_line_elems(line)
         linetype = get_type(elems)
         if linetype == 'ev':
@@ -128,5 +133,6 @@ def main():
         if fout:
             fout.close()
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     main()
