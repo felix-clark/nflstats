@@ -376,25 +376,12 @@ def get_player_values(
 
     values = ppg_df[value_key].copy()
     for player in ppg_df.index:
-        # player = ppg_df.loc[i_player]
         _, _, pos = player
-        # pos = player['pos']
         worst_starter_pg = ppg_baseline[pos]
+        assert "FLEX" in ppg_baseline
         if pos in flex_positions:
-            if "FLEX" not in ppg_baseline:
-                # TODO: fix this case. If it happens, we should just return NaNs
-                # This should be fixed now.
-                logging.error("Flex not in ppg_baseline. Why does this happen???")
-                logging.error("Filling with NaNs to skip this point.")
-                # vols.iloc[:] = np.nan
-                # return vols
-                assert False, "This error is supposed to be fixed"
             worst_starter_pg = min(worst_starter_pg, ppg_baseline["FLEX"])
-        # gs = player['g']
         gs = games_df.loc[player, value_key]
-        # correct for the bye week
-        # the bye week should now be accounted for in the simulated games
-        # vols.iloc[i_player] = gs*(player[value_key]/(gs+1) - worst_starter_pg)
         values.loc[player] = gs * (ppg_df.loc[player, value_key] - worst_starter_pg)
     return values
 
