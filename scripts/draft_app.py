@@ -2344,7 +2344,9 @@ def main():
     parser.add_argument(
         "--auction-cap", type=int, default=200, help="auction budget per manager"
     )
-    parser.add_argument("--year", type=int, default=datetime.now().year, help="year of season")
+    parser.add_argument(
+        "--year", type=int, default=datetime.now().year, help="year of season"
+    )
 
     args = parser.parse_args()
     n_teams = args.n_teams
