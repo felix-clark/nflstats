@@ -2339,7 +2339,7 @@ def main():
         help="confidence interval to assume for high/low",
     )
     parser.add_argument(
-        "--simulations", type=int, default=2000, help="number of simulations to run"
+        "--simulations", type=int, default=4096, help="number of simulations to run"
     )
     parser.add_argument(
         "--auction-cap", type=int, default=200, help="auction budget per manager"
