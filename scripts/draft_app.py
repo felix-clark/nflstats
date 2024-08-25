@@ -276,20 +276,25 @@ def find_player(search_str, ap, pp):
     """
     # clean periods, since they aren't consistent between sources
     search_str = search_str.replace(".", "")
+
     # check if any of the search words are in the full name
-    # TODO: incorporate the close matches in here as well
-    checkfunc = (
-        lambda name: all(
+    def checkfunc(name: str) -> bool:
+        exact_match = all(
             [
                 sw in name.lower().replace(".", "")
                 for sw in search_str.lower().split(" ")
             ]
         )
-        or SequenceMatcher(
-            lambda c: c in "._ -", search_str.lower(), name.lower()
-        ).ratio()
-        > 0.6
-    )
+        if exact_match:
+            return True
+        approx_match = (
+            SequenceMatcher(
+                lambda c: c in "._ -", search_str.lower(), name.lower()
+            ).ratio()
+            > 0.6
+        )
+        return approx_match
+
     picked_players = pp.index.get_level_values("player")
     filt_mask = picked_players.map(checkfunc) if not pp.empty else None
     filtered_pp = pp[filt_mask] if not pp.empty else pp
@@ -341,7 +346,9 @@ def get_player_values(
     gamesdf.sort_values("ppg", inplace=True, ascending=False)
 
     ppg_baseline = {}
-    games_needed = {pos: (games_in_season * n_roster_per_league[pos]) for pos in main_positions}
+    games_needed = {
+        pos: (games_in_season * n_roster_per_league[pos]) for pos in main_positions
+    }
     games_needed["FLEX"] = games_in_season * n_roster_per_league["FLEX"]
 
     for index, row in gamesdf.iterrows():
@@ -445,24 +452,6 @@ def get_auction_values(
     )
     auction_values.loc[bench_idx, "auctionable"] = True
 
-    # use a baseline at the lowest bench spot
-    for pos in main_positions:
-        pos_idx = auction_values.index.get_level_values("pos") == pos
-        # pos_view = auction_values.loc[pos_idx]
-        pos_baseline = auction_values.loc[
-            pos_idx & auction_values["auctionable"], value_key
-        ].min()
-        if pos_baseline < 0:
-            auction_values.loc[pos_idx, value_key] -= pos_baseline
-        # apply an envelope assuming you get half value from bubble players
-        # Instead, we use more variance in the games available.
-        # auction_values.loc[pos_idx, value_key] /= 1. + (auction_values.loc[pos_idx,
-        # value_key].rank(ascending=False) / n_starter_pos[pos])**2
-
-    assert (
-        auction_values.loc[auction_values["auctionable"], value_key] >= 0
-    ).all(), "values should be greater than zero now"
-
     auction_values.loc[auction_values["auctionable"], "auction"] = auction_values[
         value_key
     ].clip(lower=0)
@@ -509,7 +498,7 @@ def get_player_index(data, name, hide_stats=None):
 
 
 def load_player_list(outname):
-    """loads the available and picked player data from the label \"outname\""""
+    """loads the available and picked player data from the label \"outname\" """
     print("Loading with label {}.".format(outname))
     if path.isfile(outname + ".csv"):
         ap = pd.read_csv(outname + ".csv", index_col=["player", "team", "pos"])
@@ -728,7 +717,9 @@ def simplify_name(name):
     return name.strip().lower().replace(" ", "_").replace("'", "").replace(".", "")
 
 
-def simulate_seasons(df, n, hash: str, **kwargs):
+def simulate_seasons(
+    df: pd.DataFrame, n: int, hash: str, **kwargs: Dict
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Simulate a number of seasons based on the expected, high, and low points.
     The number of games will be simulated as well as the points per game.
@@ -2772,11 +2763,6 @@ def main():
         for idx in range(posdf.shape[0]):
             label = posdf.index[idx]
             availdf.loc[label, "rank"] = "{}{}".format(pos, idx + 1)
-
-    # TODO: this auction calculation should be done per-simulation, so we can
-    # get an accurate variance.
-    # availdf.loc[:, 'auction_base'] = get_auction_values(
-    # availdf, 'value', n_teams, n_roster_per_league, cap=args.auction_cap, min_bid=1)
 
     # Make an empty dataframe with these reduces columns to store the picked
     # players. This might be better as another level of index in the dataframe,
