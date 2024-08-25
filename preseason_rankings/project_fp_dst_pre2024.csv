@@ -1,0 +1,33 @@
+player,team,defense_sk,defense_int,defense_frec,defense_ffum,defense_td,defense_safe,defense_pa,defense_lost_yds,fp_projection
+Dallas Cowboyshigh,,50.1,14.2,10.9,16.6,3.1,0.0,347.2,5445.0,118.9
+Baltimore Ravenshigh,,51.1,14.2,11.0,16.6,2.7,0.0,323.9,5262.3,117.4
+New York Jetshigh,,48.0,14.6,9.7,15.5,2.8,1.0,339.5,5164.8,115.3
+Houston Texanshigh,,49.3,13.3,10.7,15.2,2.4,0.5,393.0,5704.1,112.4
+Philadelphia Eagleshigh,,51.0,13.1,10.2,15.2,2.5,0.0,382.4,5580.5,112.4
+Kansas City Chiefshigh,,50.2,12.1,10.0,15.8,2.7,0.5,337.8,5282.4,111.7
+Pittsburgh Steelershigh,,48.5,13.6,9.8,16.1,2.7,0.0,352.0,5616.3,111.4
+Cleveland Brownshigh,,47.3,13.4,9.2,14.4,2.9,0.0,357.9,5229.2,110.2
+San Francisco 49ershigh,,44.0,15.1,9.4,13.9,2.7,0.5,327.2,5502.4,110.2
+Buffalo Billshigh,,45.9,13.4,10.7,17.8,2.4,0.5,349.1,5612.2,109.1
+Miami Dolphinshigh,,47.9,12.4,10.4,17.6,2.5,0.5,376.6,5504.6,109.1
+Indianapolis Coltshigh,,49.0,12.4,9.9,15.7,2.4,0.5,408.9,5693.8,109.1
+Cincinnati Bengalshigh,,46.6,13.0,10.0,15.6,2.4,0.0,365.9,5765.8,107.1
+Los Angeles Chargershigh,,46.2,11.5,10.6,18.0,2.4,0.5,385.1,5716.4,105.6
+Washington Commandershigh,,48.7,11.5,9.9,16.3,2.1,0.5,431.0,5743.5,105.4
+Jacksonville Jaguarshigh,,41.1,13.0,10.9,16.3,2.7,0.0,383.9,5645.9,105.0
+Green Bay Packershigh,,43.9,13.4,9.2,14.7,2.5,0.5,381.6,5797.9,104.8
+New York Giantshigh,,41.7,12.4,11.4,19.5,2.5,0.0,398.6,5811.7,104.1
+New Orleans Saintshigh,,41.8,13.3,10.0,14.4,2.5,0.0,362.0,5535.7,103.7
+Seattle Seahawkshigh,,45.2,12.6,9.5,14.4,2.1,0.5,396.5,5839.4,103.1
+Tampa Bay Buccaneershigh,,45.3,11.5,10.1,18.4,2.4,0.0,372.1,5670.8,102.9
+Las Vegas Raidershigh,,44.8,11.3,9.5,15.2,2.6,0.5,386.8,5641.0,102.8
+Minnesota Vikingshigh,,43.7,12.3,9.6,17.2,2.4,0.0,404.7,5648.8,101.9
+Denver Broncoshigh,,41.9,11.2,11.1,18.7,2.4,0.5,406.9,5961.7,101.7
+Atlanta Falconshigh,,44.7,12.2,9.0,13.8,2.2,0.5,376.7,5373.9,101.4
+Detroit Lionshigh,,40.9,13.4,9.1,12.7,2.2,0.5,401.2,5830.0,100.3
+Chicago Bearshigh,,37.2,14.7,8.9,12.9,2.3,0.5,376.7,5541.6,99.0
+Los Angeles Ramshigh,,41.1,13.0,8.2,12.0,2.1,0.5,406.5,5851.2,97.4
+Tennessee Titanshigh,,42.5,11.1,9.2,12.8,2.1,0.0,393.4,5709.9,95.6
+New England Patriotshigh,,36.0,12.4,9.5,14.0,2.4,0.0,405.7,5667.3,94.4
+Arizona Cardinalshigh,,39.0,11.9,8.8,13.2,2.3,0.0,427.0,6029.7,94.2
+Carolina Panthershigh,,36.9,11.6,8.3,11.3,2.3,0.0,403.2,5555.6,90.1
