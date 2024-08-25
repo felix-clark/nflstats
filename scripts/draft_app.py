@@ -11,7 +11,7 @@ from datetime import datetime
 from difflib import SequenceMatcher, get_close_matches
 from itertools import chain, takewhile
 from os import path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,8 +22,7 @@ from progressbar import progressbar
 from metalogistic import MetaLogistic
 
 from get_fantasy_points import get_points
-from ruleset import (bro_league, dude_league, nycfc_league, phys_league,
-                     ram_league)
+from ruleset import bro_league, dude_league, nycfc_league, phys_league, ram_league
 from tools import get_k_partition_boundaries, get_team_abbrev, rm_name_suffix
 
 games_in_season = 17
