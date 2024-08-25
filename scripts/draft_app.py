@@ -779,12 +779,12 @@ def simulate_seasons(df, n, hash: str, **kwargs):
     # distributing ~5 experts over the quantile, but this is a pretty arbitrary
     # choice.
     ps = [0.2, 0.5, 0.8]
-    for (idx, xlow, xmid, xhi) in df[x_fields].itertuples(name=None):
+    for idx, xlow, xmid, xhi in df[x_fields].itertuples(name=None):
         # Some of the data are incomplete on the edges. Add a little buffer to
         # make the distributions nice.
-        xlow = min(xlow, xmid - 10.)
+        xlow = min(xlow, xmid - 10.0)
         # xlow = min(xlow, max(xmid - 10., 0))
-        xhi = max(xhi, xmid + 10.)
+        xhi = max(xhi, xmid + 10.0)
         assert xlow <= xmid <= xhi
 
         points_dist = MetaLogistic(cdf_xs=[xlow, xmid, xhi], cdf_ps=ps)
@@ -2479,23 +2479,34 @@ def main():
         )
         del availdf_low
 
-    # get ECP/ADP
-    dpfname = f"preseason_rankings/ecp_adp_fp_pre{year}.csv"
-    if os.path.exists(dpfname):
-        dpdf = pd.read_csv(dpfname)
-        # add team acronym on ECP/ADP data too, so that we can use "team" as an additional merge key
-        # dpdf.drop(columns=['rank', 'WSID'],inplace=True)
-        dpdf = dpdf[~dpdf.pos.str.contains("TOL")]
-        dpdf.loc[dpdf.team.isnull(), "team"] = dpdf.loc[dpdf.team.isnull(), "player"].map(
-            lambda n: get_team_abbrev(n, teamlist)
-        )
+    adpfname = f"preseason_rankings/fp_adp_pre{year}.csv"
+    if os.path.exists(adpfname):
+        adpdf = pd.read_csv(adpfname)
+        # add team acronym on ADP data too, so that we can use "team" as an additional merge key
+        # adpdf = adpdf[~adpdf.pos.str.contains("TOL")]
         # only merge with the columns we are interested in for now.
         # combine on both name and team because there are sometimes multiple players w/ same name
         availdf = availdf.merge(
-            dpdf[["player", "team", "ecp", "adp"]], how="left", on=["player", "team"]
+            adpdf[["player", "team", "adp"]], how="left", on=["player", "team"]
         )
     else:
-        logging.warning("Could not find ADP/ECP file")
+        logging.warning("Could not find ADP file")
+    ecpfname = f"preseason_rankings/fp_ecp_pre{year}.csv"
+    if os.path.exists(ecpfname):
+        ecpdf = pd.read_csv(ecpfname)
+        # add team acronym on ADP data too, so that we can use "team" as an additional merge key
+        ecpdf = ecpdf[~ecpdf.pos.str.contains("TOL")]
+        # TODO: This should probably just be removed
+        ecpdf.loc[ecpdf.team.isnull(), "team"] = ecpdf.loc[
+            ecpdf.team.isnull(), "player"
+        ].map(lambda n: get_team_abbrev(n, teamlist))
+        # only merge with the columns we are interested in for now.
+        # combine on both name and team because there are sometimes multiple players w/ same name
+        availdf = availdf.merge(
+            ecpdf[["player", "team", "ecp"]], how="left", on=["player", "team"]
+        )
+    else:
+        logging.warning("Could not find ECP file")
     availdf.loc[:, "n"] = ""
     availdf.loc[:, "rank"] = ""
     availdf.loc[:, "g"] = ""
