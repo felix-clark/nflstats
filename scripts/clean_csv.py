@@ -56,12 +56,12 @@ def replaceTitleLine(line: str) -> str:
     # The ADP and ECP files are split now
     # It's a bit tricker to infer from the field names alone, so replace the whole line now.
     # ADP (...<year>_Overall_ADP_Rankings.csv)
-    # This was form 2023:
-    # line = line.replace(
-    #     '"Rank",player,team,"Bye","POS","ESPN","Sleeper","NFL","RTSports","FFC","AVG"',
-    #     "rank,player,team,bye,pos,espn_adp,sleeper_adp,nfl_adp,rtsports_adp,ffc_adp,adp",
-    # )
-    # in 2024 it looks like this:
+    # This was from 2023, and late enough in 2024:
+    line = line.replace(
+        '"Rank",player,team,"Bye","POS","ESPN","Sleeper","NFL","RTSports","FFC","AVG"',
+        "rank,player,team,bye,pos,espn_adp,sleeper_adp,nfl_adp,rtsports_adp,ffc_adp,adp",
+    )
+    # in 2024 it originally looked like this, before all sources were added:
     line = line.replace(
         '"Rank",player,team,"Bye","POS","Yahoo","Sleeper","RTSports","AVG"',
         "rank,player,team,bye,pos,yahoo_adp,sleeper_adp,rtsports_adp,adp",
